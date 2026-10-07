@@ -6,6 +6,7 @@ import type { Option } from '../game/Build';
 import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
 import type { GameScene, RunResult } from './GameScene';
+import { stick, isTouch } from '../ui/touch';
 
 type Mode = 'play' | 'levelup' | 'menu';
 
@@ -16,6 +17,8 @@ interface MenuItem {
 
 const PANEL = 0x161220;
 const LINE = 0x4a3f5c;
+/** 摇杆半径（逻辑像素） */
+const STICK_R = 26;
 
 export class HudScene extends Phaser.Scene {
   private g!: GameScene;
@@ -42,6 +45,9 @@ export class HudScene extends Phaser.Scene {
   private menuItems: MenuItem[] = [];
   private menuTexts: Phaser.GameObjects.Text[] = [];
   private escAction: (() => void) | null = null;
+  private stickGfx!: Phaser.GameObjects.Graphics;
+  private stickId = -1;
+  private stickBase = { x: 0, y: 0 };
 
   constructor() {
     super('hud');
@@ -85,7 +91,71 @@ export class HudScene extends Phaser.Scene {
       x += t.width + 6;
     }
 
+    // 暂停按钮（触屏和鼠标都能点）
+    const pb = this.add.rectangle(358, 5, 20, 18, PANEL, 1).setOrigin(0).setStrokeStyle(1, LINE);
+    pb.setInteractive({ useHandCursor: true, hitArea: new Phaser.Geom.Rectangle(-8, -5, 36, 30), hitAreaCallback: Phaser.Geom.Rectangle.Contains });
+    pb.on('pointerdown', () => this.g.pauseGame());
+    this.add.rectangle(364, 9, 2, 10, 0xd8d0e4).setOrigin(0);
+    this.add.rectangle(370, 9, 2, 10, 0xd8d0e4).setOrigin(0);
+
+    // 虚拟摇杆：屏幕任意空白处按下即出现
+    this.stickGfx = this.add.graphics().setDepth(50);
+    this.stickId = -1;
+    this.releaseStick();
+    this.input.addPointer(2);
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+      if (this.mode !== 'play' || over.length || this.stickId !== -1) return;
+      this.stickId = p.id;
+      this.stickBase = { x: p.x, y: p.y };
+      stick.active = true;
+      stick.x = stick.y = 0;
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (p.id !== this.stickId) return;
+      let dx = p.x - this.stickBase.x;
+      let dy = p.y - this.stickBase.y;
+      const d = Math.hypot(dx, dy);
+      // 手指拖出范围时底座跟着走
+      if (d > STICK_R) {
+        this.stickBase.x = p.x - (dx / d) * STICK_R;
+        this.stickBase.y = p.y - (dy / d) * STICK_R;
+        dx = p.x - this.stickBase.x;
+        dy = p.y - this.stickBase.y;
+      }
+      const dd = Math.hypot(dx, dy);
+      const mag = dd < 4 ? 0 : Math.min(1, (dd - 4) / (STICK_R * 0.6));
+      stick.x = dd ? (dx / dd) * mag : 0;
+      stick.y = dd ? (dy / dd) * mag : 0;
+    });
+    const up = (p: Phaser.Input.Pointer) => {
+      if (p.id === this.stickId) this.releaseStick();
+    };
+    this.input.on('pointerup', up);
+    this.input.on('pointerupoutside', up);
+    this.input.on('gameout', () => this.releaseStick());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.releaseStick());
+
     this.input.keyboard!.on('keydown', (e: KeyboardEvent) => this.onKey(e));
+  }
+
+  private releaseStick() {
+    this.stickId = -1;
+    stick.active = false;
+    stick.x = stick.y = 0;
+    this.stickGfx?.clear();
+  }
+
+  private drawStick() {
+    const g = this.stickGfx;
+    g.clear();
+    if (this.stickId === -1) return;
+    const b = this.stickBase;
+    g.fillStyle(0xffffff, 0.08).fillCircle(b.x, b.y, STICK_R);
+    g.lineStyle(1, 0xffffff, 0.35).strokeCircle(b.x, b.y, STICK_R);
+    const kx = b.x + stick.x * STICK_R;
+    const ky = b.y + stick.y * STICK_R;
+    g.fillStyle(0xffd23f, 0.55).fillCircle(kx, ky, 10);
+    g.lineStyle(1, 0xffffff, 0.7).strokeCircle(kx, ky, 10);
   }
 
   // ---------- 每帧刷新 ----------
@@ -93,6 +163,7 @@ export class HudScene extends Phaser.Scene {
   update(_t: number, dms: number) {
     const g = this.g;
     if (!g.build) return;
+    this.drawStick();
     const b = g.build;
     const gfx = this.gfx;
     gfx.clear();
@@ -218,6 +289,7 @@ export class HudScene extends Phaser.Scene {
 
   showLevelUp(opts: Option[]) {
     this.closeModal();
+    this.releaseStick();
     this.mode = 'levelup';
     this.options = opts;
     this.sel = 0;
@@ -226,7 +298,7 @@ export class HudScene extends Phaser.Scene {
     this.modal = c;
     c.add(this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.72).setOrigin(0));
     c.add(label(this, 320, 58, '境界提升 · 选择一项', '#ffd23f').setOrigin(0.5, 0));
-    c.add(label(this, 320, 290, '← → 选择　Enter / 空格 确认', '#8a8494').setOrigin(0.5, 0));
+    c.add(label(this, 320, 290, isTouch() ? '点击卡片选择' : '← → 选择　Enter / 空格 确认', '#8a8494').setOrigin(0.5, 0));
     this.cards = opts.map((o, i) => {
       const card = this.makeCard(o, 320 + (i - 1) * 168, 84);
       c.add(card);
@@ -323,6 +395,7 @@ export class HudScene extends Phaser.Scene {
 
   private showMenu(title: string, titleColor: string, lines: string[], items: MenuItem[], onEsc: (() => void) | null) {
     this.closeModal();
+    this.releaseStick();
     this.mode = 'menu';
     this.sel = 0;
     this.menuItems = items;
@@ -331,15 +404,15 @@ export class HudScene extends Phaser.Scene {
     const c = this.add.container(0, 0).setDepth(100);
     this.modal = c;
     c.add(this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.75).setOrigin(0));
-    const h = 70 + lines.length * 16 + items.length * 20;
+    const h = 70 + lines.length * 16 + items.length * 26;
     const top = 180 - h / 2;
     c.add(this.add.rectangle(320, top, 240, h, PANEL, 0.96).setOrigin(0.5, 0).setStrokeStyle(1, LINE, 1));
     c.add(label(this, 320, top + 12, title, titleColor, 24).setOrigin(0.5, 0));
     lines.forEach((l, i) => c.add(label(this, 320, top + 46 + i * 16, l, '#d8d0e4').setOrigin(0.5, 0)));
     const iy = top + 52 + lines.length * 16;
     this.menuTexts = items.map((it, i) => {
-      const t = label(this, 320, iy + i * 20, it.text, '#f4eee0').setOrigin(0.5, 0);
-      t.setInteractive({ useHandCursor: true });
+      const t = label(this, 320, iy + i * 26, it.text, '#f4eee0').setOrigin(0.5, 0);
+      t.setInteractive({ useHandCursor: true, hitArea: new Phaser.Geom.Rectangle(-60, -7, t.width + 120, t.height + 14), hitAreaCallback: Phaser.Geom.Rectangle.Contains });
       t.on('pointerover', () => {
         this.sel = i;
         this.refreshMenu();

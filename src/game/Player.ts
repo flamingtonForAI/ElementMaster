@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { dirFromVector, type HeroDir } from '../art/heroXiao';
 import type { GameScene } from '../scenes/GameScene';
+import { stick } from '../ui/touch';
 
 export const PLAYER_RADIUS = 7;
 
@@ -36,13 +37,20 @@ export class Player {
     const k = this.keys;
     let mx = (k.RIGHT.isDown || k.D.isDown ? 1 : 0) - (k.LEFT.isDown || k.A.isDown ? 1 : 0);
     let my = (k.DOWN.isDown || k.S.isDown ? 1 : 0) - (k.UP.isDown || k.W.isDown ? 1 : 0);
+    // 键盘没按时用虚拟摇杆，摇杆推得越远走得越快
+    let speedK = 1;
+    if (mx === 0 && my === 0 && stick.active) {
+      mx = stick.x;
+      my = stick.y;
+      speedK = Math.min(1, Math.hypot(mx, my));
+    }
     this.moving = mx !== 0 || my !== 0;
     if (this.moving) {
       const len = Math.hypot(mx, my);
       mx /= len;
       my /= len;
-      this.x += mx * g.pstats.speed * dt;
-      this.y += my * g.pstats.speed * dt;
+      this.x += mx * g.pstats.speed * speedK * dt;
+      this.y += my * g.pstats.speed * speedK * dt;
       this.facing.x = mx;
       this.facing.y = my;
     }

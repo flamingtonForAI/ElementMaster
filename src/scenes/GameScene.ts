@@ -399,7 +399,7 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private pauseGame() {
+  pauseGame() {
     if (this.over || !this.scene.isActive()) return;
     this.scene.pause();
     this.hud.showPause();
