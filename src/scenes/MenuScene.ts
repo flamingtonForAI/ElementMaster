@@ -6,6 +6,7 @@ import { loadSave } from '../game/save';
 import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
 import { isTouch } from '../ui/touch';
+import { canFullscreen, isIOS, isStandalone, toggleFullscreen, IOS_TIP } from '../ui/fullscreen';
 
 const PANEL = 0x161220;
 const LINE = 0x4a3f5c;
@@ -36,18 +37,11 @@ export class MenuScene extends Phaser.Scene {
     });
     label(this, 634, 344, `Demo M1 · 灵石 ${save.lingshi}`, '#6a6474').setOrigin(1, 0);
 
-    // 手机上提供全屏（iPhone Safari 不支持网页全屏，按钮不显示）
-    if (isTouch() && this.scale.fullscreen.available) {
+    // 手机上提供全屏；iPhone 网页不支持，点了显示“添加到主屏幕”的说明
+    if (isTouch() && !isStandalone() && (canFullscreen() || isIOS())) {
       const fs = label(this, 634, 6, '⛶ 全屏', '#b8aec8').setOrigin(1, 0);
-      fs.setInteractive({ useHandCursor: true, hitArea: new Phaser.Geom.Rectangle(-10, -6, fs.width + 16, fs.height + 12), hitAreaCallback: Phaser.Geom.Rectangle.Contains });
-      fs.on('pointerup', () => {
-        if (this.scale.isFullscreen) this.scale.stopFullscreen();
-        else {
-          this.scale.startFullscreen();
-          const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
-          o.lock?.('landscape').catch(() => {});
-        }
-      });
+      fs.setInteractive({ useHandCursor: true, hitArea: new Phaser.Geom.Rectangle(-14, -8, fs.width + 22, fs.height + 16), hitAreaCallback: Phaser.Geom.Rectangle.Contains });
+      fs.on('pointerup', () => (canFullscreen() ? toggleFullscreen() : this.showTip(IOS_TIP)));
     }
 
     this.layer = this.add.container(0, 0);
@@ -158,6 +152,16 @@ export class MenuScene extends Phaser.Scene {
       if (!isTouch()) L.add(label(this, x + 118, 290, '或按 Enter', '#6a6474'));
     }
     L.add(label(this, 320, 330, isTouch() ? '点选关卡查看，再点一次或点“开始”进入' : '↑ ↓ 选择　Enter 开始　Esc 返回', '#8a8494').setOrigin(0.5, 0));
+  }
+
+  private showTip(text: string) {
+    const c = this.add.container(0, 0).setDepth(100);
+    const bg = this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.8).setOrigin(0).setInteractive();
+    c.add(bg);
+    c.add(this.add.rectangle(320, 130, 400, 100, PANEL, 1).setOrigin(0.5, 0).setStrokeStyle(1, LINE));
+    c.add(label(this, 140, 146, wrap(text, 360), '#f4eee0', 12, false).setLineSpacing(6));
+    c.add(label(this, 320, 208, '点任意处关闭', '#8a8494').setOrigin(0.5, 0));
+    bg.once('pointerdown', () => c.destroy());
   }
 
   private confirm() {

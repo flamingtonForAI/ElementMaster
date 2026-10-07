@@ -7,6 +7,7 @@ import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
 import type { GameScene, RunResult } from './GameScene';
 import { stick, isTouch } from '../ui/touch';
+import { canFullscreen, isFullscreen, isStandalone, toggleFullscreen } from '../ui/fullscreen';
 
 type Mode = 'play' | 'levelup' | 'menu';
 
@@ -417,7 +418,8 @@ export class HudScene extends Phaser.Scene {
         this.sel = i;
         this.refreshMenu();
       });
-      t.on('pointerdown', () => {
+      // 松手时触发：浏览器只允许在触摸抬起时进入全屏
+      t.on('pointerup', () => {
         this.sel = i;
         this.confirm();
       });
@@ -439,11 +441,21 @@ export class HudScene extends Phaser.Scene {
       this.closeModal();
       this.scene.resume('game');
     };
-    this.showMenu('暂停', '#f4eee0', [], [
+    const items: MenuItem[] = [
       { text: '继续', fn: resume },
       { text: '重新开始', fn: () => this.restart(this.g.levelDef.id) },
       { text: '返回标题', fn: () => this.toMenu() },
-    ], resume);
+    ];
+    if (isTouch() && canFullscreen() && !isStandalone()) {
+      items.splice(1, 0, {
+        text: isFullscreen() ? '退出全屏' : '全屏',
+        fn: () => {
+          toggleFullscreen();
+          resume();
+        },
+      });
+    }
+    this.showMenu('暂停', '#f4eee0', [], items, resume);
   }
 
   showResult(r: RunResult) {
