@@ -12,6 +12,8 @@ export interface LevelDef {
   hpMult: number;
   boss: string;
   bossName: string;
+  /** BGM 曲名，见 audio/tracks.ts */
+  bgm: string;
   ground: string;
   decor: { tex: string; w: number }[];
   decorPerChunk: number;
@@ -27,7 +29,7 @@ export const LEVELS: LevelDef[] = [
     terrain: T({ metal: 0.2, wood: 0.2, water: 0.2, fire: 0.2, earth: 0.2 }),
     enemies: [{ id: 'shiyong', w: 2 }, { id: 'tengguai', w: 3 }, { id: 'shuigui', w: 3 }, { id: 'huoya', w: 1 }, { id: 'tiejia', w: 1 }],
     spawn: [[0, 0.8, 30], [60, 1.6, 70], [120, 2.4, 110], [180, 3.4, 160], [240, 4.6, 220], [300, 3.0, 220]],
-    hpMult: 1, boss: 'langyao', bossName: '狼妖',
+    hpMult: 1, boss: 'langyao', bossName: '狼妖', bgm: 'level1',
     ground: 'ground_1',
     decor: [{ tex: 'dc_rock', w: 3 }, { tex: 'dc_tuft', w: 6 }, { tex: 'dc_tablet', w: 1 }, { tex: 'dc_deadtree', w: 1 }],
     decorPerChunk: 7,
@@ -39,7 +41,7 @@ export const LEVELS: LevelDef[] = [
     terrain: T({ earth: 0.45, water: 0.35, wood: 0.2 }),
     enemies: [{ id: 'tengguai', w: 7 }, { id: 'shiyong', w: 3 }],
     spawn: [[0, 1.0, 40], [90, 2.0, 100], [180, 3.2, 160], [300, 4.6, 240], [400, 6.0, 320], [420, 3.5, 320]],
-    hpMult: 1.3, boss: 'shuyao', bossName: '千年树妖',
+    hpMult: 1.3, boss: 'shuyao', bossName: '千年树妖', bgm: 'level2',
     ground: 'ground_2',
     decor: [{ tex: 'dc_bamboo', w: 5 }, { tex: 'dc_shoot', w: 3 }, { tex: 'dc_mossrock', w: 2 }, { tex: 'dc_fern', w: 4 }],
     decorPerChunk: 9,
@@ -58,7 +60,7 @@ export const LEVELS: LevelDef[] = [
     [10, '昆仑', 900, T({ metal: 0.2, wood: 0.2, water: 0.2, fire: 0.2, earth: 0.2 }), '帝江', '期末考'],
   ] as const).map(([id, name, duration, terrain, bossName, lesson]): LevelDef => ({
     id, name, duration, terrain, bossName, lesson,
-    enemies: [], spawn: [], hpMult: 1, boss: '', ground: 'ground_1', decor: [], decorPerChunk: 0,
+    enemies: [], spawn: [], hpMult: 1, boss: '', bgm: 'level1', ground: 'ground_1', decor: [], decorPerChunk: 0,
     available: false,
   })),
 ];

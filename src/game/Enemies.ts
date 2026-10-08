@@ -5,6 +5,7 @@ import { SpatialGrid } from './SpatialGrid';
 import { PLAYER_RADIUS } from './Player';
 import { label, hex } from '../ui/text';
 import type { GameScene } from '../scenes/GameScene';
+import { audio } from '../audio/Audio';
 
 export class Enemy {
   id = 0;
@@ -198,6 +199,7 @@ export class EnemyManager {
             e.dashX = nx;
             e.dashY = ny;
             g.fx.line(e.x, e.y - 6, Math.atan2(ny, nx), 90, 0xff5a4a, 0.55);
+            audio.sfx('charge');
           }
           return [nx * sp, ny * sp];
         }
@@ -223,6 +225,7 @@ export class EnemyManager {
             e.dashX = nx;
             e.dashY = ny;
             g.fx.line(e.x, e.y - 10, Math.atan2(ny, nx), 230, 0xff5a4a, 0.7, 10);
+            audio.sfx('bossCharge');
           }
           return [nx * sp, ny * sp];
         }
@@ -238,6 +241,7 @@ export class EnemyManager {
             e.state = 3;
             e.timer = 0.6;
             const n = e.hp < e.maxHp * 0.5 ? 16 : 12;
+            audio.sfx('bossShot');
             for (let i = 0; i < n; i++) {
               const a = (i / n) * Math.PI * 2;
               g.proj.enemyShot('ep_wind', e.x, e.y - 12, Math.cos(a) * 95, Math.sin(a) * 95, 10, 'metal');
@@ -257,6 +261,7 @@ export class EnemyManager {
         if (e.timer <= 0) {
           e.timer = 3.2;
           const n = e.hp < e.maxHp * 0.5 ? 20 : 14;
+          audio.sfx('bossShot', { rate: 0.8 });
           const off = Math.random() * Math.PI;
           for (let i = 0; i < n; i++) {
             const a = off + (i / n) * Math.PI * 2;
@@ -289,6 +294,8 @@ export class EnemyManager {
     }
     g.kills++;
     g.fx.burst(e.x, e.y - 6, EL_INFO[e.def.el].color, e.boss ? 40 : e.elite ? 16 : 6);
+    if (e.boss || e.elite) audio.sfx('killBig');
+    else audio.sfx('kill');
     g.pickups.gem(e.x, e.y, e.xp);
     if (e.elite) g.pickups.chest(e.x, e.y);
     else if (!e.boss && Math.random() < 0.012) g.pickups.pill(e.x + 6, e.y);
@@ -298,6 +305,7 @@ export class EnemyManager {
       g.fx.disc(x, y, 18, 0xff5a3a, 0.28, 0.6);
       g.later(0.6, () => {
         g.fx.anim('fx_explosion', x, y, { scale: 0.8 });
+        audio.sfx('explode', { rate: 1.3, vol: 0.6 });
         const p = g.player;
         if (Math.hypot(p.x - x, p.y - y) < 18 + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale(), 'fire');
       });

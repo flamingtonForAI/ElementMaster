@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { buildHeroXiao } from '../art/heroXiao';
 import { buildEnemies } from '../art/enemyArt';
 import { buildFx } from '../art/fxArt';
+import { audio } from '../audio/Audio';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -9,6 +10,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    audio.init(this.game);
     buildFx(this);
     buildHeroXiao(this);
     buildEnemies(this);

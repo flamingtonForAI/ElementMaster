@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { GameScene } from '../scenes/GameScene';
+import { audio } from '../audio/Audio';
 
 class Gem {
   active = false;
@@ -90,6 +91,7 @@ export class PickupManager {
         if (d < 8) {
           gm.active = false;
           gm.sprite.setVisible(false);
+          audio.gem();
           g.gainXp(gm.value);
         }
       }

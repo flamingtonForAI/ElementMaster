@@ -6,6 +6,7 @@ import { loadSave } from '../game/save';
 import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
 import { isTouch } from '../ui/touch';
+import { audio } from '../audio/Audio';
 import { canFullscreen, isIOS, isStandalone, toggleFullscreen, IOS_TIP } from '../ui/fullscreen';
 
 const PANEL = 0x161220;
@@ -44,6 +45,21 @@ export class MenuScene extends Phaser.Scene {
       fs.on('pointerup', () => (canFullscreen() ? toggleFullscreen() : this.showTip(IOS_TIP)));
     }
 
+    // 声音总开关（音乐和音效分开的开关在游戏内暂停菜单里）
+    const snd = label(this, 6, 6, '', '#b8aec8');
+    const refreshSnd = () => snd.setText(`♪ 声音：${audio.musicOn || audio.sfxOn ? '开' : '关'}　M`);
+    const toggleSnd = () => {
+      const on = !(audio.musicOn || audio.sfxOn);
+      audio.setMusic(on);
+      audio.setSfx(on);
+      refreshSnd();
+    };
+    refreshSnd();
+    snd.setInteractive({ useHandCursor: true, hitArea: new Phaser.Geom.Rectangle(-8, -8, 120, snd.height + 16), hitAreaCallback: Phaser.Geom.Rectangle.Contains });
+    snd.on('pointerup', toggleSnd);
+    this.input.keyboard!.on('keydown-M', toggleSnd);
+    audio.music('menu');
+
     this.layer = this.add.container(0, 0);
     this.render();
     this.input.keyboard!.on('keydown', (e: KeyboardEvent) => this.onKey(e));
@@ -69,6 +85,7 @@ export class MenuScene extends Phaser.Scene {
       const col = EL_INFO[c.el].color;
       const bg = this.add.rectangle(x, 118, 164, 196, PANEL, 0.95).setOrigin(0.5, 0).setStrokeStyle(on ? 2 : 1, on ? 0xffd23f : col, on ? 1 : 0.5);
       bg.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+        if (this.charSel !== i) audio.sfx('tick');
         this.charSel = i;
         this.confirm();
       });
@@ -97,6 +114,7 @@ export class MenuScene extends Phaser.Scene {
     const back = label(this, 36, 96, '‹ 返回', '#b8aec8');
     back.setInteractive({ useHandCursor: true, hitArea: new Phaser.Geom.Rectangle(-12, -8, back.width + 30, back.height + 14), hitAreaCallback: Phaser.Geom.Rectangle.Contains });
     back.on('pointerdown', () => {
+      audio.sfx('tick');
       this.step = 'char';
       this.render();
     });
@@ -111,6 +129,7 @@ export class MenuScene extends Phaser.Scene {
       row.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
         if (this.levelSel === i) this.confirm();
         else {
+          audio.sfx('tick');
           this.levelSel = i;
           this.render();
         }
@@ -167,18 +186,22 @@ export class MenuScene extends Phaser.Scene {
   private confirm() {
     if (this.step === 'char') {
       if (!CHARACTERS[this.charSel].available) {
+        audio.sfx('deny');
         this.cameras.main.shake(120, 0.004);
         return;
       }
+      audio.sfx('select');
       this.step = 'level';
       this.render();
       return;
     }
     const lv = LEVELS[this.levelSel];
     if (!lv.available || lv.id > loadSave().unlocked) {
+      audio.sfx('deny');
       this.cameras.main.shake(120, 0.004);
       return;
     }
+    audio.sfx('select');
     this.scene.start('game', { level: lv.id, char: CHARACTERS[this.charSel].id });
   }
 
@@ -195,6 +218,7 @@ export class MenuScene extends Phaser.Scene {
       else if (k === 'Escape') this.step = 'char';
       else return;
     }
+    audio.sfx('tick');
     this.render();
   }
 }

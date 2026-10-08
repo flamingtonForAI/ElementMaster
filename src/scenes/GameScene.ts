@@ -15,6 +15,7 @@ import { World } from '../game/World';
 import { loadSave, writeSave } from '../game/save';
 import { createDebug, debugEnabled } from '../game/debug';
 import { hex } from '../ui/text';
+import { audio } from '../audio/Audio';
 import type { HudScene } from './HudScene';
 
 export interface HitOpts {
@@ -113,10 +114,19 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-P', () => this.pauseGame());
 
     if (debugEnabled()) this.disposeDebug = createDebug(this);
+    // 升级、暂停、结算时场景暂停，BGM 跟着压低
+    const duck = () => audio.duck(true);
+    const unduck = () => audio.duck(false);
+    this.events.on(Phaser.Scenes.Events.PAUSE, duck);
+    this.events.on(Phaser.Scenes.Events.RESUME, unduck);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.disposeDebug?.();
       this.disposeDebug = null;
+      this.events.off(Phaser.Scenes.Events.PAUSE, duck);
+      this.events.off(Phaser.Scenes.Events.RESUME, unduck);
+      audio.duck(false);
     });
+    audio.music(L.bgm);
   }
 
   get hud() {
@@ -137,6 +147,11 @@ export class GameScene extends Phaser.Scene {
     this.fx.update(dt);
     this.world.update(dt);
     this.runTasks();
+
+    if (!this.over && !this.boss) {
+      const L = this.levelDef;
+      audio.setIntensity(0.1 + (0.6 * this.elapsed) / Math.max(60, L.duration - 60) + (0.4 * this.enemies.count) / 200);
+    }
 
     if (!this.over) {
       for (const ev of this.timeline) {
@@ -225,6 +240,7 @@ export class GameScene extends Phaser.Scene {
       const a = (i / n) * Math.PI * 2;
       this.enemies.spawn(id, this.player.x + Math.cos(a) * 230, this.player.y + Math.sin(a) * 150, { hpMult: this.hpScale() });
     }
+    audio.sfx('warn');
     this.hud.toast(`${ENEMIES[id].name}成群来袭！`, EL_INFO[ENEMIES[id].el].css);
   }
 
@@ -232,6 +248,7 @@ export class GameScene extends Phaser.Scene {
     const id = this.pickEnemy();
     const [x, y] = this.ringPos(260);
     this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), elite: true });
+    audio.sfx('warn');
     this.hud.toast(`精英 · ${ENEMIES[id].name} 出现，击败可得宝箱`, '#ffd23f');
   }
 
@@ -240,6 +257,8 @@ export class GameScene extends Phaser.Scene {
     const [x, y] = this.ringPos(250);
     this.boss = this.enemies.spawn(this.levelDef.boss, x, y);
     this.hud.toast(`${this.levelDef.bossName} 现身！`, '#ff6a5a');
+    audio.sfx('boss');
+    audio.music('boss', 0.6);
     this.cameras.main.shake(300, 0.006);
   }
 
@@ -282,11 +301,13 @@ export class GameScene extends Phaser.Scene {
       prefix = '克';
     }
     this.fx.number(e.x, e.y - e.sprite.displayHeight * 0.75, dmg, rel, crit, prefix);
+    audio.hit(rel, crit);
     if (e.hp <= 0) this.enemies.kill(e);
     return dmg;
   }
 
   explode(x: number, y: number, radius: number, dmg: number, el: El, kb: number) {
+    audio.sfx('explode');
     this.fx.anim('fx_explosion', x, y - 4, { scale: radius / 22 });
     const tmp: Enemy[] = [];
     for (const e of this.enemies.inRadius(x, y, radius, tmp)) this.hitEnemy(e, dmg, el, { kb, fromX: x, fromY: y });
@@ -300,6 +321,7 @@ export class GameScene extends Phaser.Scene {
     const dmg = Math.max(1, Math.round(base * REL_MULT[rel] - this.pstats.armor));
     p.hp -= dmg;
     p.hurt();
+    audio.sfx('hurt');
     this.fx.number(p.x, p.y - 30, dmg, 'player', false);
     if (p.hp <= 0) {
       p.hp = 0;
@@ -313,6 +335,7 @@ export class GameScene extends Phaser.Scene {
     const v = Math.round(this.pstats.maxHp * frac);
     p.hp = Math.min(this.pstats.maxHp, p.hp + v);
     this.fx.text(p.x, p.y - 30, `+${v}`, '#8fe08a', 0.8);
+    audio.sfx('pill');
   }
 
   // ---------- 成长 ----------
@@ -324,6 +347,7 @@ export class GameScene extends Phaser.Scene {
 
   private openLevelUp() {
     this.scene.pause();
+    audio.sfx('levelup');
     this.hud.showLevelUp(this.build.options(3));
   }
 
@@ -356,6 +380,7 @@ export class GameScene extends Phaser.Scene {
       this.hud.toast('宝箱：生命回满', '#ffd23f');
     }
     this.pickups.magnetAll();
+    audio.sfx('chest');
     this.fx.ring(this.player.x, this.player.y - 8, 60, 0xffd23f, 0.5);
     if (changed) this.later(0.05, () => this.benmingBurst());
   }
@@ -365,6 +390,7 @@ export class GameScene extends Phaser.Scene {
     const el = this.build.benming;
     const p = this.player;
     this.fx.ring(p.x, p.y - 8, 60, EL_INFO[el].color, 0.45);
+    audio.sfx('benming');
     const tmp: Enemy[] = [];
     for (const e of this.enemies.inRadius(p.x, p.y - 8, 56, tmp)) this.hitEnemy(e, 15 + this.build.level * 2, el, { kb: 60 });
     this.hud.toast(`本命转为「${EL_INFO[el].name}」`, hex(EL_INFO[el].color));
@@ -383,6 +409,8 @@ export class GameScene extends Phaser.Scene {
   private endRun(win: boolean) {
     if (this.over) return;
     this.over = true;
+    audio.stopMusic(win ? 1.5 : 0.6);
+    audio.sfx(win ? 'win' : 'lose');
     const save = loadSave();
     const lingshi = Math.floor(this.kills / 10) + (win ? 50 : 0);
     save.lingshi += lingshi;

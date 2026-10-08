@@ -7,6 +7,7 @@ import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
 import type { GameScene, RunResult } from './GameScene';
 import { stick, isTouch } from '../ui/touch';
+import { audio } from '../audio/Audio';
 import { canFullscreen, isFullscreen, isStandalone, toggleFullscreen } from '../ui/fullscreen';
 
 type Mode = 'play' | 'levelup' | 'menu';
@@ -346,7 +347,7 @@ export class HudScene extends Phaser.Scene {
     const bg = this.add.rectangle(0, 0, W, H, PANEL, 0.96).setOrigin(0.5, 0).setStrokeStyle(1, col, 0.6);
     bg.setInteractive({ useHandCursor: true });
     bg.on('pointerover', () => {
-      this.sel = this.cards.indexOf(card);
+      this.setSel(this.cards.indexOf(card));
       this.refreshCards();
     });
     bg.on('pointerdown', () => {
@@ -379,8 +380,15 @@ export class HudScene extends Phaser.Scene {
     });
   }
 
+  /** 改选中项，变了才响 */
+  private setSel(i: number) {
+    if (i !== this.sel) audio.sfx('tick');
+    this.sel = i;
+  }
+
   private confirm() {
     if (this.time.now < this.inputLockUntil) return;
+    audio.sfx('select');
     if (this.mode === 'levelup') {
       const o = this.options[this.sel];
       this.closeModal();
@@ -415,7 +423,7 @@ export class HudScene extends Phaser.Scene {
       const t = label(this, 320, iy + i * 26, it.text, '#f4eee0').setOrigin(0.5, 0);
       t.setInteractive({ useHandCursor: true, hitArea: new Phaser.Geom.Rectangle(-60, -7, t.width + 120, t.height + 14), hitAreaCallback: Phaser.Geom.Rectangle.Contains });
       t.on('pointerover', () => {
-        this.sel = i;
+        this.setSel(i);
         this.refreshMenu();
       });
       // 松手时触发：浏览器只允许在触摸抬起时进入全屏
@@ -436,13 +444,30 @@ export class HudScene extends Phaser.Scene {
     });
   }
 
-  showPause() {
+  /** focus：切换音乐/音效后重开菜单时，保持光标在原项上 */
+  showPause(focus?: 'music' | 'sfx') {
     const resume = () => {
       this.closeModal();
       this.scene.resume('game');
     };
+    const music: MenuItem = {
+      text: `音乐：${audio.musicOn ? '开' : '关'}`,
+      fn: () => {
+        audio.setMusic(!audio.musicOn);
+        this.showPause('music');
+      },
+    };
+    const sfx: MenuItem = {
+      text: `音效：${audio.sfxOn ? '开' : '关'}`,
+      fn: () => {
+        audio.setSfx(!audio.sfxOn);
+        this.showPause('sfx');
+      },
+    };
     const items: MenuItem[] = [
       { text: '继续', fn: resume },
+      music,
+      sfx,
       { text: '重新开始', fn: () => this.restart(this.g.levelDef.id) },
       { text: '返回标题', fn: () => this.toMenu() },
     ];
@@ -456,6 +481,11 @@ export class HudScene extends Phaser.Scene {
       });
     }
     this.showMenu('暂停', '#f4eee0', [], items, resume);
+    if (focus) {
+      this.sel = items.indexOf(focus === 'music' ? music : sfx);
+      this.inputLockUntil = 0;
+      this.refreshMenu();
+    }
   }
 
   showResult(r: RunResult) {
@@ -498,8 +528,8 @@ export class HudScene extends Phaser.Scene {
   private onKey(e: KeyboardEvent) {
     const k = e.key;
     if (this.mode === 'levelup') {
-      if (k === 'ArrowLeft' || k === 'a' || k === 'A') this.sel = (this.sel + this.cards.length - 1) % this.cards.length;
-      else if (k === 'ArrowRight' || k === 'd' || k === 'D') this.sel = (this.sel + 1) % this.cards.length;
+      if (k === 'ArrowLeft' || k === 'a' || k === 'A') this.setSel((this.sel + this.cards.length - 1) % this.cards.length);
+      else if (k === 'ArrowRight' || k === 'd' || k === 'D') this.setSel((this.sel + 1) % this.cards.length);
       else if (k === '1' || k === '2' || k === '3') {
         const i = Number(k) - 1;
         if (i < this.cards.length) {
@@ -513,8 +543,8 @@ export class HudScene extends Phaser.Scene {
       }
       this.refreshCards();
     } else if (this.mode === 'menu') {
-      if (k === 'ArrowUp' || k === 'w' || k === 'W') this.sel = (this.sel + this.menuItems.length - 1) % this.menuItems.length;
-      else if (k === 'ArrowDown' || k === 's' || k === 'S') this.sel = (this.sel + 1) % this.menuItems.length;
+      if (k === 'ArrowUp' || k === 'w' || k === 'W') this.setSel((this.sel + this.menuItems.length - 1) % this.menuItems.length);
+      else if (k === 'ArrowDown' || k === 's' || k === 'S') this.setSel((this.sel + 1) % this.menuItems.length);
       else if (k === 'Enter' || k === ' ' || k === 'z' || k === 'Z') {
         this.confirm();
         return;

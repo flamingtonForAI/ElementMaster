@@ -1,6 +1,7 @@
 import { SKILLS, type SkillId, type Stats } from '../config/skills';
 import type { Enemy } from './Enemies';
 import type { GameScene } from '../scenes/GameScene';
+import { audio } from '../audio/Audio';
 
 /** 按冷却自动释放已习得的术 */
 export class SkillSystem {
@@ -32,9 +33,13 @@ export class SkillSystem {
       case 'slash': {
         const ang = Math.atan2(p.facing.y, p.facing.x);
         p.attack();
+        audio.sfx('slash');
         this.slash(ang, st);
         if (st.back) {
-          g.later(0.12, () => this.slash(ang + Math.PI, st));
+          g.later(0.12, () => {
+            audio.sfx('slash', { rate: 0.85 });
+            this.slash(ang + Math.PI, st);
+          });
           g.proj.fire('wave', 'pj_wave', cx, cy, Math.cos(ang) * 210, Math.sin(ang) * 210, {
             dmg: st.dmg * 0.6, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40,
           });
@@ -44,6 +49,7 @@ export class SkillSystem {
       case 'flysword': {
         const targets = g.enemies.nearestN(cx, cy, 240, st.count);
         if (!targets.length) return false;
+        audio.sfx('sword');
         for (let i = 0; i < st.count; i++) {
           const t = targets[i % targets.length];
           const a = Math.atan2(t.y - 6 - cy, t.x - cx) + (i - (st.count - 1) / 2) * 0.25;
@@ -56,6 +62,7 @@ export class SkillSystem {
       case 'fireball': {
         const targets = g.enemies.randomIn(p.x, p.y, 190, st.count);
         if (!targets.length) return false;
+        audio.sfx('fireball');
         for (let i = 0; i < st.count; i++) {
           const t = targets[i % targets.length];
           g.proj.lob('pj_fireball', 'pj_fireball', cx, cy, t.x, t.y, 0.5, st.dmg, 'fire', st.radius * area);
@@ -65,6 +72,7 @@ export class SkillSystem {
       case 'leaf': {
         const targets = g.enemies.nearestN(cx, cy, 200, st.count);
         if (!targets.length) return false;
+        audio.sfx('leaf');
         for (let i = 0; i < st.count; i++) {
           const t = targets[i % targets.length];
           const a = Math.atan2(t.y - 6 - cy, t.x - cx) + i * 0.3;
@@ -78,6 +86,7 @@ export class SkillSystem {
         const t = g.enemies.nearest(cx, cy, 260);
         const base = t ? Math.atan2(t.y - 6 - cy, t.x - cx) : Math.atan2(p.facing.y, p.facing.x);
         const offs = st.count > 1 ? [-0.18, 0.18] : [0];
+        audio.sfx('water');
         for (const o of offs) {
           const a = base + o;
           g.proj.fire('water', 'pj_water', cx, cy, Math.cos(a) * 170, Math.sin(a) * 170, {
@@ -94,6 +103,7 @@ export class SkillSystem {
           const y = t.y;
           g.fx.crack(x, y, 0.25);
           g.later(0.25, () => {
+            audio.sfx('spike');
             g.fx.anim('fx_spike', x, y + 2, { originY: 0.92, depth: y + 1, scale: area });
             for (const e of g.enemies.inRadius(x, y, st.radius * area, this.tmp)) {
               g.hitEnemy(e, st.dmg, 'earth', { stun: st.stun, kb: 30, fromX: x, fromY: y + 10 });
