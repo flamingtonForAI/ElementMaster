@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { EL_INFO, GEN_ORDER, counters, type El } from '../config/elements';
 import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS } from '../config/skills';
 import { LEVELS } from '../config/levels';
-import type { Option } from '../game/Build';
+import { optionKey, type Option } from '../game/Build';
 import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
 import type { GameScene, RunResult } from './GameScene';
@@ -289,24 +289,63 @@ export class HudScene extends Phaser.Scene {
 
   // ---------- 升级三选一 ----------
 
-  showLevelUp(opts: Option[]) {
+  /** keepSel：换签/斩缘后重画，保持光标且不加输入锁 */
+  showLevelUp(opts: Option[], keepSel = false) {
+    const sel = this.sel;
     this.closeModal();
     this.releaseStick();
     this.mode = 'levelup';
     this.options = opts;
-    this.sel = 0;
-    this.inputLockUntil = this.time.now + 350;
+    this.sel = keepSel ? Math.min(sel, opts.length - 1) : 0;
+    if (!keepSel) this.inputLockUntil = this.time.now + 350;
     const c = this.add.container(0, 0).setDepth(100);
     this.modal = c;
     c.add(this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.72).setOrigin(0));
     c.add(label(this, 320, 58, '境界提升 · 选择一项', '#ffd23f').setOrigin(0.5, 0));
-    c.add(label(this, 320, 290, isTouch() ? '点击卡片选择' : '← → 选择　Enter / 空格 确认', '#8a8494').setOrigin(0.5, 0));
+    c.add(label(this, 320, 318, isTouch() ? '点击卡片选择' : '← → 选择　Enter / 空格 确认', '#8a8494').setOrigin(0.5, 0));
     this.cards = opts.map((o, i) => {
       const card = this.makeCard(o, 320 + (i - 1) * 168, 84);
       c.add(card);
       return card;
     });
+    // 洞府买了换签/斩缘才显示按钮
+    const btns: [string, () => void][] = [];
+    if (this.g.rerolls > 0) btns.push([`换签 ×${this.g.rerolls}${isTouch() ? '' : '　R'}`, () => this.reroll()]);
+    if (this.g.banishes > 0) btns.push([`斩缘选中项 ×${this.g.banishes}${isTouch() ? '' : '　X'}`, () => this.banish()]);
+    btns.forEach(([text, fn], i) => {
+      const x = 320 + (i - (btns.length - 1) / 2) * 150;
+      const b = this.add.rectangle(x, 288, 136, 22, PANEL, 1).setOrigin(0.5, 0).setStrokeStyle(1, LINE);
+      b.setInteractive({ useHandCursor: true }).on('pointerdown', fn);
+      c.add(b);
+      c.add(label(this, x, 293, text, '#d8d0e4').setOrigin(0.5, 0));
+    });
     this.refreshCards();
+  }
+
+  private reroll() {
+    if (this.g.rerolls <= 0 || this.time.now < this.inputLockUntil) return;
+    this.g.rerolls--;
+    audio.sfx('tick');
+    this.showLevelUp(this.g.build.options(3), true);
+  }
+
+  /** 封禁当前选中的卡，并补一张新的 */
+  private banish() {
+    if (this.time.now < this.inputLockUntil) return;
+    const o = this.options[this.sel];
+    if (this.g.banishes <= 0 || !o || o.kind === 'heal' || o.kind === 'lingshi') {
+      audio.sfx('deny');
+      return;
+    }
+    this.g.banishes--;
+    this.g.build.banned.add(optionKey(o));
+    const others = this.options.filter((x) => x !== o).map(optionKey);
+    const opts = [...this.options];
+    const fill = this.g.build.options(1, others)[0];
+    if (fill) opts[this.sel] = fill;
+    else opts.splice(this.sel, 1);
+    audio.sfx('deny');
+    this.showLevelUp(opts, true);
   }
 
   private makeCard(o: Option, cx: number, y: number): Phaser.GameObjects.Container {
@@ -341,7 +380,7 @@ export class HudScene extends Phaser.Scene {
       name = '灵石';
       glyph = '石';
       tag = '消耗品';
-      desc = '局外货币 +10（暂未开放用途）';
+      desc = `局外货币 +${this.g.lingshiCard()}，结算时发放，可在洞府购买修炼`;
     }
     const col = el ? EL_INFO[el].color : 0xb8aec8;
     const bg = this.add.rectangle(0, 0, W, H, PANEL, 0.96).setOrigin(0.5, 0).setStrokeStyle(1, col, 0.6);
@@ -496,6 +535,8 @@ export class HudScene extends Phaser.Scene {
       `击杀 ${r.kills}　等级 ${r.level}`,
       `获得灵石 ${r.lingshi}`,
     ];
+    // 灵石明细两项一行
+    for (let i = 0; i < r.lingshiLines.length; i += 2) lines.push(r.lingshiLines.slice(i, i + 2).join('　'));
     const items: MenuItem[] = [];
     const next = LEVELS.find((l) => l.id === this.g.levelDef.id + 1);
     if (r.win && next?.available) items.push({ text: `下一关 · ${next.name}`, fn: () => this.restart(next.id) });
@@ -540,7 +581,8 @@ export class HudScene extends Phaser.Scene {
       } else if (k === 'Enter' || k === ' ' || k === 'z' || k === 'Z') {
         this.confirm();
         return;
-      }
+      } else if (k === 'r' || k === 'R') return this.reroll();
+      else if (k === 'x' || k === 'X') return this.banish();
       this.refreshCards();
     } else if (this.mode === 'menu') {
       if (k === 'ArrowUp' || k === 'w' || k === 'W') this.setSel((this.sel + this.menuItems.length - 1) % this.menuItems.length);

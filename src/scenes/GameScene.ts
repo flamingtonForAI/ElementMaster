@@ -4,7 +4,7 @@ import { LEVELS, type LevelDef } from '../config/levels';
 import { ENEMIES } from '../config/enemies';
 import { EL_INFO, GEN_ORDER, REL_MULT, relation, terrainMod, type El } from '../config/elements';
 import { SKILLS } from '../config/skills';
-import { Build, type Option, type PlayerStats } from '../game/Build';
+import { Build, upgradeSum, type Option, type PlayerStats } from '../game/Build';
 import { Player } from '../game/Player';
 import { EnemyManager, type Enemy } from '../game/Enemies';
 import { ProjectileManager } from '../game/Projectiles';
@@ -33,6 +33,8 @@ export interface RunResult {
   kills: number;
   level: number;
   lingshi: number;
+  /** 灵石明细，结算页逐行显示 */
+  lingshiLines: string[];
   unlockedNext: boolean;
 }
 
@@ -57,6 +59,12 @@ export class GameScene extends Phaser.Scene {
   over = false;
   terrainMods!: Record<El, number>;
   dbg = { god: false, timeScale: 1, spawnMult: 1 };
+  /** 本局剩余的续命、换签、斩缘次数（洞府修炼） */
+  revives = 0;
+  rerolls = 0;
+  banishes = 0;
+  /** 升级卡拿到的灵石，结算时发放 */
+  cardLingshi = 0;
 
   private pendingLevelUps = 0;
   private iframeUntil = 0;
@@ -86,8 +94,13 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const L = this.levelDef;
-    this.build = new Build(this.char, L);
+    const meta = loadSave().meta;
+    this.build = new Build(this.char, L, meta);
     this.pstats = this.build.stats();
+    this.revives = upgradeSum(meta, 'revive');
+    this.rerolls = upgradeSum(meta, 'reroll');
+    this.banishes = upgradeSum(meta, 'banish');
+    this.cardLingshi = 0;
     this.world = new World(this, L);
     this.fx = new Fx(this);
     this.enemies = new EnemyManager(this);
@@ -267,7 +280,7 @@ export class GameScene extends Phaser.Scene {
   hitEnemy(e: Enemy, base: number, el: El, o: HitOpts = {}) {
     if (!e.alive) return 0;
     const rel = relation(el, e.def.el);
-    let m = REL_MULT[rel] * this.terrainMods[el] * (this.build.benming === el ? 1.25 : 1) * this.pstats.dmgMult;
+    let m = REL_MULT[rel] * this.terrainMods[el] * (this.build.benming === el ? 1.25 : 1) * this.pstats.dmgMult * this.pstats.elDmg[el];
     const c = this.char;
     if (c.meleeBonus > 0) {
       const dx = e.x - this.player.x;
@@ -275,7 +288,7 @@ export class GameScene extends Phaser.Scene {
       if (dx * dx + dy * dy <= c.meleeRange * c.meleeRange) m *= 1 + c.meleeBonus;
     }
     const crit = !o.noCrit && Math.random() < this.pstats.crit;
-    const dmg = Math.max(1, Math.round(base * m * (crit ? 2 : 1) - e.armor));
+    const dmg = Math.max(1, Math.round(base * m * (crit ? this.pstats.critDmg : 1) - e.armor));
     e.hp -= dmg;
     if (this.now - e.flashUntil > 0.12) e.flashUntil = this.now + 0.05;
 
@@ -318,16 +331,32 @@ export class GameScene extends Phaser.Scene {
     if (!p.alive || this.dbg.god || this.over || this.now < this.iframeUntil) return;
     this.iframeUntil = this.now + 0.35;
     const rel = relation(el, this.build.benming);
-    const dmg = Math.max(1, Math.round(base * REL_MULT[rel] - this.pstats.armor));
+    const dmg = Math.max(1, Math.round(base * REL_MULT[rel] * this.pstats.resist[el] - this.pstats.armor));
     p.hp -= dmg;
     p.hurt();
     audio.sfx('hurt');
     this.fx.number(p.x, p.y - 30, dmg, 'player', false);
     if (p.hp <= 0) {
+      if (this.revives > 0) return this.revive();
       p.hp = 0;
       p.die();
       this.endRun(false);
     }
+  }
+
+  /** 续命：半血复活，震开周围敌人 */
+  private revive() {
+    const p = this.player;
+    this.revives--;
+    p.hp = Math.round(this.pstats.maxHp * 0.5);
+    this.iframeUntil = this.now + 2;
+    this.proj.clearEnemyShots();
+    this.fx.ring(p.x, p.y - 8, 90, 0xffd23f, 0.6);
+    const tmp: Enemy[] = [];
+    for (const e of this.enemies.inRadius(p.x, p.y - 8, 90, tmp)) this.hitEnemy(e, 20 + this.build.level * 3, this.build.benming, { kb: 120, noCrit: true });
+    audio.sfx('benming');
+    this.cameras.main.shake(250, 0.006);
+    this.hud.toast(`续命！剩余 ${this.revives} 次`, '#ffd23f');
   }
 
   healPlayer(frac: number) {
@@ -353,20 +382,22 @@ export class GameScene extends Phaser.Scene {
 
   /** HUD 选完后调用 */
   applyOption(o: Option) {
-    if (o.kind === 'heal') {
-      this.healPlayer(0.3);
-      this.build.apply(o);
-      return;
-    }
-    if (o.kind === 'lingshi') {
-      this.build.apply(o);
-      return;
-    }
     const prevMax = this.pstats.maxHp;
+    if (o.kind === 'heal') this.healPlayer(0.3);
+    if (o.kind === 'lingshi') {
+      this.cardLingshi += this.lingshiCard();
+      this.hud.toast(`灵石 +${this.lingshiCard()}（结算时发放）`, '#ffd23f');
+    }
     const changed = this.build.apply(o);
+    // 每次升级都重算：角色成长和克我天赋的折扣都跟等级走
     this.pstats = this.build.stats();
     if (this.pstats.maxHp > prevMax) this.player.hp += this.pstats.maxHp - prevMax;
     if (changed) this.later(0.05, () => this.benmingBurst());
+  }
+
+  /** 升级卡「灵石」的数额 */
+  lingshiCard() {
+    return 10 * this.levelDef.id;
   }
 
   openChest() {
@@ -412,7 +443,16 @@ export class GameScene extends Phaser.Scene {
     audio.stopMusic(win ? 1.5 : 0.6);
     audio.sfx(win ? 'win' : 'lose');
     const save = loadSave();
-    const lingshi = Math.floor(this.kills / 10) + (win ? 50 : 0);
+    const n = this.levelDef.id;
+    const parts: [string, number][] = [[`击杀 ×${1 + 0.25 * (n - 1)}`, Math.floor((this.kills / 10) * (1 + 0.25 * (n - 1)))]];
+    if (this.cardLingshi) parts.push(['升级卡', this.cardLingshi]);
+    if (win) parts.push(['通关', 30 + 20 * n]);
+    if (win && save.unlocked <= n) parts.push(['首次通关', 100 * n]);
+    const raw = parts.reduce((s, [, v]) => s + v, 0);
+    const greed = upgradeSum(save.meta, 'lingshi');
+    const lingshi = Math.round(raw * (1 + greed));
+    const lingshiLines = parts.map(([k, v]) => `${k} ${v}`);
+    if (greed) lingshiLines.push(`财运 +${Math.round(greed * 100)}%`);
     save.lingshi += lingshi;
     let unlockedNext = false;
     if (win && save.unlocked <= this.levelDef.id) {
@@ -420,7 +460,7 @@ export class GameScene extends Phaser.Scene {
       unlockedNext = LEVELS.some((l) => l.id === save.unlocked && l.available);
     }
     writeSave(save);
-    const result: RunResult = { win, time: this.elapsed, kills: this.kills, level: this.build.level, lingshi, unlockedNext };
+    const result: RunResult = { win, time: this.elapsed, kills: this.kills, level: this.build.level, lingshi, lingshiLines, unlockedNext };
     this.later(win ? 1.5 : 1.2, () => {
       this.scene.pause();
       this.hud.showResult(result);

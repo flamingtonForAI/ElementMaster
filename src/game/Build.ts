@@ -2,6 +2,7 @@ import { GEN_ORDER, type El } from '../config/elements';
 import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS, type SkillId, type PassiveId } from '../config/skills';
 import type { CharacterDef } from '../config/characters';
 import type { LevelDef } from '../config/levels';
+import { UPGRADES, TREES, affinity, type MetaLevels, type UpgradeStat } from '../config/meta';
 
 export type Option =
   | { kind: 'skill'; id: SkillId; lv: number }
@@ -19,6 +20,23 @@ export interface PlayerStats {
   area: number;
   pickup: number;
   xpMult: number;
+  critDmg: number;
+  cdMult: number;
+  /** 各元素术的伤害系数（洞府天赋） */
+  elDmg: Record<El, number>;
+  /** 受各元素敌人伤害的系数（洞府天赋） */
+  resist: Record<El, number>;
+}
+
+const EL0 = (v: number): Record<El, number> => ({ metal: v, wood: v, water: v, fire: v, earth: v });
+
+export function optionKey(o: Option) {
+  return o.kind === 'skill' || o.kind === 'passive' ? `${o.kind}:${o.id}` : o.kind;
+}
+
+/** 修炼项目的合计加成 */
+export function upgradeSum(meta: MetaLevels, stat: UpgradeStat) {
+  return UPGRADES.filter((u) => u.stat === stat).reduce((s, u) => s + u.v * (meta[u.id] ?? 0), 0);
 }
 
 /** 局内构筑：技能、心法、等级、灵根、本命 */
@@ -31,9 +49,11 @@ export class Build {
   benming: El;
   /** 每次构筑变化 +1，HUD 据此刷新 */
   version = 0;
+  /** 斩缘封禁的选项，本局不再出现 */
+  banned = new Set<string>();
   private lastLeveled: El;
 
-  constructor(readonly char: CharacterDef, readonly levelDef: LevelDef) {
+  constructor(readonly char: CharacterDef, readonly levelDef: LevelDef, readonly meta: MetaLevels = {}) {
     this.skills.set(char.startSkill, 1);
     this.benming = char.el;
     this.lastLeveled = char.el;
@@ -60,6 +80,7 @@ export class Build {
   recompute(): boolean {
     const l: Record<El, number> = { metal: 0, wood: 0, water: 0, fire: 0, earth: 0 };
     l[this.char.el] += this.char.lingen;
+    for (const t of TREES) l[t.el] += this.meta[`${t.el}.lingen`] ?? 0;
     for (const [id, lv] of this.skills) l[SKILLS[id].el] += lv;
     for (const [id, lv] of this.passives) {
       const el = PASSIVES[id].el;
@@ -75,22 +96,47 @@ export class Build {
   }
 
   stats(): PlayerStats {
-    const p = (id: PassiveId) => this.passives.get(id) ?? 0;
+    const c = this.char;
+    // 本系心法效果 +20%
+    const p = (id: PassiveId) => (this.passives.get(id) ?? 0) * (PASSIVES[id].el === c.el ? 1.2 : 1);
+    const u = (stat: UpgradeStat) => upgradeSum(this.meta, stat);
+    const gr = (stat: string) =>
+      c.growth.filter((g) => g.stat === stat).reduce((s, g) => s + Math.min(g.cap ?? Infinity, Math.floor(this.level / g.every) * g.v), 0);
+    const elDmg = EL0(1);
+    const resist = EL0(1);
+    let critDmg = 2;
+    for (const t of TREES) {
+      const k = affinity(c.el, t.el, this.level);
+      for (const n of t.nodes) {
+        const v = n.v * (this.meta[n.id] ?? 0) * k;
+        if (n.stat === 'elDmg') elDmg[t.el] += v;
+        else if (n.stat === 'resist') resist[t.el] -= v;
+        else if (n.stat === 'critDmg') critDmg += v;
+      }
+    }
     return {
-      maxHp: Math.round(this.char.hp * (1 + 0.12 * p('houtu'))),
-      speed: this.char.speed * (1 + 0.07 * p('qingshen')),
-      armor: this.char.armor + p('houtu'),
-      regen: 0.4 * p('changsheng'),
-      dmgMult: 1 + 0.08 * p('yanyang'),
-      crit: 0.05 + 0.06 * p('ruijin'),
-      area: 1 + 0.1 * p('roushui'),
-      pickup: 30 * (1 + 0.25 * p('juling')),
-      xpMult: 1 + 0.05 * p('juling'),
+      maxHp: Math.round(c.hp * (1 + 0.12 * p('houtu') + u('hp'))),
+      speed: c.speed * (1 + 0.07 * p('qingshen') + u('speed') + gr('speed')),
+      armor: c.armor + Math.floor(p('houtu')) + u('armor') + gr('armor'),
+      regen: 0.4 * p('changsheng') + u('regen'),
+      dmgMult: 1 + 0.08 * p('yanyang') + u('dmg'),
+      crit: 0.05 + 0.06 * p('ruijin') + u('crit') + gr('crit'),
+      area: 1 + 0.1 * p('roushui') + u('area') + gr('area'),
+      pickup: 30 * (1 + 0.25 * p('juling') + u('pickup')),
+      xpMult: 1 + 0.05 * p('juling') + u('xp'),
+      critDmg,
+      cdMult: 1 - u('cd') - gr('cd'),
+      elDmg,
+      resist,
     };
   }
 
-  options(n = 3): Option[] {
+  /** exclude：不要出现的选项 key（斩缘补位时排除其余卡） */
+  options(n = 3, exclude: string[] = []): Option[] {
     const cands: { o: Option; w: number }[] = [];
+    const add = (o: Option, w: number) => {
+      if (!this.banned.has(optionKey(o)) && !exclude.includes(optionKey(o))) cands.push({ o, w });
+    };
     const elW = (el: El | null) => {
       if (!el) return 1;
       return (el === this.char.el ? 1.5 : 1) * (1 + 2 * this.levelDef.terrain[el]);
@@ -99,17 +145,17 @@ export class Build {
       if (def.exclusive && def.exclusive !== this.char.id) continue;
       const lv = this.skills.get(def.id);
       if (lv !== undefined) {
-        if (lv < def.maxLv) cands.push({ o: { kind: 'skill', id: def.id, lv: lv + 1 }, w: 3 * elW(def.el) });
+        if (lv < def.maxLv) add({ kind: 'skill', id: def.id, lv: lv + 1 }, 3 * elW(def.el));
       } else if (this.skills.size < SKILL_SLOTS) {
-        cands.push({ o: { kind: 'skill', id: def.id, lv: 1 }, w: 2 * elW(def.el) });
+        add({ kind: 'skill', id: def.id, lv: 1 }, 2 * elW(def.el));
       }
     }
     for (const def of Object.values(PASSIVES)) {
       const lv = this.passives.get(def.id);
       if (lv !== undefined) {
-        if (lv < def.maxLv) cands.push({ o: { kind: 'passive', id: def.id, lv: lv + 1 }, w: 2 * elW(def.el) });
+        if (lv < def.maxLv) add({ kind: 'passive', id: def.id, lv: lv + 1 }, 2 * elW(def.el));
       } else if (this.passives.size < PASSIVE_SLOTS) {
-        cands.push({ o: { kind: 'passive', id: def.id, lv: 1 }, w: 1.5 * elW(def.el) });
+        add({ kind: 'passive', id: def.id, lv: 1 }, 1.5 * elW(def.el));
       }
     }
     const out: Option[] = [];
@@ -121,8 +167,8 @@ export class Build {
       out.push(cands[i].o);
       cands.splice(i, 1);
     }
-    if (out.length < n) out.push({ kind: 'heal' });
-    if (out.length < n) out.push({ kind: 'lingshi' });
+    if (out.length < n && !exclude.includes('heal')) out.push({ kind: 'heal' });
+    if (out.length < n && !exclude.includes('lingshi')) out.push({ kind: 'lingshi' });
     return out;
   }
 

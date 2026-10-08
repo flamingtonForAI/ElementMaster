@@ -16,7 +16,7 @@ export class SkillSystem {
       t -= dt;
       if (t <= 0) {
         const st = SKILLS[id].stats(lv);
-        t = this.fire(id, st) ? st.cd : 0.2;
+        t = this.fire(id, st) ? st.cd * this.g.pstats.cdMult : 0.2;
       }
       this.timers.set(id, t);
     }

@@ -4,6 +4,7 @@ import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { HudScene } from './scenes/HudScene';
 import { ArtScene } from './scenes/ArtScene';
+import { DongfuScene } from './scenes/DongfuScene';
 import { VIEW_W, VIEW_H } from './config/view';
 import { isTouch } from './ui/touch';
 
@@ -38,7 +39,7 @@ async function start() {
     pixelArt: true,
     roundPixels: true,
     scale: { mode: Phaser.Scale.NONE, zoom: zoomFor(), autoCenter: Phaser.Scale.CENTER_BOTH },
-    scene: [BootScene, MenuScene, GameScene, HudScene, ArtScene],
+    scene: [BootScene, MenuScene, GameScene, HudScene, ArtScene, DongfuScene],
   });
   const onResize = () => {
     game.scale.setZoom(zoomFor());

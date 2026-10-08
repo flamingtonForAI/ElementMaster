@@ -104,6 +104,15 @@ export class MenuScene extends Phaser.Scene {
       L.add(label(this, x - 72, 264, wrap(c.trait, 144), c.available ? '#d8d0e4' : '#6a6474', 12, false).setLineSpacing(3));
     });
     L.add(label(this, 320, 322, isTouch() ? '点击角色开始' : '← → 选择　Enter 确认', '#8a8494').setOrigin(0.5, 0));
+    const df = this.add.rectangle(8, 318, 76, 22, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, 0xffd23f, 0.7);
+    df.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.toDongfu());
+    L.add(df);
+    L.add(label(this, 46, 323, isTouch() ? '洞府' : '洞府　Q', '#ffd23f').setOrigin(0.5, 0));
+  }
+
+  private toDongfu() {
+    audio.sfx('select');
+    this.scene.start('dongfu');
   }
 
   private renderLevels() {
@@ -209,6 +218,7 @@ export class MenuScene extends Phaser.Scene {
     const k = e.key;
     if (k === 'Enter' || k === ' ' || k === 'z' || k === 'Z') return this.confirm();
     if (this.step === 'char') {
+      if (k === 'q' || k === 'Q') return this.toDongfu();
       if (k === 'ArrowLeft' || k === 'a' || k === 'A') this.charSel = (this.charSel + CHARACTERS.length - 1) % CHARACTERS.length;
       else if (k === 'ArrowRight' || k === 'd' || k === 'D') this.charSel = (this.charSel + 1) % CHARACTERS.length;
       else return;
