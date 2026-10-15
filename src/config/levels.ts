@@ -21,6 +21,13 @@ export interface LevelDef {
   available: boolean;
 }
 
+/**
+ * 难度曲线（t = 开局后的分钟数）：
+ * 敌人生命 = 关卡倍率 × (1 + hpLin·t + hpQuad·t²)，后期加速，追上玩家升级和多术叠加的成长；
+ * 敌人伤害 = 1 + dmgLin·t。调试面板里可以实时调。
+ */
+export const DIFF = { hpLin: 0.2, hpQuad: 0.03, dmgLin: 0.15 };
+
 const T = (p: Partial<Record<El, number>>): Terrain => ({ metal: 0, wood: 0, water: 0, fire: 0, earth: 0, ...p });
 
 export const LEVELS: LevelDef[] = [

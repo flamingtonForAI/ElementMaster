@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import { SKILLS, type SkillId, type Stats } from '../config/skills';
 import { EL_INFO, relation, type El } from '../config/elements';
 import type { Enemy } from './Enemies';
@@ -11,12 +12,14 @@ export class SkillSystem {
   /** 剑客传承：上一斩的方向、累计斩数 */
   private lastSlash: number | null = null;
   private slashCount = 0;
-  /** 符师：累计抛出的符数（五雷用） */
+  /** 符师：累计抛出的符数（五雷用）、贴在敌人身上还没爆的符 */
   private fuCount = 0;
+  private sticks: { e: Enemy; mark: Phaser.GameObjects.Sprite; x: number; y: number; t: number; dmg: number; el: El; radius: number }[] = [];
 
   constructor(private g: GameScene) {}
 
   update(dt: number) {
+    this.updateSticks(dt);
     // 海贼·退射：背离最近的敌人移动时冷却走得更快
     const kite = this.mod('ruan.kite');
     if (kite && this.retreating()) dt *= 1 + kite;
@@ -41,7 +44,16 @@ export class SkillSystem {
 
     switch (id) {
       case 'slash': {
-        const ang = Math.atan2(p.facing.y, p.facing.x);
+        // 移动时朝移动方向斩；站定时自动转向身边最近的敌人
+        let ang = Math.atan2(p.facing.y, p.facing.x);
+        if (!p.moving) {
+          const t = g.enemies.nearest(cx, cy, st.range * area * 1.3);
+          if (t) {
+            ang = Math.atan2(t.y - 6 - cy, t.x - cx);
+            p.facing.x = Math.cos(ang);
+            p.facing.y = Math.sin(ang);
+          }
+        }
         p.attack();
         audio.sfx('slash');
         // 回锋：转身出剑加伤
@@ -67,30 +79,35 @@ export class SkillSystem {
         return true;
       }
       case 'talisman': {
+        // 贴符：符纸追踪飞向敌人，贴上后片刻在敌人身上爆开
         const n = st.count + this.mod('zhu.extra');
-        const targets = g.enemies.nearestN(cx, cy, 200, n);
+        const targets = g.enemies.nearestN(cx, cy, 220, n);
         if (!targets.length) return false;
         p.attack(targets[0].x - p.x, targets[0].y - p.y);
-        audio.sfx('fireball');
+        audio.sfx('leaf', { rate: 0.8 });
         const radius = st.radius * area * (1 + this.mod('zhu.area'));
         for (let i = 0; i < n; i++) {
           const t = targets[i % targets.length];
           const el = this.drawFu(t);
           const dmg = st.dmg * (el === 'fire' ? 1 : 1 + this.mod('zhu.alt'));
-          const tx = t.x + (i >= targets.length ? (Math.random() - 0.5) * 30 : 0);
-          const ty = t.y + (i >= targets.length ? (Math.random() - 0.5) * 20 : 0);
-          g.proj.lob(`pj_fu_${el}`, `pj_fu_${el}`, cx, cy - 6, tx, ty, 0.45, dmg, el, radius, (x, y) => this.fuLand(x, y, dmg, el, radius));
+          const a = Math.atan2(t.y - 6 - (cy - 6), t.x - cx) + (i - (n - 1) / 2) * 0.6;
+          g.proj.fire('fu', `pj_fu_${el}`, cx, cy - 6, Math.cos(a) * 190, Math.sin(a) * 190, {
+            dmg: 0, el, life: 1.6, radius: 6, target: t, stick: true, anim: `pj_fu_${el}`,
+            onHit: (e) => this.stickFu(e, dmg, el, radius),
+          });
         }
         return true;
       }
       case 'crossbow': {
-        const range = 300 * (1 + this.mod('ruan.range'));
+        const range = 260 * (1 + this.mod('ruan.range'));
         const t = g.enemies.nearest(cx, cy, range);
         if (!t) return false;
         p.attack(t.x - p.x, t.y - p.y);
         const speed = 320 * (1 + this.mod('ruan.range'));
         const pierce = st.pierce + this.mod('ruan.pierce');
         const onHit = st.splash ? (e: Enemy) => this.boltSplash(e) : undefined;
+        // 近身弱：贴脸 ×0.6，拉开到 180px 以上 ×1.15，鼓励边退边打
+        const dmgAt = (e: Enemy) => 0.6 + 0.55 * Phaser.Math.Clamp((Math.hypot(e.x - p.x, e.y - p.y) - 60) / 120, 0, 1);
         for (let i = 0; i < st.shots; i++) {
           g.later(i * 0.07, () => {
             // 目标死了就沿上一箭的方向继续射
@@ -100,7 +117,7 @@ export class SkillSystem {
             const a = Math.atan2(ay - (p.y - 8), ax - p.x) + (Math.random() - 0.5) * 0.06;
             audio.sfx('sword', { rate: 1.3 });
             g.proj.fire('bolt', 'pj_bolt', p.x, p.y - 8, Math.cos(a) * speed, Math.sin(a) * speed, {
-              dmg: st.dmg, el: 'water', life: range / speed, pierce, radius: 4, kb: 15, onHit,
+              dmg: st.dmg, el: 'water', life: range / speed, pierce, radius: 4, kb: 15, onHit, dmgAt,
             });
           });
         }
@@ -120,12 +137,15 @@ export class SkillSystem {
         return true;
       }
       case 'fireball': {
-        const targets = g.enemies.randomIn(p.x, p.y, 190, st.count);
-        if (!targets.length) return false;
-        audio.sfx('fireball');
+        // 炮击：在附近挑敌人最密的几处，慢速高抛砸下去
+        const cands = g.enemies.randomIn(p.x, p.y, 220, 10);
+        if (!cands.length) return false;
+        const r = st.radius * area;
+        const spots = cands.map((e) => ({ e, n: g.enemies.inRadius(e.x, e.y, r, this.tmp).length })).sort((a, b) => b.n - a.n);
+        audio.sfx('fireball', { rate: 0.8 });
         for (let i = 0; i < st.count; i++) {
-          const t = targets[i % targets.length];
-          g.proj.lob('pj_fireball', 'pj_fireball', cx, cy, t.x, t.y, 0.5, st.dmg, 'fire', st.radius * area);
+          const t = spots[i % spots.length].e;
+          g.proj.lob('pj_fireball', 'pj_fireball', cx, cy, t.x, t.y, 0.8, st.dmg, 'fire', r, undefined, 70).sprite.setScale(1.6);
         }
         return true;
       }
@@ -192,18 +212,33 @@ export class SkillSystem {
     return 'fire';
   }
 
-  /** 符落地后亮一下再炸；符海：原地再爆一次 */
-  private fuLand(x: number, y: number, dmg: number, el: El, radius: number) {
+  /** 贴在敌人身上的符：跟着敌人走，引信到了在原地爆开；敌人先死就在死处爆 */
+  private stickFu(e: Enemy, dmg: number, el: El, radius: number) {
+    const mark = this.g.add.sprite(e.x, e.y - 10, `pj_fu_${el}`, 0).setDepth(e.y + 1);
+    this.g.tweens.add({ targets: mark, alpha: 0.35, duration: 80, yoyo: true, repeat: 2 });
+    this.sticks.push({ e, mark, x: e.x, y: e.y, t: 0.5, dmg, el, radius });
+  }
+
+  private updateSticks(dt: number) {
     const g = this.g;
-    const mark = g.add.sprite(x, y, `pj_fu_${el}`, 0).setDepth(y - 1);
-    g.tweens.add({ targets: mark, alpha: 0.3, duration: 75, yoyo: true, repeat: 1 });
-    const tint = el === 'fire' ? undefined : EL_INFO[el].color;
-    g.later(0.3, () => {
-      mark.destroy();
-      g.explode(x, y, radius, dmg, el, 80, tint);
+    for (let i = this.sticks.length - 1; i >= 0; i--) {
+      const s = this.sticks[i];
+      if (s.e.alive) {
+        s.x = s.e.x;
+        s.y = s.e.y;
+      }
+      s.mark.setPosition(s.x, s.y - 10).setDepth(s.y + 1);
+      s.t -= dt;
+      if (s.t > 0) continue;
+      s.mark.destroy();
+      this.sticks.splice(i, 1);
+      const tint = s.el === 'fire' ? undefined : EL_INFO[s.el].color;
+      g.explode(s.x, s.y, s.radius, s.dmg, s.el, 80, tint);
+      // 符海：原地再爆一次
       const echo = this.mod('zhu.echo');
+      const { x, y, radius, dmg, el } = s;
       if (echo) g.later(0.6, () => g.explode(x, y, radius * 0.8, dmg * echo, el, 40, tint));
-    });
+    }
   }
 
   /** 分水连弩满级：命中溅起水花，减速周围敌人 */

@@ -4,7 +4,7 @@ import { PLAYER_RADIUS } from './Player';
 import type { Enemy } from './Enemies';
 import type { GameScene } from '../scenes/GameScene';
 
-export type ProjKind = 'sword' | 'bolt' | 'wave' | 'leaf' | 'water' | 'lob' | 'enemy';
+export type ProjKind = 'sword' | 'fu' | 'bolt' | 'wave' | 'leaf' | 'water' | 'lob' | 'enemy';
 
 export class Proj {
   active = false;
@@ -34,6 +34,12 @@ export class Proj {
   trail = 0;
   /** 命中敌人后的额外效果 */
   onHit: ((e: Enemy) => void) | null = null;
+  /** 命中时按目标调整伤害（如弩箭按距离衰减） */
+  dmgAt: ((e: Enemy) => number) | null = null;
+  /** 命中时只触发 onHit、不直接造成伤害（贴符） */
+  stick = false;
+  /** 抛物线弧高 */
+  arc = 36;
   /** 抛物线落地时代替默认爆炸 */
   onLand: ((x: number, y: number) => void) | null = null;
   constructor(readonly sprite: Phaser.GameObjects.Sprite) {}
@@ -51,6 +57,8 @@ export interface FireOpts {
   target?: Enemy | null;
   anim?: string;
   onHit?: (e: Enemy) => void;
+  dmgAt?: (e: Enemy) => number;
+  stick?: boolean;
 }
 
 export class ProjectileManager {
@@ -89,12 +97,14 @@ export class ProjectileManager {
     p.kb = o.kb ?? 20;
     p.target = o.target ?? null;
     p.onHit = o.onHit ?? null;
+    p.dmgAt = o.dmgAt ?? null;
+    p.stick = !!o.stick;
     if (o.anim) p.sprite.play(o.anim);
     return p;
   }
 
   /** 抛物线投掷，落地触发 onLand */
-  lob(tex: string, anim: string, sx: number, sy: number, tx: number, ty: number, dur: number, dmg: number, el: El, aoe: number, onLand?: (x: number, y: number) => void) {
+  lob(tex: string, anim: string, sx: number, sy: number, tx: number, ty: number, dur: number, dmg: number, el: El, aoe: number, onLand?: (x: number, y: number) => void, arc = 36) {
     const p = this.take(tex);
     p.kind = 'lob';
     p.sx = p.x = sx;
@@ -107,8 +117,11 @@ export class ProjectileManager {
     p.el = el;
     p.aoe = aoe;
     p.onLand = onLand ?? null;
+    p.stick = false;
+    p.arc = arc;
     p.life = dur + 1;
     p.sprite.play(anim);
+    return p;
   }
 
   enemyShot(tex: string, x: number, y: number, vx: number, vy: number, dmg: number, el: El) {
@@ -140,7 +153,7 @@ export class ProjectileManager {
         const k = Math.min(1, p.t / p.dur);
         p.x = p.sx + (p.tx - p.sx) * k;
         p.y = p.sy + (p.ty - p.sy) * k;
-        p.sprite.setPosition(p.x, p.y - Math.sin(k * Math.PI) * 36).setDepth(p.y + 20);
+        p.sprite.setPosition(p.x, p.y - Math.sin(k * Math.PI) * p.arc).setDepth(p.y + 20);
         if (k >= 1) {
           if (p.onLand) p.onLand(p.x, p.y);
           else g.explode(p.x, p.y, p.aoe, p.dmg, p.el, 80);
@@ -149,7 +162,8 @@ export class ProjectileManager {
         continue;
       }
 
-      if (p.kind === 'sword' && p.target) {
+      // 带目标的弹道会追踪（飞剑、贴符）
+      if (p.target) {
         if (!p.target.alive) p.target = g.enemies.nearest(p.x, p.y, 200, p.hit);
         if (p.target) {
           const want = Math.atan2(p.target.y - 6 - p.y, p.target.x - p.x);
@@ -167,6 +181,7 @@ export class ProjectileManager {
       const s = p.sprite;
       s.setPosition(p.x, p.y).setDepth(p.y + 30);
       if (p.kind === 'leaf') s.rotation += 14 * dt;
+      else if (p.kind === 'fu') s.setRotation(Math.atan2(p.vy, p.vx) + Math.PI / 2);
       else if (p.kind !== 'enemy') s.setRotation(Math.atan2(p.vy, p.vx));
       else s.rotation += 6 * dt;
 
@@ -196,7 +211,12 @@ export class ProjectileManager {
       for (const e of hits) {
         if (p.hit.has(e.id)) continue;
         p.hit.add(e.id);
-        g.hitEnemy(e, p.dmg, p.el, { kb: p.kb, fromX: p.x - p.vx, fromY: p.y - p.vy, slow: p.slow });
+        if (p.stick) {
+          p.onHit?.(e);
+          this.release(p);
+          break;
+        }
+        g.hitEnemy(e, p.dmg * (p.dmgAt?.(e) ?? 1), p.el, { kb: p.kb, fromX: p.x - p.vx, fromY: p.y - p.vy, slow: p.slow });
         p.onHit?.(e);
         if (p.kind === 'leaf') {
           p.bounces--;

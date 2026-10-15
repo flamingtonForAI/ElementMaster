@@ -42,9 +42,13 @@ export interface CharacterDef {
   available: boolean;
 }
 
+/**
+ * 初始生命参照 DND 的生命骰：战士 d10、游侠/游荡者 d8、法师 d6，按 100 / 80 / 70 落地。
+ * 三个初始角色都是进攻型，容错靠走位和局外成长，不靠血厚；傀儡师本体最脆，由傀儡顶在前面。
+ */
 export const CHARACTERS: CharacterDef[] = [
   {
-    id: 'xiao', name: '萧寒锋', title: '剑客', el: 'metal', role: '近战，高伤中甲', hp: 120, speed: 72, armor: 1,
+    id: 'xiao', name: '萧寒锋', title: '剑客', el: 'metal', role: '近战，高伤中甲', hp: 100, speed: 72, armor: 1,
     startSkill: 'slash', lingen: 3, meleeBonus: 0.2, meleeRange: 80,
     growth: [{ every: 5, stat: 'crit', v: 0.01 }, { every: 10, stat: 'armor', v: 1 }],
     bio: '北地剑庐弃徒，一身白衣，剑意属金。',
@@ -52,7 +56,7 @@ export const CHARACTERS: CharacterDef[] = [
     available: true,
   },
   {
-    id: 'zhu', name: '朱砂', title: '符师', el: 'fire', role: '法师，范围爆发，低甲', hp: 90, speed: 70, armor: 0,
+    id: 'zhu', name: '朱砂', title: '符师', el: 'fire', role: '法师，范围爆发，低甲', hp: 70, speed: 70, armor: 0,
     startSkill: 'talisman', lingen: 3, area: 0.15, cdr: 0.1, meleeBonus: 0, meleeRange: 0,
     growth: [{ every: 5, stat: 'area', v: 0.02 }],
     bio: '龙虎山出走的女冠，以朱砂画符，符火不灭。',
@@ -60,16 +64,16 @@ export const CHARACTERS: CharacterDef[] = [
     available: true,
   },
   {
-    id: 'ruan', name: '阮沧', title: '海贼', el: 'water', role: '射手，远程风筝', hp: 100, speed: 80, armor: 0,
+    id: 'ruan', name: '阮沧', title: '海贼', el: 'water', role: '射手，远程风筝', hp: 80, speed: 76, armor: 0,
     startSkill: 'crossbow', lingen: 3, cdr: 0.15, crit: 0.05, pickup: 0.3, critSplash: 0.4, meleeBonus: 0, meleeRange: 0,
-    growth: [{ every: 5, stat: 'speed', v: 0.02 }, { every: 5, stat: 'cd', v: 0.01 }],
+    growth: [{ every: 10, stat: 'speed', v: 0.02 }, { every: 5, stat: 'cd', v: 0.01 }],
     bio: '东海私船的头领，水性通神，人称“浪里蛟”。',
-    trait: '攻速 +15%，暴击 +5%，拾取 +30%。浪花：暴击溅起水花。成长：每 5 级移速 +2%、冷却 −1%。',
+    trait: '攻速 +15%，暴击 +5%，拾取 +30%。近身弱：弩箭越远越痛。浪花：暴击溅起水花。成长：每 5 级冷却 −1%，每 10 级移速 +2%。',
     available: true,
   },
   // 以下角色还没做，先在选角界面占位
   {
-    id: 'qingdai', name: '青黛', title: '药师', el: 'wood', role: '续航，持续伤害与回复', hp: 100, speed: 72, armor: 0,
+    id: 'qingdai', name: '青黛', title: '药师', el: 'wood', role: '续航，持续伤害与回复', hp: 85, speed: 72, armor: 0,
     startSkill: 'leaf', lingen: 3, meleeBonus: 0, meleeRange: 0,
     growth: [],
     bio: '悬壶济世的游医，药囊里的草木也能杀人。',
@@ -78,7 +82,7 @@ export const CHARACTERS: CharacterDef[] = [
     available: false,
   },
   {
-    id: 'moheng', name: '墨衡', title: '傀儡师', el: 'earth', role: '召唤，傀儡在前本体在后', hp: 85, speed: 66, armor: 1,
+    id: 'moheng', name: '墨衡', title: '傀儡师', el: 'earth', role: '召唤，傀儡在前本体在后', hp: 65, speed: 66, armor: 1,
     startSkill: 'stonespike', lingen: 3, meleeBonus: 0, meleeRange: 0,
     growth: [],
     bio: '名取《列子》里造傀儡的偃师，石傀儡替他挡在阵前。',
@@ -87,7 +91,7 @@ export const CHARACTERS: CharacterDef[] = [
     available: false,
   },
   {
-    id: 'xuanyi', name: '玄一', title: '五行散人', el: 'earth', role: '轮转，五系兼修', hp: 100, speed: 72, armor: 1, balanced: true,
+    id: 'xuanyi', name: '玄一', title: '五行散人', el: 'earth', role: '轮转，五系兼修', hp: 85, speed: 72, armor: 1, balanced: true,
     startSkill: 'fireball', lingen: 0, meleeBonus: 0, meleeRange: 0,
     growth: [],
     bio: '不属任何一系的云游散人，五行在他身上轮流做主。',

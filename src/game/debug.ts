@@ -1,5 +1,6 @@
 import { Pane } from 'tweakpane';
 import { REL_MULT } from '../config/elements';
+import { DIFF } from '../config/levels';
 import type { GameScene } from '../scenes/GameScene';
 
 export function debugEnabled() {
@@ -22,6 +23,10 @@ export function createDebug(g: GameScene) {
   f1.addButton({ title: '清屏' }).on('click', () => g.enemies.list.filter((e) => !e.boss).forEach((e) => g.enemies.kill(e)));
   const f2 = pane.addFolder({ title: '五行倍率', expanded: false });
   for (const k of Object.keys(REL_MULT) as (keyof typeof REL_MULT)[]) f2.addBinding(REL_MULT, k, { min: 0, max: 3, step: 0.05 });
+  const f3 = pane.addFolder({ title: '难度曲线', expanded: false });
+  f3.addBinding(DIFF, 'hpLin', { label: '生命·线性', min: 0, max: 1, step: 0.01 });
+  f3.addBinding(DIFF, 'hpQuad', { label: '生命·平方', min: 0, max: 0.2, step: 0.005 });
+  f3.addBinding(DIFF, 'dmgLin', { label: '伤害·线性', min: 0, max: 0.5, step: 0.01 });
   const onKey = (e: KeyboardEvent) => {
     if (e.key === '`') pane.hidden = !pane.hidden;
   };

@@ -15,9 +15,17 @@ export function wrap(s: string, maxW: number): string {
     const cw = ch.charCodeAt(0) > 0x2e80 ? 12 : 6;
     // 标点不放行首
     if (w + cw > maxW && line && !NO_START.includes(ch)) {
-      lines.push(line);
-      line = '';
-      w = 0;
+      // 西文和数字（如 +1%）不拆开：把行尾这一段一起挪到下一行
+      const run = cw === 6 && ch !== ' ' ? /[^\s\u2e80-\uffff]+$/.exec(line)?.[0] ?? '' : '';
+      if (run && run.length < line.length) {
+        lines.push(line.slice(0, -run.length));
+        line = run;
+        w = run.length * 6;
+      } else {
+        lines.push(line);
+        line = '';
+        w = 0;
+      }
     }
     line += ch;
     w += cw;

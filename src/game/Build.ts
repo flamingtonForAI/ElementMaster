@@ -1,4 +1,4 @@
-import { GEN_ORDER, type El } from '../config/elements';
+import { GEN_ORDER, relation, type El, type Rel } from '../config/elements';
 import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS, type SkillId, type PassiveId } from '../config/skills';
 import type { CharacterDef } from '../config/characters';
 import type { LevelDef } from '../config/levels';
@@ -49,6 +49,13 @@ export function optionKey(o: Option) {
 export function upgradeSum(meta: MetaLevels, stat: UpgradeStat) {
   return UPGRADES.filter((u) => u.stat === stat).reduce((s, u) => s + u.v * (meta[u.id] ?? 0), 0);
 }
+
+/**
+ * 升级选项按角色亲和元素和选项元素的关系加权（以角色为攻方）：
+ * 本系最常见；我克的、克我的少一些但仍常见；散人五系一样。
+ * 实测（第 1 关地气均分、开局）：本系约 41%（含专属术的升级），生我/我生各约 16%，我克约 15%，克我约 12%
+ */
+const AFFINITY_W: Record<Rel, number> = { same: 1.5, fed: 1, drain: 1, counter: 0.85, countered: 0.7 };
 
 /** 局内构筑：技能、心法、等级、灵根、本命 */
 export class Build {
@@ -159,7 +166,8 @@ export class Build {
     };
     const elW = (el: El | null) => {
       if (!el) return 1;
-      return (el === this.char.el ? 1.5 : 1) * (1 + 2 * this.levelDef.terrain[el]);
+      const aff = this.char.balanced ? 1 : AFFINITY_W[relation(this.char.el, el)];
+      return aff * (1 + 2 * this.levelDef.terrain[el]);
     };
     for (const def of Object.values(SKILLS)) {
       if (def.exclusive && def.exclusive !== this.char.id) continue;

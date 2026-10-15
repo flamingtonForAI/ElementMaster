@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
-import { LEVELS, type LevelDef } from '../config/levels';
+import { LEVELS, DIFF, type LevelDef } from '../config/levels';
 import { ENEMIES } from '../config/enemies';
 import { EL_INFO, GEN_ORDER, REL_MULT, relation, terrainMod, type El } from '../config/elements';
 import { SKILLS } from '../config/skills';
@@ -202,12 +202,13 @@ export class GameScene extends Phaser.Scene {
   // ---------- 刷怪 ----------
 
   hpScale() {
-    return this.levelDef.hpMult * (1 + (this.elapsed / 60) * 0.2);
+    const t = this.elapsed / 60;
+    return this.levelDef.hpMult * (1 + DIFF.hpLin * t + DIFF.hpQuad * t * t);
   }
 
   /** 敌人伤害随时间上升 */
   dmgScale() {
-    return 1 + (this.elapsed / 60) * 0.12;
+    return 1 + (this.elapsed / 60) * DIFF.dmgLin;
   }
 
   private spawnCurve(): [number, number] {

@@ -112,7 +112,7 @@ export class MenuScene extends Phaser.Scene {
     const c = CHARACTERS[this.charSel];
     const save = loadSave();
     const py = 174;
-    const ph = 138;
+    const ph = 146;
     L.add(this.add.rectangle(X0, py, W, ph, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, LINE));
     const col = c.balanced ? 0xd8d0e4 : EL_INFO[c.el].color;
     if (c.available) {
@@ -126,16 +126,16 @@ export class MenuScene extends Phaser.Scene {
     const tw = W - 116;
     L.add(label(this, tx, py + 8, `${c.title} · ${c.name}`, c.available ? '#f4eee0' : '#8a8494', 24));
     L.add(label(this, tx, py + 38, `${c.balanced ? '五行均衡' : `${EL_INFO[c.el].name}亲和`} · ${c.role}`, hex(col)));
-    const bio = label(this, tx, py + 58, wrap(c.bio, tw), '#8a8494', 12, false).setLineSpacing(3);
+    if (c.available) L.add(label(this, tx, py + 56, `生命 ${c.hp}　移速 ${c.speed}　护甲 ${c.armor}`, '#6a6474'));
+    const bio = label(this, tx, py + (c.available ? 76 : 58), wrap(c.bio, tw), '#8a8494', 12, false).setLineSpacing(3);
     L.add(bio);
     L.add(label(this, tx, bio.y + bio.height + 6, wrap(c.trait, tw), c.available ? '#d8d0e4' : '#6a6474', 12, false).setLineSpacing(3));
     const by = py + ph - 26;
     if (c.available) {
-      L.add(label(this, tx, by + 4, `生命 ${c.hp}　移速 ${c.speed}　护甲 ${c.armor}`, '#6a6474'));
-      const btn = this.add.rectangle(X0 + W - 80, by, 72, 20, 0x2a2238).setOrigin(0).setStrokeStyle(1, 0xffd23f);
+      const btn = this.add.rectangle(X0 + W - 80, py + 12, 72, 22, 0x2a2238).setOrigin(0).setStrokeStyle(1, 0xffd23f);
       btn.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.confirm());
       L.add(btn);
-      L.add(label(this, X0 + W - 44, by + 4, '出发', '#ffd23f').setOrigin(0.5, 0));
+      L.add(label(this, X0 + W - 44, py + 17, '出发', '#ffd23f').setOrigin(0.5, 0));
     } else {
       // 散人：其余角色各自通关最终关
       const last = LEVELS[LEVELS.length - 1].id;
@@ -143,7 +143,7 @@ export class MenuScene extends Phaser.Scene {
       L.add(label(this, tx, by + 4, `${c.unlock ?? '后续阶段开放'}${c.balanced ? `（${done} / ${n - 1}）` : ''}`, '#8a8494'));
     }
 
-    L.add(label(this, 320, 322, isTouch() ? '点角色查看，再点一次或点“出发”' : '← → 选择　Enter 出发', '#8a8494').setOrigin(0.5, 0));
+    L.add(label(this, 320, 326, isTouch() ? '点角色查看，再点一次或点“出发”' : '← → 选择　Enter 出发', '#8a8494').setOrigin(0.5, 0));
     const df = this.add.rectangle(8, 318, 76, 22, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, 0xffd23f, 0.7);
     df.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.toDongfu());
     L.add(df);
