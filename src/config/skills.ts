@@ -1,6 +1,6 @@
 import type { El } from './elements';
 
-export type SkillId = 'slash' | 'flysword' | 'fireball' | 'leaf' | 'waterdragon' | 'stonespike';
+export type SkillId = 'slash' | 'talisman' | 'crossbow' | 'flysword' | 'fireball' | 'leaf' | 'waterdragon' | 'stonespike';
 export type PassiveId = 'ruijin' | 'yanyang' | 'changsheng' | 'roushui' | 'houtu' | 'qingshen' | 'juling';
 
 export type Stats = Record<string, number>;
@@ -39,6 +39,27 @@ export const SKILLS: Record<SkillId, SkillDef> = {
       cd: at([1.0, 1.0, 1.0, 0.9, 0.9, 0.9, 0.8, 0.8], lv),
       arc: 160,
       back: lv >= 8 ? 1 : 0,
+    }),
+  },
+  talisman: {
+    id: 'talisman', name: '火符', glyph: '符', el: 'fire', maxLv: 8, exclusive: 'zhu',
+    desc: ['向最近的敌群抛出符箓，落地片刻后爆炸', '伤害提高', '爆炸范围扩大', '冷却缩短', '一次抛出两张', '伤害提高，爆炸范围扩大', '伤害提高，冷却缩短', '一次抛出三张'],
+    stats: (lv) => ({
+      dmg: at([20, 25, 25, 25, 25, 31, 38, 40], lv),
+      radius: at([24, 24, 29, 29, 29, 34, 34, 34], lv),
+      count: at([1, 1, 1, 1, 2, 2, 2, 3], lv),
+      cd: at([1.5, 1.5, 1.5, 1.35, 1.35, 1.35, 1.2, 1.2], lv),
+    }),
+  },
+  crossbow: {
+    id: 'crossbow', name: '分水连弩', glyph: '弩', el: 'water', maxLv: 8, exclusive: 'ruan',
+    desc: ['朝最近的敌人连射三箭，射程最远，可贯穿 1 个', '伤害提高', '每轮 +1 箭', '贯穿 +1', '伤害提高', '冷却缩短', '每轮 +1 箭，伤害提高', '命中溅起水花，减速周围敌人'],
+    stats: (lv) => ({
+      dmg: at([9, 11, 11, 11, 14, 14, 17, 19], lv),
+      shots: at([3, 3, 4, 4, 4, 4, 5, 5], lv),
+      pierce: at([1, 1, 1, 2, 2, 2, 2, 2], lv),
+      cd: at([1.3, 1.3, 1.3, 1.3, 1.3, 1.15, 1.15, 1.05], lv),
+      splash: lv >= 8 ? 1 : 0,
     }),
   },
   flysword: {

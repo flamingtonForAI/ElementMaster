@@ -4,7 +4,7 @@ import { PLAYER_RADIUS } from './Player';
 import type { Enemy } from './Enemies';
 import type { GameScene } from '../scenes/GameScene';
 
-export type ProjKind = 'sword' | 'wave' | 'leaf' | 'water' | 'lob' | 'enemy';
+export type ProjKind = 'sword' | 'bolt' | 'wave' | 'leaf' | 'water' | 'lob' | 'enemy';
 
 export class Proj {
   active = false;
@@ -32,6 +32,10 @@ export class Proj {
   dur = 0;
   aoe = 0;
   trail = 0;
+  /** 命中敌人后的额外效果 */
+  onHit: ((e: Enemy) => void) | null = null;
+  /** 抛物线落地时代替默认爆炸 */
+  onLand: ((x: number, y: number) => void) | null = null;
   constructor(readonly sprite: Phaser.GameObjects.Sprite) {}
 }
 
@@ -46,6 +50,7 @@ export interface FireOpts {
   kb?: number;
   target?: Enemy | null;
   anim?: string;
+  onHit?: (e: Enemy) => void;
 }
 
 export class ProjectileManager {
@@ -83,12 +88,13 @@ export class ProjectileManager {
     p.slow = o.slow ?? 0;
     p.kb = o.kb ?? 20;
     p.target = o.target ?? null;
+    p.onHit = o.onHit ?? null;
     if (o.anim) p.sprite.play(o.anim);
     return p;
   }
 
   /** 抛物线投掷，落地触发 onLand */
-  lob(tex: string, anim: string, sx: number, sy: number, tx: number, ty: number, dur: number, dmg: number, el: El, aoe: number) {
+  lob(tex: string, anim: string, sx: number, sy: number, tx: number, ty: number, dur: number, dmg: number, el: El, aoe: number, onLand?: (x: number, y: number) => void) {
     const p = this.take(tex);
     p.kind = 'lob';
     p.sx = p.x = sx;
@@ -100,6 +106,7 @@ export class ProjectileManager {
     p.dmg = dmg;
     p.el = el;
     p.aoe = aoe;
+    p.onLand = onLand ?? null;
     p.life = dur + 1;
     p.sprite.play(anim);
   }
@@ -135,7 +142,8 @@ export class ProjectileManager {
         p.y = p.sy + (p.ty - p.sy) * k;
         p.sprite.setPosition(p.x, p.y - Math.sin(k * Math.PI) * 36).setDepth(p.y + 20);
         if (k >= 1) {
-          g.explode(p.x, p.y, p.aoe, p.dmg, p.el, 80);
+          if (p.onLand) p.onLand(p.x, p.y);
+          else g.explode(p.x, p.y, p.aoe, p.dmg, p.el, 80);
           this.release(p);
         }
         continue;
@@ -189,6 +197,7 @@ export class ProjectileManager {
         if (p.hit.has(e.id)) continue;
         p.hit.add(e.id);
         g.hitEnemy(e, p.dmg, p.el, { kb: p.kb, fromX: p.x - p.vx, fromY: p.y - p.vy, slow: p.slow });
+        p.onHit?.(e);
         if (p.kind === 'leaf') {
           p.bounces--;
           const next = p.bounces >= 0 ? g.enemies.nearest(p.x, p.y, 130, p.hit) : null;

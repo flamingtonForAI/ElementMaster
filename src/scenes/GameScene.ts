@@ -13,6 +13,7 @@ import { Fx } from '../game/Fx';
 import { SkillSystem } from '../game/Skills';
 import { World } from '../game/World';
 import { loadSave, writeSave } from '../game/save';
+import { talentMods } from '../game/talents';
 import { createDebug, debugEnabled } from '../game/debug';
 import { hex } from '../ui/text';
 import { audio } from '../audio/Audio';
@@ -25,6 +26,8 @@ export interface HitOpts {
   stun?: number;
   slow?: number;
   noCrit?: boolean;
+  /** 浪花溅射的层数，0 或不填是原始命中 */
+  splash?: number;
 }
 
 export interface RunResult {
@@ -94,8 +97,9 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     const L = this.levelDef;
-    const meta = loadSave().meta;
-    this.build = new Build(this.char, L, meta);
+    const save = loadSave();
+    const meta = save.meta;
+    this.build = new Build(this.char, L, meta, talentMods(save, this.char));
     this.pstats = this.build.stats();
     this.revives = upgradeSum(meta, 'revive');
     this.rerolls = upgradeSum(meta, 'reroll');
@@ -280,12 +284,12 @@ export class GameScene extends Phaser.Scene {
   hitEnemy(e: Enemy, base: number, el: El, o: HitOpts = {}) {
     if (!e.alive) return 0;
     const rel = relation(el, e.def.el);
-    let m = REL_MULT[rel] * this.terrainMods[el] * (this.build.benming === el ? 1.25 : 1) * this.pstats.dmgMult * this.pstats.elDmg[el];
-    const c = this.char;
-    if (c.meleeBonus > 0) {
+    const ps = this.pstats;
+    let m = REL_MULT[rel] * this.terrainMods[el] * (this.build.benming === el ? 1.25 : 1) * ps.dmgMult * ps.elDmg[el] * ps.vsEl[e.def.el];
+    if (ps.meleeBonus > 0) {
       const dx = e.x - this.player.x;
       const dy = e.y - this.player.y;
-      if (dx * dx + dy * dy <= c.meleeRange * c.meleeRange) m *= 1 + c.meleeBonus;
+      if (dx * dx + dy * dy <= ps.meleeRange * ps.meleeRange) m *= 1 + ps.meleeBonus;
     }
     const crit = !o.noCrit && Math.random() < this.pstats.crit;
     const dmg = Math.max(1, Math.round(base * m * (crit ? this.pstats.critDmg : 1) - e.armor));
@@ -302,9 +306,9 @@ export class GameScene extends Phaser.Scene {
       e.kbx += (dx / d) * k;
       e.kby += (dy / d) * k;
     }
-    if (o.stun) e.stunUntil = Math.max(e.stunUntil, this.now + o.stun * (e.boss ? 0.3 : 1));
+    if (o.stun) e.stunUntil = Math.max(e.stunUntil, this.now + o.stun * ps.stunMult * (e.boss ? 0.3 : 1));
     if (o.slow) {
-      e.slowUntil = this.now + o.slow;
+      e.slowUntil = this.now + o.slow * ps.slowMult;
       e.slowF = e.boss ? 0.75 : 0.5;
     }
 
@@ -316,12 +320,26 @@ export class GameScene extends Phaser.Scene {
     this.fx.number(e.x, e.y - e.sprite.displayHeight * 0.75, dmg, rel, crit, prefix);
     audio.hit(rel, crit);
     if (e.hp <= 0) this.enemies.kill(e);
+    // 浪花：暴击时向周围溅射；回澜让溅射也能暴击并再溅一层
+    const depth = o.splash ?? 0;
+    const chain = this.build.mods['ruan.chain'] ?? 0;
+    if (crit && this.char.critSplash && depth <= chain) this.waveSplash(e, base, depth + 1, chain >= depth + 1);
     return dmg;
   }
 
-  explode(x: number, y: number, radius: number, dmg: number, el: El, kb: number) {
+  private waveSplash(src: Enemy, base: number, depth: number, canCrit: boolean) {
+    const mods = this.build.mods;
+    const r = 26 * this.pstats.area * (1 + (mods['ruan.splashArea'] ?? 0));
+    const k = (this.char.critSplash ?? 0) + (mods['ruan.splash'] ?? 0);
+    this.fx.ring(src.x, src.y - 6, r, 0x8fc0ff, 0.3);
+    for (let i = 0; i < 4; i++) this.fx.droplet(src.x + (Math.random() - 0.5) * r, src.y - 6 + (Math.random() - 0.5) * r * 0.6);
+    const near = this.enemies.inRadius(src.x, src.y, r, []).filter((e) => e !== src);
+    for (const e of near) this.hitEnemy(e, base * k, 'water', { kb: 20, fromX: src.x, fromY: src.y, splash: depth, noCrit: !canCrit });
+  }
+
+  explode(x: number, y: number, radius: number, dmg: number, el: El, kb: number, tint?: number) {
     audio.sfx('explode');
-    this.fx.anim('fx_explosion', x, y - 4, { scale: radius / 22 });
+    this.fx.anim('fx_explosion', x, y - 4, { scale: radius / 22, tint });
     const tmp: Enemy[] = [];
     for (const e of this.enemies.inRadius(x, y, radius, tmp)) this.hitEnemy(e, dmg, el, { kb, fromX: x, fromY: y });
   }
@@ -331,7 +349,8 @@ export class GameScene extends Phaser.Scene {
     if (!p.alive || this.dbg.god || this.over || this.now < this.iframeUntil) return;
     this.iframeUntil = this.now + 0.35;
     const rel = relation(el, this.build.benming);
-    const dmg = Math.max(1, Math.round(base * REL_MULT[rel] * this.pstats.resist[el] - this.pstats.armor));
+    const armor = this.pstats.armor + (p.moving ? 0 : this.pstats.stillArmor);
+    const dmg = Math.max(1, Math.round(base * REL_MULT[rel] * this.pstats.resist[el] - armor));
     p.hp -= dmg;
     p.hurt();
     audio.sfx('hurt');
@@ -389,7 +408,7 @@ export class GameScene extends Phaser.Scene {
       this.hud.toast(`灵石 +${this.lingshiCard()}（结算时发放）`, '#ffd23f');
     }
     const changed = this.build.apply(o);
-    // 每次升级都重算：角色成长和克我天赋的折扣都跟等级走
+    // 每次升级都重算：角色成长跟等级走
     this.pstats = this.build.stats();
     if (this.pstats.maxHp > prevMax) this.player.hp += this.pstats.maxHp - prevMax;
     if (changed) this.later(0.05, () => this.benmingBurst());
@@ -423,7 +442,7 @@ export class GameScene extends Phaser.Scene {
     this.fx.ring(p.x, p.y - 8, 60, EL_INFO[el].color, 0.45);
     audio.sfx('benming');
     const tmp: Enemy[] = [];
-    for (const e of this.enemies.inRadius(p.x, p.y - 8, 56, tmp)) this.hitEnemy(e, 15 + this.build.level * 2, el, { kb: 60 });
+    for (const e of this.enemies.inRadius(p.x, p.y - 8, 56, tmp)) this.hitEnemy(e, (15 + this.build.level * 2) * this.pstats.burstMult, el, { kb: 60 });
     this.hud.toast(`本命转为「${EL_INFO[el].name}」`, hex(EL_INFO[el].color));
   }
 
@@ -454,6 +473,7 @@ export class GameScene extends Phaser.Scene {
     const lingshiLines = parts.map(([k, v]) => `${k} ${v}`);
     if (greed) lingshiLines.push(`财运 +${Math.round(greed * 100)}%`);
     save.lingshi += lingshi;
+    if (win) save.clears[this.char.id] = Math.max(save.clears[this.char.id] ?? 0, n);
     let unlockedNext = false;
     if (win && save.unlocked <= this.levelDef.id) {
       save.unlocked = this.levelDef.id + 1;

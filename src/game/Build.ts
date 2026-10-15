@@ -2,7 +2,8 @@ import { GEN_ORDER, type El } from '../config/elements';
 import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS, type SkillId, type PassiveId } from '../config/skills';
 import type { CharacterDef } from '../config/characters';
 import type { LevelDef } from '../config/levels';
-import { UPGRADES, TREES, affinity, type MetaLevels, type UpgradeStat } from '../config/meta';
+import { UPGRADES, type MetaLevels, type UpgradeStat } from '../config/meta';
+import type { Mods } from '../config/startree';
 
 export type Option =
   | { kind: 'skill'; id: SkillId; lv: number }
@@ -22,10 +23,20 @@ export interface PlayerStats {
   xpMult: number;
   critDmg: number;
   cdMult: number;
-  /** 各元素术的伤害系数（洞府天赋） */
+  /** 各元素术的伤害系数（星图） */
   elDmg: Record<El, number>;
-  /** 受各元素敌人伤害的系数（洞府天赋） */
+  /** 受各元素敌人伤害的系数（星图） */
   resist: Record<El, number>;
+  /** 攻击各元素敌人的伤害系数（星图克弦） */
+  vsEl: Record<El, number>;
+  slowMult: number;
+  stunMult: number;
+  /** 本命爆发伤害系数 */
+  burstMult: number;
+  /** 站立不动时的额外护甲 */
+  stillArmor: number;
+  meleeBonus: number;
+  meleeRange: number;
 }
 
 const EL0 = (v: number): Record<El, number> => ({ metal: v, wood: v, water: v, fire: v, earth: v });
@@ -53,7 +64,8 @@ export class Build {
   banned = new Set<string>();
   private lastLeveled: El;
 
-  constructor(readonly char: CharacterDef, readonly levelDef: LevelDef, readonly meta: MetaLevels = {}) {
+  /** mods：星图与传承加成，见 talents.ts */
+  constructor(readonly char: CharacterDef, readonly levelDef: LevelDef, readonly meta: MetaLevels = {}, readonly mods: Mods = {}) {
     this.skills.set(char.startSkill, 1);
     this.benming = char.el;
     this.lastLeveled = char.el;
@@ -80,7 +92,7 @@ export class Build {
   recompute(): boolean {
     const l: Record<El, number> = { metal: 0, wood: 0, water: 0, fire: 0, earth: 0 };
     l[this.char.el] += this.char.lingen;
-    for (const t of TREES) l[t.el] += this.meta[`${t.el}.lingen`] ?? 0;
+    for (const e of GEN_ORDER) l[e] += this.mods[`lingen.${e}`] ?? 0;
     for (const [id, lv] of this.skills) l[SKILLS[id].el] += lv;
     for (const [id, lv] of this.passives) {
       const el = PASSIVES[id].el;
@@ -102,32 +114,40 @@ export class Build {
     const u = (stat: UpgradeStat) => upgradeSum(this.meta, stat);
     const gr = (stat: string) =>
       c.growth.filter((g) => g.stat === stat).reduce((s, g) => s + Math.min(g.cap ?? Infinity, Math.floor(this.level / g.every) * g.v), 0);
+    const m = (k: string) => this.mods[k] ?? 0;
     const elDmg = EL0(1);
     const resist = EL0(1);
-    let critDmg = 2;
-    for (const t of TREES) {
-      const k = affinity(c.el, t.el, this.level);
-      for (const n of t.nodes) {
-        const v = n.v * (this.meta[n.id] ?? 0) * k;
-        if (n.stat === 'elDmg') elDmg[t.el] += v;
-        else if (n.stat === 'resist') resist[t.el] -= v;
-        else if (n.stat === 'critDmg') critDmg += v;
-      }
+    const vsEl = EL0(1);
+    for (const e of GEN_ORDER) {
+      elDmg[e] += m(`el.${e}`);
+      resist[e] -= m(`res.${e}`);
+      vsEl[e] += m(`vs.${e}`);
+      // 极境印的代价：本系以外的术变弱
+      const off = m(`off.${e}`);
+      if (off) for (const o of GEN_ORDER) if (o !== e) elDmg[o] += off;
     }
+    const armor = c.armor + Math.floor(p('houtu')) + u('armor') + gr('armor') + m('armor');
     return {
-      maxHp: Math.round(c.hp * (1 + 0.12 * p('houtu') + u('hp'))),
-      speed: c.speed * (1 + 0.07 * p('qingshen') + u('speed') + gr('speed')),
-      armor: c.armor + Math.floor(p('houtu')) + u('armor') + gr('armor'),
-      regen: 0.4 * p('changsheng') + u('regen'),
-      dmgMult: 1 + 0.08 * p('yanyang') + u('dmg'),
-      crit: 0.05 + 0.06 * p('ruijin') + u('crit') + gr('crit'),
-      area: 1 + 0.1 * p('roushui') + u('area') + gr('area'),
-      pickup: 30 * (1 + 0.25 * p('juling') + u('pickup')),
-      xpMult: 1 + 0.05 * p('juling') + u('xp'),
-      critDmg,
-      cdMult: 1 - u('cd') - gr('cd'),
+      maxHp: Math.round(c.hp * (1 + 0.12 * p('houtu') + u('hp') + m('hp'))),
+      speed: c.speed * (1 + 0.07 * p('qingshen') + u('speed') + gr('speed') + m('speed')),
+      armor,
+      regen: (0.4 * p('changsheng') + u('regen') + m('regen')) * (1 + m('regenMult')),
+      dmgMult: 1 + 0.08 * p('yanyang') + m('dmg'),
+      crit: m('noCrit') ? 0 : 0.05 + (c.crit ?? 0) + 0.06 * p('ruijin') + m('crit') + gr('crit'),
+      area: 1 + (c.area ?? 0) + 0.1 * p('roushui') + m('area') + gr('area'),
+      pickup: 30 * (1 + (c.pickup ?? 0) + 0.25 * p('juling') + u('pickup') + m('pickup')),
+      xpMult: 1 + 0.05 * p('juling') + u('xp') + m('xp'),
+      critDmg: 2 + m('critDmg'),
+      cdMult: 1 - (c.cdr ?? 0) - m('cd') - gr('cd'),
       elDmg,
       resist,
+      vsEl,
+      slowMult: 1 + m('slowDur'),
+      stunMult: 1 + m('stunDur'),
+      burstMult: 1 + m('burst'),
+      stillArmor: m('stillArmor'),
+      meleeBonus: c.meleeBonus + m('melee') + armor * m('xiao.armorMelee'),
+      meleeRange: c.meleeRange + m('meleeRange'),
     };
   }
 

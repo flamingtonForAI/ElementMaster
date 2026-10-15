@@ -25,7 +25,7 @@ export class Player {
 
   constructor(private g: GameScene) {
     this.hp = g.pstats.maxHp;
-    this.sprite = g.add.sprite(0, 0, 'hero_xiao', 0).setOrigin(0.5, 0.92);
+    this.sprite = g.add.sprite(0, 0, `hero_${g.char.id}`, 0).setOrigin(0.5, 0.92);
     this.hpBg = g.add.rectangle(0, 0, 20, 3, 0x1c1424).setOrigin(0.5, 0);
     this.hpFill = g.add.rectangle(0, 0, 18, 1, 0xe8503f).setOrigin(0, 0);
     this.keys = g.input.keyboard!.addKeys('UP,DOWN,LEFT,RIGHT,W,A,S,D') as Record<string, Phaser.Input.Keyboard.Key>;
@@ -60,7 +60,7 @@ export class Player {
       const d = dirFromVector(this.facing.x, this.facing.y);
       this.dir = d.dir;
       this.flip = d.flip;
-      this.play(`xiao_${this.dir}_${this.moving ? 'run' : 'idle'}`);
+      this.play(`${this.g.char.id}_${this.dir}_${this.moving ? 'run' : 'idle'}`);
     }
     this.sprite.setFlipX(this.flip);
     this.sprite.setPosition(this.x, this.y);
@@ -76,12 +76,12 @@ export class Player {
     this.hpFill.width = Math.max(0, 18 * (this.hp / max));
   }
 
-  /** 播放出招动画，持续期间锁定朝向 */
-  attack() {
-    const d = dirFromVector(this.facing.x, this.facing.y);
+  /** 播放出招动画，持续期间锁定朝向；自动瞄准的术传入目标方向，身体转向目标出招 */
+  attack(ax = this.facing.x, ay = this.facing.y) {
+    const d = dirFromVector(ax, ay);
     this.dir = d.dir;
     this.flip = d.flip;
-    this.animKey = `xiao_${this.dir}_${this.moving ? 'atkrun' : 'atk'}`;
+    this.animKey = `${this.g.char.id}_${this.dir}_${this.moving ? 'atkrun' : 'atk'}`;
     this.sprite.play(this.animKey);
     this.atkUntil = this.g.now + 0.22;
   }

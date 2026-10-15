@@ -76,34 +76,74 @@ export class MenuScene extends Phaser.Scene {
     else this.renderLevels();
   }
 
+  /** 选角：上面一排角色头像（含未开放的占位），下面是选中角色的详情 */
   private renderChars() {
     const L = this.layer;
-    L.add(label(this, 320, 96, '选择角色', '#ffd23f').setOrigin(0.5, 0));
+    const n = CHARACTERS.length;
+    const TW = 58;
+    const GAP = 6;
+    const W = n * TW + (n - 1) * GAP;
+    const X0 = 320 - W / 2;
+    L.add(label(this, X0, 92, '选择角色', '#ffd23f'));
+    L.add(label(this, X0 + W, 92, `${CHARACTERS.filter((c) => c.available).length} / ${n}`, '#6a6474').setOrigin(1, 0));
+
     CHARACTERS.forEach((c, i) => {
-      const x = 320 + (i - 1) * 176;
+      const x = X0 + i * (TW + GAP);
       const on = i === this.charSel;
       const col = EL_INFO[c.el].color;
-      const bg = this.add.rectangle(x, 118, 164, 196, PANEL, 0.95).setOrigin(0.5, 0).setStrokeStyle(on ? 2 : 1, on ? 0xffd23f : col, on ? 1 : 0.5);
+      const bg = this.add.rectangle(x, 110, TW, TW, on ? 0x2a2238 : PANEL, 0.95).setOrigin(0).setStrokeStyle(on ? 2 : 1, on ? 0xffd23f : c.available ? col : LINE, on ? 1 : 0.6);
       bg.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
-        if (this.charSel !== i) audio.sfx('tick');
+        if (this.charSel === i) return this.confirm();
+        audio.sfx('tick');
         this.charSel = i;
-        this.confirm();
+        this.render();
       });
       L.add(bg);
       if (c.available) {
-        const s = this.add.sprite(x, 158, 'hero_xiao', 0).setScale(2);
-        s.play('xiao_s_idle');
-        L.add(s);
+        const sp = this.add.sprite(x + TW / 2, 110 + TW / 2 + 2, `hero_${c.id}`, 0).setScale(1.5);
+        sp.play(`${c.id}_s_idle`);
+        L.add(sp);
       } else {
-        L.add(this.add.rectangle(x, 140, 40, 40, 0x0e0b14).setOrigin(0.5, 0).setStrokeStyle(1, LINE));
-        L.add(label(this, x, 148, '?', '#6a6474', 24).setOrigin(0.5, 0));
+        L.add(label(this, x + TW / 2, 110 + TW / 2, c.balanced ? '五' : EL_INFO[c.el].name, hex(c.balanced ? 0x5a5266 : EL_INFO[c.el].dark), 24).setOrigin(0.5));
       }
-      L.add(label(this, x, 196, `${c.title} · ${c.name}`, c.available ? '#f4eee0' : '#8a8494').setOrigin(0.5, 0));
-      L.add(label(this, x, 212, `${EL_INFO[c.el].name}亲和`, hex(col)).setOrigin(0.5, 0));
-      L.add(label(this, x - 72, 232, wrap(c.bio, 144), '#b8aec8', 12, false).setLineSpacing(3));
-      L.add(label(this, x - 72, 264, wrap(c.trait, 144), c.available ? '#d8d0e4' : '#6a6474', 12, false).setLineSpacing(3));
     });
-    L.add(label(this, 320, 322, isTouch() ? '点击角色开始' : '← → 选择　Enter 确认', '#8a8494').setOrigin(0.5, 0));
+
+    // 详情
+    const c = CHARACTERS[this.charSel];
+    const save = loadSave();
+    const py = 174;
+    const ph = 138;
+    L.add(this.add.rectangle(X0, py, W, ph, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, LINE));
+    const col = c.balanced ? 0xd8d0e4 : EL_INFO[c.el].color;
+    if (c.available) {
+      const big = this.add.sprite(X0 + 52, py + ph / 2 + 4, `hero_${c.id}`, 0).setScale(3);
+      big.play(`${c.id}_s_idle`);
+      L.add(big);
+    } else {
+      L.add(label(this, X0 + 52, py + ph / 2, '?', '#5a5266', 48).setOrigin(0.5));
+    }
+    const tx = X0 + 104;
+    const tw = W - 116;
+    L.add(label(this, tx, py + 8, `${c.title} · ${c.name}`, c.available ? '#f4eee0' : '#8a8494', 24));
+    L.add(label(this, tx, py + 38, `${c.balanced ? '五行均衡' : `${EL_INFO[c.el].name}亲和`} · ${c.role}`, hex(col)));
+    const bio = label(this, tx, py + 58, wrap(c.bio, tw), '#8a8494', 12, false).setLineSpacing(3);
+    L.add(bio);
+    L.add(label(this, tx, bio.y + bio.height + 6, wrap(c.trait, tw), c.available ? '#d8d0e4' : '#6a6474', 12, false).setLineSpacing(3));
+    const by = py + ph - 26;
+    if (c.available) {
+      L.add(label(this, tx, by + 4, `生命 ${c.hp}　移速 ${c.speed}　护甲 ${c.armor}`, '#6a6474'));
+      const btn = this.add.rectangle(X0 + W - 80, by, 72, 20, 0x2a2238).setOrigin(0).setStrokeStyle(1, 0xffd23f);
+      btn.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.confirm());
+      L.add(btn);
+      L.add(label(this, X0 + W - 44, by + 4, '出发', '#ffd23f').setOrigin(0.5, 0));
+    } else {
+      // 散人：其余角色各自通关最终关
+      const last = LEVELS[LEVELS.length - 1].id;
+      const done = CHARACTERS.filter((o) => !o.balanced && (save.clears[o.id] ?? 0) >= last).length;
+      L.add(label(this, tx, by + 4, `${c.unlock ?? '后续阶段开放'}${c.balanced ? `（${done} / ${n - 1}）` : ''}`, '#8a8494'));
+    }
+
+    L.add(label(this, 320, 322, isTouch() ? '点角色查看，再点一次或点“出发”' : '← → 选择　Enter 出发', '#8a8494').setOrigin(0.5, 0));
     const df = this.add.rectangle(8, 318, 76, 22, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, 0xffd23f, 0.7);
     df.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.toDongfu());
     L.add(df);

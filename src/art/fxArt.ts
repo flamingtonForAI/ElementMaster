@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PC, addSheet, addAnim, OUTLINE, rng } from './painter';
+import { EL_INFO, GEN_ORDER } from '../config/elements';
 
 function single(scene: Phaser.Scene, key: string, p: PC) {
   addSheet(scene, key, [p]);
@@ -59,6 +60,41 @@ function fireball(f: number): PC {
   p.circle(9, 6, 1.6, 0xfff0a0);
   p.strand([[4, 7], [1, 6 + f], [0, 8]], 0xff9a3a, 2);
   p.outline(0x6a1a12);
+  return p;
+}
+
+/** 符箓：黄纸，墨色按元素；f=1 翻到侧面，飞行时交替成翻飞效果 */
+function fu(ink: number, f: number): PC {
+  const p = new PC(9, 11);
+  if (f === 0) {
+    p.rect(2, 1, 5, 9, 0xf2d36b);
+    p.span(9, 2, 6, 0xc9a640);
+    p.span(1, 2, 6, ink);
+    p.line(4, 3, 4, 7, ink);
+    p.set(3, 4, ink);
+    p.set(5, 6, ink);
+  } else {
+    p.rect(3, 1, 3, 9, 0xf2d36b);
+    p.set(5, 9, 0xc9a640);
+    p.line(4, 3, 4, 7, ink);
+  }
+  p.outline(0x5a3a12);
+  return p;
+}
+
+/** 弩箭：水色箭簇、白羽，朝右 */
+function bolt(): PC {
+  const p = new PC(12, 5);
+  p.line(1, 2, 8, 2, 0x8a5a32);
+  p.set(9, 2, 0xb8e4ff);
+  p.set(10, 2, 0xe8f6ff);
+  p.set(9, 1, 0x5a8cf0);
+  p.set(9, 3, 0x5a8cf0);
+  p.set(1, 1, 0xf1ede2);
+  p.set(2, 1, 0xf1ede2);
+  p.set(1, 3, 0xf1ede2);
+  p.set(2, 3, 0xf1ede2);
+  p.outline(0x1c2a48);
   return p;
 }
 
@@ -401,9 +437,15 @@ export function buildFx(scene: Phaser.Scene) {
   single(scene, 'pj_wave', wave());
   addSheet(scene, 'pj_fireball', [0, 1].map(fireball));
   addAnim(scene, 'pj_fireball', 'pj_fireball', [0, 1], 10);
+  for (const el of GEN_ORDER) {
+    const ink = el === 'fire' ? 0xc8372d : EL_INFO[el].dark;
+    addSheet(scene, `pj_fu_${el}`, [0, 1].map((f) => fu(ink, f)));
+    addAnim(scene, `pj_fu_${el}`, `pj_fu_${el}`, [0, 1], 12);
+  }
   addSheet(scene, 'fx_explosion', [0, 1, 2, 3].map(explosion));
   addAnim(scene, 'fx_explosion', 'fx_explosion', [0, 1, 2, 3], 16, 0);
   single(scene, 'pj_leaf', leaf());
+  single(scene, 'pj_bolt', bolt());
   addSheet(scene, 'pj_water', [0, 1].map(waterDragon));
   addAnim(scene, 'pj_water', 'pj_water', [0, 1], 8);
   addSheet(scene, 'fx_spike', [0, 1, 2].map(spike));
