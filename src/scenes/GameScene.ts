@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
 import { LEVELS, DIFF, type LevelDef } from '../config/levels';
-import { ENEMIES } from '../config/enemies';
+import { ENEMIES, type PoisonDef } from '../config/enemies';
 import { EL_INFO, GEN_ORDER, REL_MULT, relation, terrainMod, type El } from '../config/elements';
 import { SKILLS } from '../config/skills';
 import { Build, upgradeSum, type Option, type PlayerStats } from '../game/Build';
@@ -68,6 +68,12 @@ export class GameScene extends Phaser.Scene {
   banishes = 0;
   /** 升级卡拿到的灵石，结算时发放 */
   cardLingshi = 0;
+  /** 中毒：同一时间只有一层，新毒取更强的伤害和更晚的结束时间 */
+  poisonUntil = 0;
+  poisonDps = 0;
+  /** 解毒药的免疫期 */
+  antidoteUntil = 0;
+  private poisonTick = 0;
 
   private pendingLevelUps = 0;
   private iframeUntil = 0;
@@ -90,6 +96,7 @@ export class GameScene extends Phaser.Scene {
     this.over = false;
     this.pendingLevelUps = 0;
     this.iframeUntil = 0;
+    this.poisonUntil = this.poisonDps = this.antidoteUntil = this.poisonTick = 0;
     this.spawnAcc = 0;
     this.tasks = [];
     this.terrainMods = Object.fromEntries(GEN_ORDER.map((e) => [e, terrainMod(e, this.levelDef.terrain)])) as Record<El, number>;
@@ -156,6 +163,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.over) this.elapsed += dt;
 
     this.player.update(dt);
+    this.poisonUpdate(dt);
     if (!this.over) this.spawnUpdate(dt);
     this.enemies.update(dt);
     if (this.player.alive) this.skills.update(dt);
@@ -273,7 +281,7 @@ export class GameScene extends Phaser.Scene {
   spawnBoss() {
     if (this.boss) return;
     const [x, y] = this.ringPos(250);
-    this.boss = this.enemies.spawn(this.levelDef.boss, x, y);
+    this.boss = this.enemies.spawn(this.levelDef.boss, x, y, { hpMult: this.levelDef.hpMult });
     this.hud.toast(`${this.levelDef.bossName} 现身！`, '#ff6a5a');
     audio.sfx('boss');
     audio.music('boss', 0.6);
@@ -295,6 +303,15 @@ export class GameScene extends Phaser.Scene {
     const crit = !o.noCrit && Math.random() < this.pstats.crit;
     const dmg = Math.max(1, Math.round(base * m * (crit ? this.pstats.critDmg : 1) - e.armor));
     e.hp -= dmg;
+    // 带毒的 Boss 每掉 20% 血掉一瓶解毒药，落在 Boss 和玩家之间
+    if (e.boss && e.def.poison && e.hp > 0) {
+      const stage = Math.min(4, Math.floor((1 - e.hp / e.maxHp) / 0.2));
+      while (e.dropStage < stage) {
+        e.dropStage++;
+        const a = Math.atan2(this.player.y - e.y, this.player.x - e.x) + (Math.random() - 0.5) * 0.8;
+        this.pickups.antidote(e.x + Math.cos(a) * 50, e.y + Math.sin(a) * 50);
+      }
+    }
     if (this.now - e.flashUntil > 0.12) e.flashUntil = this.now + 0.05;
 
     if (o.kb && !e.boss) {
@@ -345,17 +362,59 @@ export class GameScene extends Phaser.Scene {
     for (const e of this.enemies.inRadius(x, y, radius, tmp)) this.hitEnemy(e, dmg, el, { kb, fromX: x, fromY: y });
   }
 
-  hurtPlayer(base: number, el: El) {
+  /** 带毒的攻击命中后再按概率判定中毒 */
+  hurtPlayer(base: number, el: El, poison?: PoisonDef) {
     const p = this.player;
     if (!p.alive || this.dbg.god || this.over || this.now < this.iframeUntil) return;
     this.iframeUntil = this.now + 0.35;
     const rel = relation(el, this.build.benming);
     const armor = this.pstats.armor + (p.moving ? 0 : this.pstats.stillArmor);
     const dmg = Math.max(1, Math.round(base * REL_MULT[rel] * this.pstats.resist[el] - armor));
-    p.hp -= dmg;
     p.hurt();
     audio.sfx('hurt');
     this.fx.number(p.x, p.y - 30, dmg, 'player', false);
+    if (poison && Math.random() < poison.chance) this.poisonPlayer(poison);
+    this.loseHp(dmg);
+  }
+
+  private poisonPlayer(po: PoisonDef) {
+    if (this.now < this.antidoteUntil) return;
+    const p = this.player;
+    if (this.now >= this.poisonUntil) {
+      this.poisonDps = 0;
+      this.poisonTick = 0.5;
+      this.fx.text(p.x, p.y - 40, '中毒', '#8fe06a', 0.8);
+    }
+    this.poisonDps = Math.max(this.poisonDps, po.dps);
+    this.poisonUntil = Math.max(this.poisonUntil, this.now + po.dur);
+  }
+
+  /** 毒伤每 0.5 秒结算一次，不吃护甲和无敌帧 */
+  private poisonUpdate(dt: number) {
+    if (this.now >= this.poisonUntil || !this.player.alive || this.over) return;
+    this.poisonTick -= dt;
+    if (this.poisonTick > 0) return;
+    this.poisonTick += 0.5;
+    if (this.dbg.god) return;
+    const p = this.player;
+    const dmg = Math.max(1, Math.round(this.poisonDps * 0.5));
+    this.fx.text(p.x + 8, p.y - 26, `${dmg}`, '#8fe06a', 0.6);
+    this.loseHp(dmg);
+  }
+
+  /** 解毒药：清毒并免疫一段时间 */
+  curePoison() {
+    const p = this.player;
+    this.poisonUntil = 0;
+    this.antidoteUntil = this.now + 6;
+    this.fx.text(p.x, p.y - 30, '解毒', '#8fe06a', 0.8);
+    this.fx.ring(p.x, p.y - 8, 40, 0x8fe06a, 0.4);
+    audio.sfx('pill');
+  }
+
+  private loseHp(dmg: number) {
+    const p = this.player;
+    p.hp -= dmg;
     if (p.hp <= 0) {
       if (this.revives > 0) return this.revive();
       p.hp = 0;
@@ -370,6 +429,7 @@ export class GameScene extends Phaser.Scene {
     this.revives--;
     p.hp = Math.round(this.pstats.maxHp * 0.5);
     this.iframeUntil = this.now + 2;
+    this.poisonUntil = 0;
     this.proj.clearEnemyShots();
     this.fx.ring(p.x, p.y - 8, 90, 0xffd23f, 0.6);
     const tmp: Enemy[] = [];

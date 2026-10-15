@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { El } from '../config/elements';
+import type { PoisonDef } from '../config/enemies';
 import { PLAYER_RADIUS } from './Player';
 import type { Enemy } from './Enemies';
 import type { GameScene } from '../scenes/GameScene';
@@ -42,6 +43,8 @@ export class Proj {
   arc = 36;
   /** 抛物线落地时代替默认爆炸 */
   onLand: ((x: number, y: number) => void) | null = null;
+  /** 敌方弹幕附带的毒 */
+  poison: PoisonDef | undefined = undefined;
   constructor(readonly sprite: Phaser.GameObjects.Sprite) {}
 }
 
@@ -124,8 +127,9 @@ export class ProjectileManager {
     return p;
   }
 
-  enemyShot(tex: string, x: number, y: number, vx: number, vy: number, dmg: number, el: El) {
+  enemyShot(tex: string, x: number, y: number, vx: number, vy: number, dmg: number, el: El, poison?: PoisonDef) {
     const p = this.take(tex);
+    p.poison = poison;
     p.kind = 'enemy';
     p.x = x;
     p.y = y;
@@ -200,7 +204,7 @@ export class ProjectileManager {
 
       if (p.kind === 'enemy') {
         if (pl.alive && Math.hypot(pl.x - p.x, pl.y - 6 - p.y) < p.radius + PLAYER_RADIUS) {
-          g.hurtPlayer(p.dmg, p.el);
+          g.hurtPlayer(p.dmg, p.el, p.poison);
           this.release(p);
         }
         continue;

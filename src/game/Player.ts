@@ -65,7 +65,9 @@ export class Player {
     this.sprite.setFlipX(this.flip);
     this.sprite.setPosition(this.x, this.y);
     this.sprite.setDepth(this.y);
+    const poisoned = g.now < g.poisonUntil;
     if (g.now < this.hurtUntil) this.sprite.setTintFill(0xff5a5a);
+    else if (poisoned) this.sprite.setTint(0xb8f0a0);
     else this.sprite.clearTint();
 
     // 回血
@@ -74,6 +76,7 @@ export class Player {
     this.hpBg.setPosition(this.x, this.y + 4).setDepth(this.y + 1);
     this.hpFill.setPosition(this.x - 9, this.y + 5).setDepth(this.y + 2);
     this.hpFill.width = Math.max(0, 18 * (this.hp / max));
+    this.hpFill.fillColor = poisoned ? 0x7ad04a : 0xe8503f;
   }
 
   /** 播放出招动画，持续期间锁定朝向；自动瞄准的术传入目标方向，身体转向目标出招 */

@@ -239,6 +239,19 @@ function pill(): PC {
   return p;
 }
 
+function antidote(): PC {
+  const p = new PC(9, 11);
+  // 青瓷小瓶，红布塞
+  p.rect(3, 1, 3, 2, 0xc0392b);
+  p.rect(3, 3, 3, 2, 0x5fa88a);
+  p.ellipse(4.5, 7, 3.6, 3, 0x6fc8a0);
+  p.ellipse(5.2, 7.6, 2, 1.8, 0x4a9a7a);
+  p.set(3, 6, 0xd8fff0);
+  p.outline(OUTLINE);
+  p.under(4.5, 10, 3.5, 1, 0x000000, 70);
+  return p;
+}
+
 function ring(): PC {
   const p = new PC(64, 64);
   for (let y = 0; y < 64; y++)
@@ -260,6 +273,14 @@ function eLeaf(): PC {
   p.ellipse(4.5, 4.5, 3.5, 3.5, 0x8fd04a);
   p.circle(4.5, 4.5, 1.8, 0xe8ff9a);
   p.outline(0x2a4a12);
+  return p;
+}
+
+function ePoison(): PC {
+  const p = new PC(9, 9);
+  p.circle(4.5, 4.5, 3.4, 0x7ac83a);
+  p.circle(3.8, 3.8, 1.5, 0xd8ff8a);
+  p.outline(0x2a3a12);
   return p;
 }
 
@@ -460,6 +481,8 @@ export function buildFx(scene: Phaser.Scene) {
   single(scene, 'fx_disc', disc());
   single(scene, 'ep_leaf', eLeaf());
   single(scene, 'ep_wind', eWind());
+  single(scene, 'ep_poison', ePoison());
+  single(scene, 'antidote', antidote());
 
   single(scene, 'ground_1', ground(11, [0x5e5338, 0x665b3d, 0x6e6443, 0x76693f], [0x857a52, 0x4f4630, 0x8a8a6a], [0x8a8a4a, 0x9a9450]));
   single(scene, 'ground_2', ground(23, [0x2c4430, 0x314c34, 0x365237, 0x3c5a3a], [0x4f6e3e, 0x223424, 0x6a8a4a], [0x4f8a42, 0x6aa04a, 0x9db35a]));

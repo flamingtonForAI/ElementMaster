@@ -46,7 +46,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 2, name: '竹林', duration: 480,
     terrain: T({ earth: 0.45, water: 0.35, wood: 0.2 }),
-    enemies: [{ id: 'tengguai', w: 7 }, { id: 'shiyong', w: 3 }],
+    enemies: [{ id: 'tengguai', w: 4 }, { id: 'zhushe', w: 3 }, { id: 'shiyong', w: 2 }, { id: 'zhangchan', w: 1 }],
     spawn: [[0, 1.0, 40], [90, 2.0, 100], [180, 3.2, 160], [300, 4.6, 240], [400, 6.0, 320], [420, 3.5, 320]],
     hpMult: 1.3, boss: 'shuyao', bossName: '千年树妖', bgm: 'level2',
     ground: 'ground_2',

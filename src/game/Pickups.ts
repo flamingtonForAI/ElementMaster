@@ -19,6 +19,7 @@ export class PickupManager {
   private pool: Gem[] = [];
   private chests: Phaser.GameObjects.Image[] = [];
   private pills: Phaser.GameObjects.Image[] = [];
+  private antidotes: Phaser.GameObjects.Image[] = [];
 
   constructor(private g: GameScene) {}
 
@@ -61,6 +62,13 @@ export class PickupManager {
   /** 回气丹：拾取回复 15% 生命 */
   pill(x: number, y: number) {
     this.pills.push(this.g.add.image(x, y, 'pill').setOrigin(0.5, 0.9).setDepth(y));
+  }
+
+  /** 解毒药：拾取清除中毒并短暂免疫 */
+  antidote(x: number, y: number) {
+    const c = this.g.add.image(x, y, 'antidote').setOrigin(0.5, 0.9).setDepth(y);
+    this.g.tweens.add({ targets: c, scale: 1.15, yoyo: true, repeat: -1, duration: 400, ease: 'Sine.inOut' });
+    this.antidotes.push(c);
   }
 
   /** 吸取全部经验球 */
@@ -112,6 +120,16 @@ export class PickupManager {
       } else if (Math.abs(p.x - c.x) > 900 || Math.abs(p.y - c.y) > 700) {
         this.pills.splice(i, 1);
         c.destroy();
+      }
+    }
+    for (let i = this.antidotes.length - 1; i >= 0; i--) {
+      const c = this.antidotes[i];
+      const d = Math.hypot(p.x - c.x, p.y - c.y);
+      if (d < 12 || d > 1000) {
+        this.antidotes.splice(i, 1);
+        g.tweens.killTweensOf(c);
+        c.destroy();
+        if (d < 12) g.curePoison();
       }
     }
     for (let i = this.chests.length - 1; i >= 0; i--) {

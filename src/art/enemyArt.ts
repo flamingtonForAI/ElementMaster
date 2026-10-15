@@ -157,6 +157,55 @@ function tiejia(f: number): PC {
   return p;
 }
 
+// 竹叶青（木）：盘身昂首的青蛇
+function zhushe(f: number): PC {
+  const p = new PC(24, 24);
+  const B = 0x5fc04a, S = 0x3a8a34, H = 0xb4ec7a, EY = 0xffe04a, TG = 0xe8403a;
+  const w = f === 1 ? 1 : -1;
+  // 盘起的身体
+  p.strand([[4, 20], [8, 19 + w], [12, 20], [16, 19 - w], [18, 17]], S, 3);
+  p.strand([[5, 19], [9, 18 + w], [13, 19], [16, 18 - w]], B, 2);
+  // 昂起的脖子和头
+  p.strand([[18, 17], [17, 13], [16, 10]], B, 3);
+  p.ellipse(18, 8, 3.5, 2.5, B);
+  p.span(7, 16, 20, H);
+  p.set(19, 7, EY);
+  // 信子
+  if (f === 1) {
+    p.set(22, 9, TG);
+    p.set(23, 8, TG);
+  } else p.set(22, 9, TG);
+  finish(p, 'wood', 12, 22, 7, 2);
+  return p;
+}
+
+// 瘴蟾（土）：背上鼓着毒囊的蟾蜍
+function zhangchan(f: number): PC {
+  const p = new PC(24, 24);
+  const B = 0xa8863e, S = 0x7a5e2a, H = 0xd0b060, PO = 0x9ad04a, PH = 0xd8ff8a, EY = 0xff5a3a, M = 0x2a1a12;
+  const puff = f === 1 ? 0.6 : 0;
+  // 后腿
+  p.ellipse(7, 19, 3.5, 2.2, S);
+  p.ellipse(17, 19, 3.5, 2.2, S);
+  // 身体
+  p.ellipse(12, 15, 7, 5, B);
+  p.ellipse(12, 17, 5.5, 2.5, H);
+  // 背上的毒囊
+  p.circle(9, 11, 2 + puff, PO);
+  p.circle(14, 10, 2.4 + puff, PO);
+  p.set(13, 9, PH);
+  p.set(8, 10, PH);
+  // 眼睛和嘴
+  p.circle(17, 10, 1.6, B);
+  p.set(17, 10, EY);
+  p.span(15, 16, 18, M);
+  // 前脚
+  p.rect(15, 19, 2, 2, S);
+  p.rect(9, 19, 2, 2, S);
+  finish(p, 'earth', 12, 22, 7, 2);
+  return p;
+}
+
 // 狼妖（金，Boss）：银白巨狼，四足奔跑
 function langyao(f: number): PC {
   const p = new PC(56, 48);
@@ -242,6 +291,8 @@ export function buildEnemies(scene: Phaser.Scene) {
   two('en_shuigui', shuigui, 4);
   two('en_huoya', huoya, 8);
   two('en_tiejia', tiejia, 5);
+  two('en_zhushe', zhushe, 6);
+  two('en_zhangchan', zhangchan, 3);
   addSheet(scene, 'boss_langyao', [0, 1, 2, 3].map(langyao));
   addAnim(scene, 'boss_langyao_move', 'boss_langyao', [0, 1, 2, 3], 8);
   two('boss_shuyao', shuyao, 2);
