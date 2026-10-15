@@ -44,15 +44,15 @@ export interface CharacterDef {
 
 export const CHARACTERS: CharacterDef[] = [
   {
-    id: 'xiao', name: '萧寒锋', title: '剑客', el: 'metal', role: '近战，高伤高甲', hp: 120, speed: 72, armor: 2,
+    id: 'xiao', name: '萧寒锋', title: '剑客', el: 'metal', role: '近战，高伤中甲', hp: 120, speed: 72, armor: 1,
     startSkill: 'slash', lingen: 3, meleeBonus: 0.2, meleeRange: 80,
     growth: [{ every: 5, stat: 'crit', v: 0.01 }, { every: 10, stat: 'armor', v: 1 }],
     bio: '北地剑庐弃徒，一身白衣，剑意属金。',
-    trait: '近身伤害 +20%，护甲 +2。成长：每 5 级暴击 +1%，每 10 级护甲 +1。',
+    trait: '近身伤害 +20%，护甲 +1。成长：每 5 级暴击 +1%，每 10 级护甲 +1。',
     available: true,
   },
   {
-    id: 'zhu', name: '朱砂', title: '符师', el: 'fire', role: '法师，范围爆发', hp: 90, speed: 70, armor: 0,
+    id: 'zhu', name: '朱砂', title: '符师', el: 'fire', role: '法师，范围爆发，低甲', hp: 90, speed: 70, armor: 0,
     startSkill: 'talisman', lingen: 3, area: 0.15, cdr: 0.1, meleeBonus: 0, meleeRange: 0,
     growth: [{ every: 5, stat: 'area', v: 0.02 }],
     bio: '龙虎山出走的女冠，以朱砂画符，符火不灭。',
