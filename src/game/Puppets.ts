@@ -64,8 +64,10 @@ export class PuppetManager {
   private walls: Wall[] = [];
   private tmp: Enemy[] = [];
   private shellVersion = -1;
-  /** 下一尊可以捏出来的时间：每捏一尊、每碎一尊都重新等一个冷却 */
-  private readyAt = 0;
+  /** 每碎一尊记一笔，各自等一个冷却后那个位置才能重新捏；giant 标记碎的是不是巨傀 */
+  private pending: { at: number; giant: boolean }[] = [];
+  /** 巨傀模式开启时把小傀儡合成巨傀，只合一次 */
+  private merged = false;
   private cd = 0;
 
   constructor(private g: GameScene) {}
@@ -88,23 +90,26 @@ export class PuppetManager {
 
   /**
    * 石傀儡的术每 0.2 秒判定一次（总是返回 false，让技能计时器不再另算冷却）：
-   * 缺几尊就等 readyAt 补一尊；巨傀模式刚开启时把小傀儡合成巨傀
+   * 空位（升级多出来的、碎掉后冷却已过的）每次判定补一尊；巨傀模式刚开启时把小傀儡合成巨傀
    */
   summon(cd: number): boolean {
     if (!this.lv) return false;
+    const now = this.g.now;
     this.cd = cd;
-    if (this.giantMode && !this.list.some((p) => p.giant)) {
-      const small = this.list.filter((p) => !p.giant);
-      for (const p of small) this.remove(p, false);
+    if (this.giantMode && !this.merged) {
+      this.merged = true;
+      for (const p of this.list.filter((p) => !p.giant)) this.remove(p, false);
+      this.pending = [];
       this.add(true);
       this.g.fx.ring(this.g.player.x, this.g.player.y - 8, 50, EL_INFO.earth.color, 0.5);
       this.g.cameras.main.shake(150, 0.004);
-      this.readyAt = this.g.now + 1;
       return false;
     }
-    if (this.list.length >= this.wanted() || this.g.now < this.readyAt) return false;
-    this.add(false);
-    this.readyAt = this.g.now + cd;
+    this.pending = this.pending.filter((w) => w.at > now);
+    if (this.list.length + this.pending.length >= this.wanted()) return false;
+    // 巨傀模式下缺巨傀（而且碎掉的巨傀不在冷却里）就先补巨傀
+    const giant = this.giantMode && !this.list.some((p) => p.giant) && !this.pending.some((w) => w.giant);
+    this.add(giant);
     return false;
   }
 
@@ -177,7 +182,7 @@ export class PuppetManager {
     this.list.splice(this.list.indexOf(p), 1);
     this.shellVersion = -1;
     if (!broken) return;
-    this.readyAt = Math.max(this.readyAt, g.now + this.cd);
+    this.pending.push({ at: g.now + this.cd, giant: p.giant });
     // 碎石爆炸：周围的敌人挨一下并被定身（Boss 改为迟缓）
     const r = (p.giant ? SHATTER_GIANT : SHATTER) * g.pstats.area;
     const dmg = SKILLS.puppet.stats(Math.max(1, this.lv)).dmg * g.pstats.puppetDmg * (p.giant ? 2 : 1);
