@@ -28,6 +28,8 @@ export class Enemy {
   boss = false;
   kbx = 0;
   kby = 0;
+  /** 刚撞过岩壁，这之前都顺着距离场绕行 */
+  navUntil = 0;
   slowUntil = 0;
   slowF = 1;
   stunUntil = 0;
@@ -123,6 +125,7 @@ export class EnemyManager {
     e.timer3 = 3;
     e.lift = 0;
     e.tint = -1;
+    e.navUntil = 0;
     e.sprite.setTexture(def.tex, 0).setVisible(true).setActive(true).setScale(e.elite ? 1.5 : 1).setAlpha(1).clearTint();
     e.sprite.play(def.tex + '_move');
     if (e.elite || e.boss) {
@@ -152,8 +155,15 @@ export class EnemyManager {
       const dx = (pp ? pp.x : p.x) - e.x;
       const dy = (pp ? pp.y : p.y) - e.y;
       const dist = pp ? Math.hypot(dx, dy) || 1 : pdist;
-      const nx = dx / dist;
-      const ny = dy / dist;
+      let nx = dx / dist;
+      let ny = dy / dist;
+      // 被岩壁挡住时顺着玩家的距离场绕到缺口；追傀儡时隔着墙也按这个走（傀儡总在本体附近）
+      const nav = !e.boss && !this.underground(e) ? g.world.nav : null;
+      if (nav) {
+        const blocked = pp ? !nav.clear(e.x, e.y, pp.x, pp.y) : false;
+        const st = !pp || blocked ? nav.steer(e.x, e.y, nx, ny, blocked || now < e.navUntil) : null;
+        if (st) [nx, ny] = st;
+      }
       const stunned = now < e.stunUntil;
       const slow = now < e.slowUntil ? e.slowF : 1;
       let vx = 0;
@@ -206,8 +216,9 @@ export class EnemyManager {
       e.x += vx * dt;
       e.y += vy * dt;
       // 岩壁挡住普通敌人：推出去，再沿岩壁切线绕行；Boss 和钻地中的穿山甲不受影响
-      const solid = !e.boss && !this.underground(e);
-      if (solid ? g.world.push(e, e.radius) : g.world.clamp(e, e.radius)) {
+      const hard = !e.boss && !this.underground(e);
+      if (hard ? g.world.push(e, e.radius) : g.world.clamp(e, e.radius)) {
+        if (hard) e.navUntil = now + 0.8;
         const tx = -g.world.hitNy;
         const ty = g.world.hitNx;
         const side = tx * nx + ty * ny >= 0 ? 1 : -1;
@@ -583,7 +594,8 @@ export class EnemyManager {
     return out;
   }
 
-  nearest(x: number, y: number, maxR: number, exclude?: Set<number>): Enemy | null {
+  /** ok：额外的筛选条件，只在距离更近时才调用 */
+  nearest(x: number, y: number, maxR: number, exclude?: Set<number>, ok?: (e: Enemy) => boolean): Enemy | null {
     let best: Enemy | null = null;
     let bd = maxR * maxR;
     for (const e of this.list) {
@@ -591,7 +603,7 @@ export class EnemyManager {
       const dx = e.x - x;
       const dy = e.y - y;
       const d = dx * dx + dy * dy;
-      if (d < bd) {
+      if (d < bd && (!ok || ok(e))) {
         bd = d;
         best = e;
       }

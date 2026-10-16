@@ -297,3 +297,36 @@ test('三关山脊从出生点基本全图连通，第 1 关最稀、第 3 关�
   assert.ok(ratio[1] < ratio[2] && ratio[2] < ratio[3], `山脊密度应逐关上升：${JSON.stringify(ratio)}`);
   assert.ok(woodland(123, 456, 1) >= 0 && woodland(123, 456, 1) <= 1);
 });
+
+const { NavGrid } = await import('../src/game/nav.ts');
+
+test('寻路距离场能带着被岩壁挡住的怪绕到缺口', () => {
+  const nav = new NavGrid(800);
+  // 横着一道墙，只在右端 x>200 留缺口
+  const rocks = [];
+  for (let x = -400; x <= 200; x += 14) nav.addSolid(x, 0, 9), rocks.push(x);
+  const px = 0;
+  const py = 150;
+  nav.update(px, py);
+  let x = -50;
+  let y = -150;
+  let hx = 0;
+  let hy = 1;
+  // 直线被挡，必须给出绕行方向
+  assert.ok(nav.steer(x, y, hx, hy));
+  for (let i = 0; i < 400 && Math.hypot(px - x, py - y) > 10; i++) {
+    const d = Math.hypot(px - x, py - y);
+    hx = (px - x) / d;
+    hy = (py - y) / d;
+    const st = nav.steer(x, y, hx, hy) ?? [hx, hy];
+    x += st[0] * 6;
+    y += st[1] * 6;
+    // 身体半径 6，不能撞进石头
+    assert.ok(rocks.every((rx) => Math.hypot(x - rx, y) >= 15), `撞上了岩石 (${x.toFixed(0)}, ${y.toFixed(0)})`);
+  }
+  assert.ok(Math.hypot(px - x, py - y) <= 10, `没走到玩家身边，停在 (${x.toFixed(0)}, ${y.toFixed(0)})`);
+  // 空地上直线走得通时不干预
+  assert.equal(nav.steer(300, 300, 0, 1), null);
+  assert.ok(!nav.clear(0, -100, 0, 100));
+  assert.ok(nav.clear(300, -100, 300, 100));
+});

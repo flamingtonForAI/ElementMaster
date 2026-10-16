@@ -5,6 +5,7 @@ import type { LevelDef } from '../config/levels';
 import { POI_CLEAR_R } from '../config/map';
 import { VIEW_W, VIEW_H } from '../config/view';
 import { woodland, isRidge } from './terrain';
+import { NavGrid } from './nav';
 
 const CHUNK = 256;
 
@@ -61,11 +62,15 @@ export class World {
   private tint: number;
   /** 地图半边长，可走范围是 [-half, half] */
   readonly half: number;
+  /** 绕岩壁的距离场，没有山脊的关卡为 null */
+  readonly nav: NavGrid | null;
+  private navAcc = Infinity;
 
   /** reserved：兴趣点位置，周围不放装饰和岩壁 */
   constructor(private scene: Phaser.Scene, private level: LevelDef, private reserved: { x: number; y: number }[] = []) {
     this.tint = getTodPreset().worldTint;
     this.half = level.size / 2;
+    this.nav = level.ridges ? new NavGrid(level.size) : null;
     this.ground = scene.add.tileSprite(0, 0, VIEW_W, VIEW_H, level.ground).setOrigin(0).setScrollFactor(0).setDepth(-1e7);
     if (this.tint !== 0xffffff) this.ground.setTint?.(this.tint);
     // 地图外压暗
@@ -153,6 +158,15 @@ export class World {
   private nearReserved(x: number, y: number, r: number): boolean {
     const rr = (POI_CLEAR_R + r) ** 2;
     return this.reserved.some((p) => (p.x - x) ** 2 + (p.y - y) ** 2 < rr);
+  }
+
+  /** 每 0.2 秒以 (x, y) 为源点重算距离场 */
+  updateNav(x: number, y: number, dt: number) {
+    if (!this.nav) return;
+    this.navAcc += dt;
+    if (this.navAcc < 0.2) return;
+    this.navAcc = 0;
+    this.nav.update(x, y);
   }
 
   update(dt: number) {
@@ -313,6 +327,7 @@ export class World {
         const r = def.radius * (0.85 + R() * 0.3);
         // 碰撞圆心在石头底部偏上，和贴图的落脚点对齐
         solids.push({ x: wx, y: wy - 3, r });
+        this.nav?.addSolid(wx, wy - 3, r);
         const img = this.scene.add.image(Math.round(wx), Math.round(wy + r * 0.45), def.tex, Math.floor(R() * frames)).setOrigin(0.5, 0.92).setDepth(wy + r * 0.45);
         if (R() < 0.5) img.setFlipX(true);
         if (this.tint !== 0xffffff) img.setTint?.(this.tint);

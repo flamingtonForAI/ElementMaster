@@ -220,6 +220,7 @@ export class GameScene extends Phaser.Scene {
     this.player.update(dt);
     this.status.update(dt);
     if (!this.over) this.spawnUpdate(dt);
+    this.world.updateNav(this.player.x, this.player.y, dt);
     this.enemies.update(dt);
     if (this.player.alive) this.skills.update(dt);
     this.puppets.update(dt);

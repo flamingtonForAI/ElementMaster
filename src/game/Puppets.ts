@@ -21,6 +21,8 @@ export class Puppet {
   /** 出招中（举拳到收势）站定不走 */
   busyUntil = 0;
   flashUntil = 0;
+  /** 刚撞过岩壁，这之前都顺着距离场绕回本体 */
+  navUntil = 0;
   target: Enemy | null = null;
   constructor(
     readonly sprite: Phaser.GameObjects.Sprite,
@@ -210,8 +212,11 @@ export class PuppetManager {
         p.y = pl.y + 10;
       }
       const t = p.target;
-      if (!t?.alive || claimed.has(t.id) || Math.hypot(t.x - pl.x, t.y - pl.y) > 180) {
-        p.target = g.enemies.nearest(p.x, p.y, 130, claimed) ?? g.enemies.nearest(p.x, p.y, 130);
+      // 隔着岩壁的敌人不追，免得贴在墙上走不过去
+      const nav = g.world.nav;
+      const reachable = nav ? (e: Enemy) => nav.clear(p.x, p.y, e.x, e.y) : undefined;
+      if (!t?.alive || claimed.has(t.id) || Math.hypot(t.x - pl.x, t.y - pl.y) > 180 || (reachable && !reachable(t))) {
+        p.target = g.enemies.nearest(p.x, p.y, 130, claimed, reachable) ?? g.enemies.nearest(p.x, p.y, 130, undefined, reachable);
       }
       if (p.target) claimed.add(p.target.id);
       // 互相推开
@@ -246,12 +251,17 @@ export class PuppetManager {
       const dy = ty - p.y;
       const d = Math.hypot(dx, dy) || 1;
       if (d > reach + 1 && now >= p.busyUntil) {
-        const v = Math.min(sp * (p.target ? 1 : Math.min(1.6, d / 20)), d / dt);
-        p.x += (dx / d) * v * dt;
-        p.y += (dy / d) * v * dt;
+        let mx = dx / d;
+        let my = dy / d;
+        // 回本体身边的路被岩壁挡住时，顺着玩家的距离场绕过去
+        const st = !p.target && nav ? nav.steer(p.x, p.y, mx, my, now < p.navUntil) : null;
+        if (st) [mx, my] = st;
+        const v = Math.min(sp * (p.target ? 1 : Math.max(st ? 1 : 0, Math.min(1.6, d / 20))), d / dt);
+        p.x += mx * v * dt;
+        p.y += my * v * dt;
       }
-      // 卡在岩壁后面时靠上面的瞬移回身边兜底
-      g.world.push(p, p.radius);
+      // 实在绕不出来时靠上面的瞬移回身边兜底
+      if (g.world.push(p, p.radius)) p.navUntil = now + 0.8;
       if (Math.abs(dx) > 1 && now >= p.busyUntil) p.sprite.setFlipX(dx < 0);
 
       const s = p.sprite;
