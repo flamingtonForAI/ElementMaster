@@ -15,18 +15,45 @@ function woodlandMask(wx: number, wy: number, seed: number): number {
   return (v1 * 0.65 + v2 * 0.35 + 1) * 0.5; // 归一化到 0..1
 }
 
+/** 山脊走向：比林地遮罩频率略高，等高线间距约 300px，围出窄道 */
+function ridgeField(wx: number, wy: number, seed: number): number {
+  const s = 0.0052;
+  const v1 = Math.sin(wx * s + seed * 2.1) * Math.cos(wy * s * 1.15 - seed * 0.7);
+  const v2 = Math.sin((wx * 0.6 - wy) * s * 1.7 + seed * 1.3);
+  return (v1 * 0.7 + v2 * 0.3 + 1) * 0.5;
+}
+
+/** 山道缺口：沿山脊每隔一段断开，保证不会被围死 */
+function ridgeGap(wx: number, wy: number, seed: number): boolean {
+  const s = 0.021;
+  return Math.sin(wx * s + seed) + Math.sin(wy * s * 1.3 - seed * 0.5) < -0.55;
+}
+
+interface Solid {
+  x: number;
+  y: number;
+  r: number;
+}
+
+/** 岩壁的最大半径，查询时据此扩大范围 */
+const SOLID_MAX = 16;
+
 function isLargeDecor(tex: string): boolean {
-  return tex === 'dc_deadtree' || tex === 'dc_bamboo' || tex === 'dc_tablet';
+  return tex === 'dc_deadtree' || tex === 'dc_bamboo' || tex === 'dc_tablet' || tex === 'dc_pine';
 }
 
 function isSmallDecor(tex: string): boolean {
   return tex === 'dc_tuft' || tex === 'dc_shoot' || tex === 'dc_fern';
 }
 
-/** 无限滚动地面 + 按林地遮罩成簇生成的装饰物 */
+/** 无限滚动地面 + 按林地遮罩成簇生成的装饰物 + 有碰撞的岩壁 */
 export class World {
   private ground: Phaser.GameObjects.TileSprite;
   private chunks = new Map<string, Phaser.GameObjects.Image[]>();
+  private solids = new Map<string, Solid[]>();
+  /** 最近一次 push 碰到的岩石指向对象的法线 */
+  hitNx = 0;
+  hitNy = 0;
   private acc = 1;
   private tint: number;
 
@@ -51,8 +78,41 @@ export class World {
       if (Math.abs(x - cx) > 3 || Math.abs(y - cy) > 3) {
         for (const s of list) s.destroy();
         this.chunks.delete(k);
+        this.solids.delete(k);
       }
     }
+  }
+
+  /** 把半径 r 的圆形对象推出岩壁，碰到返回 true，法线记在 hitNx/hitNy */
+  push(o: { x: number; y: number }, r: number): boolean {
+    if (!this.level.ridges) return false;
+    const reach = r + SOLID_MAX;
+    const x0 = Math.floor((o.x - reach) / CHUNK);
+    const x1 = Math.floor((o.x + reach) / CHUNK);
+    const y0 = Math.floor((o.y - reach) / CHUNK);
+    const y1 = Math.floor((o.y + reach) / CHUNK);
+    let hit = false;
+    for (let cy = y0; cy <= y1; cy++)
+      for (let cx = x0; cx <= x1; cx++) {
+        const list = this.solids.get(`${cx},${cy}`);
+        if (!list) continue;
+        for (const s of list) {
+          const dx = o.x - s.x;
+          const dy = o.y - s.y;
+          const rr = s.r + r;
+          const d2 = dx * dx + dy * dy;
+          if (d2 >= rr * rr) continue;
+          const d = Math.sqrt(d2) || 0.001;
+          const nx = d2 ? dx / d : 1;
+          const ny = d2 ? dy / d : 0;
+          o.x = s.x + nx * rr;
+          o.y = s.y + ny * rr;
+          this.hitNx = nx;
+          this.hitNy = ny;
+          hit = true;
+        }
+      }
+    return hit;
   }
 
   private pickDecor(R: () => number, filter?: (tex: string) => boolean) {
@@ -109,6 +169,35 @@ export class World {
       }
     }
 
+    if (this.level.ridges) this.buildRidges(x, y, R, list);
     this.chunks.set(k, list);
+  }
+
+  /** 在区块内按 20px 网格采样，落在等高线带上且不是缺口的位置放一块巨石 */
+  private buildRidges(x: number, y: number, R: () => number, list: Phaser.GameObjects.Image[]) {
+    const def = this.level.ridges!;
+    const seed = this.level.id;
+    const solids: Solid[] = [];
+    const tex = this.scene.textures.get(def.tex);
+    const frames = Math.max(1, tex.frameTotal - 1);
+    const STEP = 20;
+    for (let gy = 0; gy < CHUNK; gy += STEP)
+      for (let gx = 0; gx < CHUNK; gx += STEP) {
+        const wx = x * CHUNK + gx + (R() - 0.5) * 8;
+        const wy = y * CHUNK + gy + (R() - 0.5) * 8;
+        // 出生点附近留一片空地
+        if (Math.hypot(wx, wy) < 170) continue;
+        const f = ridgeField(wx, wy, seed);
+        if (!def.bands.some((b) => Math.abs(f - b) < 0.024)) continue;
+        if (ridgeGap(wx, wy, seed)) continue;
+        const r = def.radius * (0.85 + R() * 0.3);
+        // 碰撞圆心在石头底部偏上，和贴图的落脚点对齐
+        solids.push({ x: wx, y: wy - 3, r });
+        const img = this.scene.add.image(Math.round(wx), Math.round(wy + r * 0.45), def.tex, Math.floor(R() * frames)).setOrigin(0.5, 0.92).setDepth(wy + r * 0.45);
+        if (R() < 0.5) img.setFlipX(true);
+        if (this.tint !== 0xffffff) img.setTint?.(this.tint);
+        list.push(img);
+      }
+    this.solids.set(`${x},${y}`, solids);
   }
 }

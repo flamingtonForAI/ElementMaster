@@ -74,6 +74,7 @@ const { buildFx } = await import('../src/art/fxArt.ts');
 const { buildEnemies } = await import('../src/art/enemyArt.ts');
 const { OUTLINE, OUTLINE_LIT, rng } = await import('../src/art/painter.ts');
 const { LEVELS } = await import('../src/config/levels.ts');
+const { ENEMIES } = await import('../src/config/enemies.ts');
 
 // ---------- OKLab 色彩空间转换 ----------
 
@@ -326,7 +327,7 @@ export function runReadabilityCheck({ writeImages = true } = {}) {
 
     // 检查装饰物与三种宝石颜色的冲突率（ΔE < 0.10 占比 < 1%）
     const decorChecks = [];
-    for (const d of level.decor) {
+    for (const d of level.ridges ? [...level.decor, { tex: level.ridges.tex }] : level.decor) {
       const dFrames = store.get(d.tex).frames;
       const dLabs = dFrames.flatMap(extractBodyLabs);
       let clash = 0;
@@ -339,8 +340,8 @@ export function runReadabilityCheck({ writeImages = true } = {}) {
 
     // 检查敌人、Boss 与三种宝石的可读性
     const targets = [
-      ...level.enemies.map((e) => `en_${e.id}`),
-      `boss_${level.boss}`,
+      ...level.enemies.map((e) => ENEMIES[e.id].tex),
+      ENEMIES[level.boss].tex,
       'gem_s',
       'gem_m',
       'gem_l',

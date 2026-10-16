@@ -1,7 +1,7 @@
 import type { El } from './elements';
 import type { Inflict } from './status';
 
-export type Behavior = 'walk' | 'regen' | 'explode' | 'charge' | 'spit' | 'boss_wolf' | 'boss_tree';
+export type Behavior = 'walk' | 'regen' | 'explode' | 'charge' | 'spit' | 'burrow' | 'boss_wolf' | 'boss_tree' | 'boss_ape';
 
 export interface EnemyDef {
   id: string;
@@ -23,6 +23,8 @@ export interface EnemyDef {
   crit?: number;
   /** 暴击倍率，不填用 ENEMY_CRIT_DMG */
   critDmg?: number;
+  /** spit 行为发射的弹丸贴图，不填为毒囊 */
+  shot?: string;
 }
 
 export const ENEMIES: Record<string, EnemyDef> = {
@@ -33,6 +35,9 @@ export const ENEMIES: Record<string, EnemyDef> = {
   tiejia: { id: 'tiejia', name: '铁甲兵', el: 'metal', tex: 'en_tiejia', hp: 26, speed: 30, dmg: 6, armor: 3, radius: 8, xp: 2, behavior: 'charge', inflict: { kind: 'flaw', chance: 0.4 } },
   zhushe: { id: 'zhushe', name: '竹叶青', el: 'wood', tex: 'en_zhushe', hp: 14, speed: 58, dmg: 5, armor: 0, radius: 6, xp: 1, behavior: 'charge', inflict: { kind: 'poison', chance: 0.3, dps: 2, dur: 4 } },
   zhangchan: { id: 'zhangchan', name: '瘴蟾', el: 'earth', tex: 'en_zhangchan', hp: 24, speed: 30, dmg: 4, armor: 1, radius: 7, xp: 2, behavior: 'spit', inflict: { kind: 'poison', chance: 0.4, dps: 2, dur: 4 } },
+  shanxiao: { id: 'shanxiao', name: '山魈', el: 'earth', tex: 'en_shanxiao', hp: 22, speed: 40, dmg: 5, armor: 0, radius: 7, xp: 2, behavior: 'spit', shot: 'ep_rock', inflict: { kind: 'stun', chance: 0.35 } },
+  chuanshan: { id: 'chuanshan', name: '穿山甲', el: 'earth', tex: 'en_chuanshan', hp: 34, speed: 30, dmg: 7, armor: 2, radius: 7, xp: 2, behavior: 'burrow', inflict: { kind: 'stun', chance: 0.4 } },
   langyao: { id: 'langyao', name: '狼妖', el: 'metal', tex: 'boss_langyao', hp: 2600, speed: 46, dmg: 16, armor: 2, radius: 18, xp: 100, behavior: 'boss_wolf', boss: true, inflict: { kind: 'flaw', chance: 0.5 } },
   shuyao: { id: 'shuyao', name: '千年树妖', el: 'wood', tex: 'boss_shuyao', hp: 5400, speed: 30, dmg: 18, armor: 2, radius: 24, xp: 150, behavior: 'boss_tree', boss: true, regen: 4, inflict: { kind: 'poison', chance: 0.65, dps: 4, dur: 5 } },
+  shanxiaowang: { id: 'shanxiaowang', name: '山魈王', el: 'earth', tex: 'boss_shanxiao', hp: 5000, speed: 40, dmg: 18, armor: 3, radius: 20, xp: 150, behavior: 'boss_ape', boss: true, inflict: { kind: 'stun', chance: 0.5 } },
 };

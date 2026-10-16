@@ -292,6 +292,38 @@ function eWind(): PC {
   return p;
 }
 
+function eRock(): PC {
+  const p = new PC(9, 9);
+  p.circle(4.5, 4.8, 3.4, 0x9a8a72);
+  p.ellipse(3.8, 3.8, 1.8, 1.2, 0xd4c4a0);
+  p.set(6, 6, 0x5e4e3c);
+  p.outline(0x2c2238);
+  return p;
+}
+
+function eBoulder(): PC {
+  const p = new PC(13, 13);
+  p.circle(6.5, 6.8, 5.2, 0x9a8a72);
+  p.ellipse(8, 8.5, 3, 2.4, 0x6e5e4a);
+  p.ellipse(5, 4.8, 2.6, 1.8, 0xd4c4a0);
+  p.set(4, 4, 0xf0e4c4);
+  p.outline(0x2c2238);
+  return p;
+}
+
+/** 从天而降的落石（落地前的那一块） */
+function fallingBoulder(): PC {
+  const p = new PC(18, 16);
+  const D = 0x3a3446, S = 0x5a5462, M = 0x7e7884, H = 0xa8a2a8, RIM = 0xd8d0c0;
+  p.ellipse(9, 8.5, 7.5, 6.5, S);
+  p.ellipse(10.5, 11, 5.5, 3.5, D);
+  p.ellipse(8, 7, 5.5, 4.2, M);
+  p.ellipse(6.5, 5.5, 3, 2, H);
+  p.span(2, 5, 9, RIM);
+  p.selectiveOutline(0x2c2238, 0x1c1424);
+  return p;
+}
+
 // ---------- 地面与装饰 ----------
 
 function valueNoise(size: number, cells: number, R: () => number) {
@@ -620,6 +652,74 @@ function fern(): PC {
   return p;
 }
 
+/** dc_cliff（3 种变体，第 3 关岩壁，有碰撞）：0 圆顶巨石、1 尖棱崖石、2 叠石；冷紫灰岩体 + 顶上一层暗苔 */
+function cliff(variant = 0): PC {
+  const p = new PC(30, 28);
+  const D = 0x2e2a3a, S = 0x4a4656, M = 0x686474, H = 0x8c8894, RIM = 0xb8b2ae, MO = 0x2e4a3a, MOH = 0x426048;
+  if (variant === 0) {
+    p.ellipse(15, 17, 13, 9.5, S);
+    p.ellipse(17, 21, 10, 5.5, D);
+    p.ellipse(13, 14, 10, 7, M);
+    p.ellipse(11, 11, 6, 4, H);
+    p.span(7, 8, 15, RIM);
+    p.line(18, 12, 21, 20, D);
+    p.ellipse(13, 9, 6, 2, MO);
+    p.span(8, 10, 14, MOH);
+  } else if (variant === 1) {
+    for (let y = 3; y <= 26; y++) {
+      const hw = Math.round(3 + (y - 3) * 0.5);
+      p.span(y, 15 - hw, 14 + hw, M);
+      p.span(y, 14 + Math.round(hw * 0.3), 14 + hw, S);
+      p.set(15 - hw, y, H);
+    }
+    p.line(15, 3, 11, 26, RIM);
+    p.line(16, 8, 20, 25, D);
+    p.span(25, 5, 25, D);
+    p.span(26, 6, 24, D);
+    p.ellipse(9, 22, 3, 1.5, MO);
+  } else {
+    p.ellipse(15, 21, 13, 6, S);
+    p.ellipse(17, 23, 10, 3.5, D);
+    p.ellipse(13, 19, 10, 4.5, M);
+    p.ellipse(15, 11, 8, 6, S);
+    p.ellipse(14, 10, 7, 5, M);
+    p.ellipse(12, 8, 4, 2.5, H);
+    p.span(5, 10, 15, RIM);
+    p.span(16, 7, 22, D);
+    p.ellipse(15, 6, 4, 1.5, MO);
+    p.set(13, 5, MOH);
+  }
+  p.selectiveOutline(0x2c2238, 0x1c1424);
+  p.under(15, 26, 13, 2.2, 0x12222b, 90);
+  return p;
+}
+
+/** dc_pine（2 种变体）：山松，层叠针叶用深松青，避开宝石绿 */
+function pine(variant = 0): PC {
+  const p = new PC(28, 50);
+  const T = 0x5a3e2c, TS = 0x3c2820, TH = 0x86644a;
+  const N0 = 0x16302c, N1 = 0x22443a, N2 = 0x325a46, N3 = 0x4a7050;
+  const lean = variant === 1 ? 1 : 0;
+  p.rect(13, 30, 3, 18, T);
+  p.line(13, 30, 13, 47, TH);
+  p.line(15, 30, 15, 47, TS);
+  p.span(47, 10, 18, TS);
+  const tiers: [number, number][] = variant === 0 ? [[34, 12], [26, 10], [18, 8], [10, 5]] : [[33, 11], [24, 10], [15, 7], [8, 4]];
+  for (const [i, [y, hw]] of tiers.entries()) {
+    const cx = 14 + lean * (3 - i);
+    for (let dy = 0; dy < 8; dy++) {
+      const w = Math.round(hw * (0.35 + dy / 10));
+      p.span(y + dy - 4, cx - w, cx + w, dy < 5 ? N2 : N1);
+      p.span(y + dy - 4, cx + Math.round(w * 0.4), cx + w, dy < 5 ? N1 : N0);
+    }
+    p.span(y - 3, cx - Math.round(hw * 0.4), cx, N3);
+  }
+  p.set(14 + lean * 3, 3, N3);
+  p.selectiveOutline(0x1b3830, 0x10201c);
+  p.under(14, 47, 9, 2, 0x12222b, 85);
+  return p;
+}
+
 export function buildFx(scene: Phaser.Scene) {
   const px = new PC(2, 2);
   px.rect(0, 0, 2, 2, 0xffffff);
@@ -655,6 +755,9 @@ export function buildFx(scene: Phaser.Scene) {
   single(scene, 'ep_leaf', eLeaf());
   single(scene, 'ep_wind', eWind());
   single(scene, 'ep_poison', ePoison());
+  single(scene, 'ep_rock', eRock());
+  single(scene, 'ep_boulder', eBoulder());
+  single(scene, 'fx_boulder', fallingBoulder());
   single(scene, 'antidote', antidote());
 
   // 第 1 关·荒郊古道：保持苍凉低对比度的黄褐荒原基调（微冷褐暗部 -> 暖黄褐，无鲜花干扰拾取物）
@@ -679,6 +782,17 @@ export function buildFx(scene: Phaser.Scene) {
       [0x436e3e, 0x527d44, 0x628c4a],
     ),
   );
+  // 第 3 关·山林：冷灰褐的山地碎石土，略带苔色；岩壁和松树比地面高一档明度
+  single(
+    scene,
+    'ground_3',
+    ground(
+      37,
+      [0x3b3a32, 0x403f35, 0x454438, 0x4a493b, 0x4f4e3e],
+      [0x33322c, 0x5a584a, 0x625f50],
+      [0x4a573a, 0x566442],
+    ),
+  );
   addSheet(scene, 'dc_rock', [0, 1, 2].map(rock));
   addSheet(scene, 'dc_tuft', [0, 1, 2].map(tuft));
   addSheet(scene, 'dc_tablet', [0, 1, 2].map(tablet));
@@ -687,4 +801,6 @@ export function buildFx(scene: Phaser.Scene) {
   single(scene, 'dc_shoot', shoot());
   single(scene, 'dc_mossrock', mossRock());
   single(scene, 'dc_fern', fern());
+  addSheet(scene, 'dc_cliff', [0, 1, 2].map(cliff));
+  addSheet(scene, 'dc_pine', [0, 1].map(pine));
 }

@@ -36,9 +36,13 @@ export interface TrackDef {
  */
 export const BGM_FILES: Record<string, { loopStart: number; loopEnd: number }> = {
   menu: { loopStart: 0.25, loopEnd: 55.101 },
-  level1: { loopStart: 0.25, loopEnd: 41.981 },
+  // 以下由 tools/audio/loop_intro.py 切出：循环起点之前是只播一次的前奏
+  level1: { loopStart: 8.08, loopEnd: 152.08 },
+  level1_danger: { loopStart: 4.08, loopEnd: 160.08 },
   level2: { loopStart: 0.25, loopEnd: 71.336 },
-  boss: { loopStart: 0.25, loopEnd: 76.7 },
+  level3: { loopStart: 4.33, loopEnd: 91.22 },
+  boss: { loopStart: 6.21, loopEnd: 155.01 },
+  boss_rage: { loopStart: 3.56, loopEnd: 168.11 },
 };
 
 const GONG = [0, 2, 4, 7, 9]; // 宫
@@ -84,6 +88,21 @@ export const TRACKS: Record<string, TrackDef> = {
       { inst: 'bell', at: 0.65, vol: 0.22, oct: 12, bars: ['0 . . . . . . .', '. . . . 2 . . .', '-2 . . . . . . .', '. . . . -1 . . .'] },
       { inst: 'taiko', at: 0.78, vol: 0.4, res: 16, bars: ['X . x . X . . x X . x . X x X x'] },
       { inst: 'cymbal', at: 0.85, vol: 0.22, bars: ['X . . . . . . .', '. . . . . . . .'] },
+    ],
+  },
+
+  /** 第 3 关 山林：C 宫调，土对应鼓，大鼓开场就在，琴铺低音，笛子后入 */
+  level3: {
+    bpm: 100, root: 60, mode: GONG,
+    layers: [
+      { inst: 'drone', at: 0, vol: 0.2, oct: -24, bars: ['0 - - - - - - -', '0 - - - - - - -', '-2 - - - - - - -', '-1 - - - - - - -'] },
+      { inst: 'taiko', at: 0, vol: 0.5, bars: ['X . . . X . . .', 'X . . x X . . .'] },
+      { inst: 'qin', at: 0, vol: 0.5, oct: -12, bars: ['0 . 2 . 4 . 2 0', '0 . 2 4 5 . 4 2', '-2 . 0 . 2 . 0 -2', '-1 . 1 . 2 1 0 .'] },
+      { inst: 'block', at: 0.2, vol: 0.24, bars: ['. . x . . . x .'] },
+      { inst: 'dizi', at: 0.45, vol: 0.32, bars: ['4 - 5 - 7 - 5 4', '2 - - - 0 - - -', '4 - 5 - 7 - 9 7', '5 - - - . . . .', '7 - 5 - 4 - 2 -', '4 - 2 - 0 - -2 -', '0 - 2 - 4 5 4 2', '0 - - - - - . .'] },
+      { inst: 'taiko', at: 0.6, vol: 0.42, res: 16, bars: ['X . . x . . x . X . x . . x x .'] },
+      { inst: 'bell', at: 0.7, vol: 0.2, oct: 12, bars: ['0 . . . . . . .', '. . . . . . . .', '-2 . . . . . . .', '. . . . 2 . . .'] },
+      { inst: 'cymbal', at: 0.85, vol: 0.2, bars: ['X . . . . . . .', '. . . . . . . .'] },
     ],
   },
 

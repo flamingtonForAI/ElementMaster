@@ -70,6 +70,7 @@ export class Player {
       this.facing.x = mx;
       this.facing.y = my;
     }
+    g.world.push(this, PLAYER_RADIUS);
 
     const attacking = g.now < this.atkUntil;
     if (!attacking) {

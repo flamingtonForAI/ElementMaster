@@ -14,9 +14,15 @@ export interface LevelDef {
   bossName: string;
   /** BGM 曲名，见 audio/tracks.ts */
   bgm: string;
+  /** 过半后换成的紧张版，没有就一直用 bgm */
+  bgmDanger?: string;
   ground: string;
   decor: { tex: string; w: number }[];
   decorPerChunk: number;
+  /** 岩壁：沿低频噪声的等高线排成山脊，挡住玩家和普通敌人，缺口处留出山道 */
+  ridges?: { tex: string; radius: number; bands: number[] };
+  /** 落石：start 秒后开始，间隔和每次的块数从开局到结束线性插值 */
+  rockfall?: { start: number; every: [number, number]; count: [number, number]; radius: number; warn: number; dmg: number };
   lesson: string;
   available: boolean;
 }
@@ -36,7 +42,7 @@ export const LEVELS: LevelDef[] = [
     terrain: T({ metal: 0.2, wood: 0.2, water: 0.2, fire: 0.2, earth: 0.2 }),
     enemies: [{ id: 'shiyong', w: 2 }, { id: 'tengguai', w: 3 }, { id: 'shuigui', w: 3 }, { id: 'huoya', w: 1 }, { id: 'tiejia', w: 1 }],
     spawn: [[0, 0.8, 30], [60, 1.6, 70], [120, 2.4, 110], [180, 3.4, 160], [240, 4.6, 220], [300, 3.0, 220]],
-    hpMult: 1, boss: 'langyao', bossName: '狼妖', bgm: 'level1',
+    hpMult: 1, boss: 'langyao', bossName: '狼妖', bgm: 'level1', bgmDanger: 'level1_danger',
     ground: 'ground_1',
     decor: [{ tex: 'dc_rock', w: 3 }, { tex: 'dc_tuft', w: 6 }, { tex: 'dc_tablet', w: 1 }, { tex: 'dc_deadtree', w: 1 }],
     decorPerChunk: 7,
@@ -55,14 +61,27 @@ export const LEVELS: LevelDef[] = [
     lesson: '金克木，火借势烧木',
     available: true,
   },
-  // 以下关卡在后续阶段开放，先占位用于选关界面
+  {
+    id: 3, name: '山林', duration: 480,
+    terrain: T({ earth: 0.7, wood: 0.2, metal: 0.1 }),
+    enemies: [{ id: 'shiyong', w: 3 }, { id: 'shanxiao', w: 3 }, { id: 'chuanshan', w: 2 }, { id: 'zhangchan', w: 1 }, { id: 'tengguai', w: 2 }],
+    spawn: [[0, 1.1, 45], [90, 2.2, 110], [180, 3.4, 170], [300, 4.8, 250], [400, 6.2, 330], [420, 3.6, 330]],
+    hpMult: 1.6, boss: 'shanxiaowang', bossName: '山魈王', bgm: 'level3',
+    ground: 'ground_3',
+    decor: [{ tex: 'dc_pine', w: 4 }, { tex: 'dc_mossrock', w: 3 }, { tex: 'dc_rock', w: 2 }, { tex: 'dc_fern', w: 3 }, { tex: 'dc_tuft', w: 3 }],
+    decorPerChunk: 8,
+    ridges: { tex: 'dc_cliff', radius: 11, bands: [0.3, 0.7] },
+    rockfall: { start: 20, every: [7, 3.5], count: [1, 3], radius: 20, warn: 1.1, dmg: 12 },
+    lesson: '顺地气：土生金，金很舒服；山道窄，留意头顶落石',
+    available: true,
+  },
+  // 以下关卡在后续阶段开放，先占位用于选关界面。先轮完单元素（土、火、金、水），第 7 关起混合
   ...([
-    [3, '山林', 480, T({ earth: 0.7, wood: 0.2, metal: 0.1 }), '山魈王', '顺地气：金很舒服'],
     [4, '赤焰谷', 600, T({ fire: 0.6, earth: 0.3, metal: 0.1 }), '毕方', '剑客被火克，需要补水或土'],
-    [5, '大漠', 600, T({ earth: 0.6, metal: 0.3, fire: 0.1 }), '旱魃', '双修：一种元素顾不过来'],
+    [5, '兵冢古战场', 600, T({ metal: 0.6, earth: 0.25, fire: 0.15 }), '刑天', '用火终结复活'],
     [6, '云梦泽', 600, T({ water: 0.7, earth: 0.2, wood: 0.1 }), '相柳', '三个角色都打不顺'],
     [7, '寒江', 720, T({ water: 0.55, metal: 0.35, earth: 0.1 }), '玄冥', '冰面滑行'],
-    [8, '兵冢古战场', 720, T({ metal: 0.6, earth: 0.25, fire: 0.15 }), '刑天', '用火终结复活'],
+    [8, '大漠', 720, T({ earth: 0.6, metal: 0.3, fire: 0.1 }), '旱魃', '双修：一种元素顾不过来'],
     [9, '东海归墟', 720, T({ water: 0.5, fire: 0.3, earth: 0.2 }), '九婴', '答案是土'],
     [10, '昆仑', 900, T({ metal: 0.2, wood: 0.2, water: 0.2, fire: 0.2, earth: 0.2 }), '帝江', '期末考'],
   ] as const).map(([id, name, duration, terrain, bossName, lesson]): LevelDef => ({

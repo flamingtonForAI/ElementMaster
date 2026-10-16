@@ -48,6 +48,13 @@ export class Enemy {
   timer3 = 0;
   dashX = 0;
   dashY = 0;
+  /** 跳跃的起点、落点（山魈王） */
+  sx = 0;
+  sy = 0;
+  tx = 0;
+  ty = 0;
+  /** 离地高度，贴图往上抬，期间不造成接触伤害 */
+  lift = 0;
   tint = -1;
   /** 攻击附带异常的每秒伤害（中毒、灼烧），随时间成长 */
   atkDps = 0;
@@ -109,6 +116,7 @@ export class EnemyManager {
     e.timer = 1 + Math.random() * 2;
     e.timer2 = 6;
     e.timer3 = 3;
+    e.lift = 0;
     e.tint = -1;
     e.sprite.setTexture(def.tex, 0).setVisible(true).setActive(true).setScale(e.elite ? 1.5 : 1).setAlpha(1).clearTint();
     e.sprite.play(def.tex + '_move');
@@ -192,9 +200,20 @@ export class EnemyManager {
 
       e.x += vx * dt;
       e.y += vy * dt;
+      // 岩壁挡住普通敌人：推出去，再沿岩壁切线绕行；Boss 和钻地中的穿山甲不受影响
+      if (!e.boss && !this.underground(e) && g.world.push(e, e.radius)) {
+        const tx = -g.world.hitNy;
+        const ty = g.world.hitNx;
+        const side = tx * nx + ty * ny >= 0 ? 1 : -1;
+        e.x += tx * side * e.speed * slow * dt * 0.8;
+        e.y += ty * side * e.speed * slow * dt * 0.8;
+      }
 
       // 接触伤害
-      if (pp && dist < e.radius + pp.radius && now >= e.contactAt) {
+      const touch = e.lift <= 0 && !this.underground(e);
+      if (!touch) {
+        // 钻地、跳跃中不造成接触伤害
+      } else if (pp && dist < e.radius + pp.radius && now >= e.contactAt) {
         e.contactAt = now + 0.8;
         g.puppets.hurt(pp, e.dmg, e.def.el);
       } else if (p.alive && pdist < e.radius + PLAYER_RADIUS && now >= e.contactAt) {
@@ -204,14 +223,14 @@ export class EnemyManager {
       }
 
       const s = e.sprite;
-      s.setPosition(e.x, e.y);
+      s.setPosition(e.x, e.y - e.lift);
       s.setDepth(e.y);
       if (Math.abs(dx) > 2) s.setFlipX(dx < 0);
       // 着色优先级：受击闪白 > 定身 > 冲锋预警 > 灼烧 > 中毒 > 迟缓 > 破绽
       const tint =
         now < e.flashUntil ? 1
         : stunned ? 2
-        : e.state === 1 && (e.def.behavior === 'charge' || e.boss) ? 4
+        : (e.state === 1 && (e.def.behavior === 'charge' || e.boss)) || (e.state === 2 && e.def.behavior === 'burrow') ? 4
         : burning ? 5
         : poisoned ? 6
         : slow < 1 ? 3
@@ -223,7 +242,7 @@ export class EnemyManager {
         else if (tint === 0) s.clearTint();
         else s.setTint(TINTS[tint]);
       }
-      if (e.glyph) e.glyph.setPosition(Math.round(e.x), Math.round(e.y - s.displayHeight * 0.9)).setDepth(e.y + 1);
+      if (e.glyph) e.glyph.setPosition(Math.round(e.x), Math.round(e.y - e.lift - s.displayHeight * 0.9)).setDepth(e.y + 1);
     }
 
     // 移除死亡的
@@ -278,12 +297,46 @@ export class EnemyManager {
         e.timer -= dt;
         if (e.timer <= 0 && dist < 180) {
           e.timer = 4;
-          g.proj.enemyShot('ep_poison', e.x, e.y - 8, nx * 90, ny * 90, e.dmg, e.def.el, this.hurtOf(e));
+          g.proj.enemyShot(e.def.shot ?? 'ep_poison', e.x, e.y - 8, nx * 90, ny * 90, e.dmg, e.def.el, this.hurtOf(e));
           audio.sfx('bossShot', { rate: 1.6, vol: 0.4 });
         }
         if (dist > 90) return [nx * sp, ny * sp];
         return [-ny * sp * 0.5, nx * sp * 0.5];
       }
+      case 'burrow': {
+        // 0 走路 → 1 钻地追到脚下 → 2 冒头预警，结束时破土而出
+        e.timer -= dt;
+        if (e.state === 0) {
+          if (e.timer <= 0 && dist < 220 && dist > 50) {
+            e.state = 1;
+            e.timer = 2.5;
+            e.sprite.play(e.def.tex + '_dig');
+          }
+          return [nx * sp, ny * sp];
+        }
+        if (e.state === 1) {
+          if (e.timer <= 0 || dist < 12) {
+            e.state = 2;
+            e.timer = 0.55;
+            g.fx.disc(e.x, e.y, 22, 0xdaa53e, 0.3, 0.55);
+            g.fx.crack(e.x, e.y, 0.55);
+          }
+          return [nx * sp * 3, ny * sp * 3];
+        }
+        if (e.timer <= 0) {
+          e.state = 0;
+          e.timer = 4 + Math.random() * 2;
+          e.sprite.play(e.def.tex + '_move');
+          audio.sfx('spike', { rate: 0.8 });
+          g.fx.anim('fx_spike', e.x, e.y + 2, { originY: 0.92, depth: e.y + 1, tint: 0xdaa53e });
+          g.fx.burst(e.x, e.y - 2, 0x8a6220, 8);
+          const p = g.player;
+          if (Math.hypot(p.x - e.x, p.y - e.y) < 22 + PLAYER_RADIUS) g.hurtPlayer(e.dmg * 1.5, e.def.el, this.hurtOf(e));
+        }
+        return [0, 0];
+      }
+      case 'boss_ape':
+        return this.ape(e, dt, nx, ny, sp);
       case 'boss_wolf': {
         e.timer -= dt;
         if (e.state === 0) {
@@ -359,6 +412,90 @@ export class EnemyManager {
       default:
         return [nx * sp, ny * sp];
     }
+  }
+
+  /** 钻在地下：不吃岩壁、不碰人 */
+  private underground(e: Enemy) {
+    return e.def.behavior === 'burrow' && (e.state === 1 || e.state === 2);
+  }
+
+  /**
+   * 山魈王：追着走，定时蓄力跳到玩家脚下砸地（落地放一圈碎石），间隙朝玩家扔三块巨石；
+   * 半血后跳得更勤，并且每 6 秒在玩家周围召一波落石。
+   */
+  private ape(e: Enemy, dt: number, nx: number, ny: number, sp: number): [number, number] {
+    const g = this.g;
+    const half = e.hp < e.maxHp * 0.5;
+    const R = 46;
+    e.timer -= dt;
+    if (half) {
+      e.timer3 -= dt;
+      if (e.timer3 <= 0) {
+        e.timer3 = 6;
+        g.hazards?.rain(5);
+      }
+    }
+    if (e.state === 0) {
+      e.timer2 -= dt;
+      if (e.timer2 <= 0) {
+        e.timer2 = half ? 4 : 5.5;
+        audio.sfx('bossShot', { rate: 0.7 });
+        const a = Math.atan2(ny, nx);
+        for (const k of [-0.28, 0, 0.28]) g.proj.enemyShot('ep_boulder', e.x, e.y - 26, Math.cos(a + k) * 115, Math.sin(a + k) * 115, 12, 'earth', this.hurtOf(e));
+      }
+      if (e.timer <= 0) {
+        // 蓄力：锁定玩家当前位置
+        e.state = 1;
+        e.timer = 0.75;
+        e.sx = e.x;
+        e.sy = e.y;
+        e.tx = g.player.x;
+        e.ty = g.player.y;
+        e.sprite.setScale(1.08, 0.88);
+        g.fx.disc(e.tx, e.ty, R, 0xff5a4a, 0.25, 1.35);
+        audio.sfx('bossCharge');
+      }
+      return [nx * sp, ny * sp];
+    }
+    if (e.state === 1) {
+      if (e.timer <= 0) {
+        e.state = 2;
+        e.timer = 0.6;
+        e.sprite.setScale(1);
+      }
+      return [0, 0];
+    }
+    if (e.state === 2) {
+      const k = Math.min(1, 1 - e.timer / 0.6);
+      e.x = e.sx + (e.tx - e.sx) * k;
+      e.y = e.sy + (e.ty - e.sy) * k;
+      e.lift = Math.sin(k * Math.PI) * 60;
+      if (e.timer <= 0) {
+        e.lift = 0;
+        e.state = 3;
+        e.timer = 0.8;
+        audio.sfx('explode', { rate: 0.6 });
+        g.cameras.main.shake(220, 0.007);
+        g.fx.ring(e.x, e.y - 4, R, 0xdaa53e, 0.4);
+        g.fx.burst(e.x, e.y - 4, 0x8a6220, 18);
+        const p = g.player;
+        // 有前摇的重击必定暴击
+        if (Math.hypot(p.x - e.x, p.y - e.y) < R + PLAYER_RADIUS) g.hurtPlayer(e.dmg, 'earth', this.hurtOf(e, true));
+        const n = half ? 14 : 10;
+        const off = Math.random() * Math.PI;
+        const hurt = this.hurtOf(e);
+        for (let i = 0; i < n; i++) {
+          const a = off + (i / n) * Math.PI * 2;
+          g.proj.enemyShot('ep_rock', e.x, e.y - 6, Math.cos(a) * 90, Math.sin(a) * 90, 9, 'earth', hurt);
+        }
+      }
+      return [0, 0];
+    }
+    if (e.timer <= 0) {
+      e.state = 0;
+      e.timer = half ? 3 : 4.2;
+    }
+    return [0, 0];
   }
 
   kill(e: Enemy) {

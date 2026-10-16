@@ -336,8 +336,9 @@ class AudioManager {
     if (!ctx || this.player?.key === key) return;
     const def = TRACKS[key];
     const file = this.fileBuf(`bgm_${key}`);
-    this.stopMusic(fade);
+    // 变奏版（紧张、狂暴）没有程序化版本，文件还没加载完就先不换
     if (!def && !file) return;
+    this.stopMusic(fade);
     const now = ctx.currentTime;
     const bus = ctx.createGain();
     bus.gain.setValueAtTime(0, now);

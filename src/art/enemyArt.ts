@@ -226,6 +226,83 @@ function zhangchan(f: number): PC {
   return p;
 }
 
+// 穿山甲（土）：拱背鳞甲，会钻地；帧 2、3 是地面上拱起的土包（暖金鳞 → 赭褐 → 深褐暗部）
+function chuanshan(f: number): PC {
+  const p = new PC(24, 24);
+  const B = 0xc89452, S = 0x8e6036, D = 0x5e3c26, H = 0xecc47c, EY = 0xffe254, SN = 0xd8a080;
+  if (f >= 2) {
+    // 土包 + 露出一截鳞背
+    const w = f === 3 ? 1 : 0;
+    const MU = 0x7a5a36, MS = 0x56402a, MH = 0xa88050;
+    p.ellipse(12, 19, 8, 3.5, MU);
+    p.ellipse(13, 20, 6, 2.2, MS);
+    p.span(16, 8, 14, MH);
+    p.ellipse(12 + w, 16, 4, 2.2 + w * 0.5, B);
+    p.span(15 - w, 10 + w, 14 + w, H);
+    p.span(17, 10 + w, 14 + w, S);
+    for (const x of [6, 17, 19]) p.set(x + w, 17 + (x % 2), MH);
+    p.set(4, 20, MS);
+    p.set(20 - w, 21, MU);
+    finish(p, 'earth', 12, 22, 7, 2);
+    return p;
+  }
+  const t = f === 1 ? 1 : 0;
+  // 尾巴往下卷
+  p.strand([[6, 15], [3, 17], [3, 20], [5, 21]], S, 3);
+  p.strand([[6, 14], [4, 16]], B, 2);
+  // 腿
+  p.rect(8 - t, 18, 2, 3, D);
+  p.rect(14 + t, 18, 2, 3, S);
+  // 拱背
+  p.ellipse(11, 14, 7, 5, B);
+  p.ellipse(12, 16.5, 6, 2.5, S);
+  // 鳞片：三排弧形暗纹 + 受光边
+  for (const [y, x0, x1] of [[11, 7, 15], [14, 5, 17], [17, 6, 16]] as const)
+    for (let x = x0; x <= x1; x += 3) {
+      p.set(x, y, D);
+      p.set(x + 1, y - 1, H);
+    }
+  p.span(9, 8, 13, H);
+  // 头和长吻
+  p.ellipse(18, 15, 3, 2.5, B);
+  p.strand([[20, 16], [23, 17]], SN, 2);
+  p.set(19, 17, S);
+  p.set(18, 14, EY);
+  finish(p, 'earth', 12, 22, 7, 2);
+  return p;
+}
+
+// 山魈（土）：独脚跳的山精，赤面蓝颊、白眉，举着石块（赭黄毛 → 褐 → 深褐）
+function shanxiao(f: number): PC {
+  const p = new PC(24, 24);
+  const B = 0xb07a44, S = 0x784c2c, D = 0x4e3020, H = 0xd8a868;
+  const FACE = 0xe0503c, BLUE = 0x5a8ce8, BROW = 0xf0e8d4, EY = 0xffe254, RK = 0x8a8f9c, RKH = 0xc4c8d0;
+  const up = f === 1 ? -1 : 0;
+  // 独脚
+  p.rect(11, 18 + up, 3, 4 - up, S);
+  p.span(21, 10, 15, D);
+  p.oy = up;
+  // 身体（佝偻）
+  p.ellipse(12, 13, 5.5, 5, B);
+  p.ellipse(13.5, 15, 3.5, 3, S);
+  p.ellipse(10, 11, 2.5, 2, H);
+  // 双臂举石
+  p.strand([[8, 12], [7, 7], [9, 4]], B, 2);
+  p.strand([[16, 12], [17, 7], [15, 4]], S, 2);
+  p.ellipse(12, 3, 4, 2.6, RK);
+  p.span(2, 10, 13, RKH);
+  // 脸
+  p.ellipse(16, 10, 3, 2.8, FACE);
+  p.line(17, 9, 17, 12, BLUE);
+  p.set(15, 11, BLUE);
+  p.span(8, 14, 18, BROW);
+  p.set(16, 9, EY);
+  p.set(18, 9, EY);
+  p.oy = 0;
+  finish(p, 'earth', 12, 22, 6, 2);
+  return p;
+}
+
 // 狼妖（金，Boss）：银白巨狼，四足奔跑（暖银白高光 → 冷蓝银灰 → 靛灰暗部）
 function langyao(f: number): PC {
   const p = new PC(56, 48);
@@ -306,6 +383,49 @@ function shuyao(f: number): PC {
   return p;
 }
 
+// 山魈王（土，Boss）：佝偻巨猿，白鬃赤面、蓝颊、金臂环，长臂撑地走（赭黄 → 褐 → 深褐）
+function shanxiaoBoss(f: number): PC {
+  const p = new PC(56, 48);
+  const B = 0xb07a44, S = 0x7a4e2e, D = 0x4e3020, H = 0xdcae6c;
+  const MANE = 0xf0eadc, MS = 0xb8b0a4, FACE = 0xe0503c, FD = 0xa83228, BLUE = 0x5a8ce8, EY = 0xffe254, M = 0x2a1824, GD = 0xebb84a;
+  const ph = (f / 4) * Math.PI * 2;
+  const s = Math.sin(ph);
+  const bob = Math.round(Math.abs(s));
+  // 后腿
+  p.strand([[18, 32], [16 - Math.round(2 * s), 39], [15 - Math.round(2 * s), 43]], S, 5);
+  p.strand([[26, 33], [27 + Math.round(2 * s), 40], [28 + Math.round(2 * s), 43]], D, 5);
+  p.oy = bob;
+  // 远侧手臂
+  p.strand([[34, 22], [40, 30], [42 + Math.round(2 * s), 42 - bob]], S, 5);
+  // 身体
+  p.ellipse(26, 26, 13, 10, B);
+  p.ellipse(28, 30, 10, 5, S);
+  p.ellipse(21, 21, 7, 4, H);
+  // 白鬃
+  for (let i = 0; i < 6; i++) p.strand([[26 + i * 3, 17], [22 + i * 3, 11 + (i % 2) * 2]], i % 2 ? MS : MANE, 4);
+  p.ellipse(36, 18, 8, 6, MANE);
+  p.ellipse(38, 21, 6, 4, MS);
+  // 脸
+  p.ellipse(42, 20, 6, 5.5, FACE);
+  p.ellipse(44, 23, 4, 2.5, FD);
+  p.line(44, 18, 45, 24, BLUE, 2);
+  p.line(40, 21, 40, 24, BLUE);
+  p.span(17, 38, 46, MANE);
+  p.set(41, 19, EY);
+  p.set(42, 19, EY);
+  p.set(45, 19, EY);
+  p.span(25, 42, 47, M);
+  p.set(43, 26, 0xffffff);
+  p.set(46, 26, 0xffffff);
+  // 近侧手臂 + 金臂环
+  p.strand([[30, 26], [36, 33], [37 - Math.round(2 * s), 42 - bob]], B, 6);
+  p.strand([[33, 29], [35, 31]], GD, 3);
+  p.span(42 - bob, 34 - Math.round(2 * s), 40 - Math.round(2 * s), D);
+  p.oy = 0;
+  finish(p, 'earth', 28, 43, 18, 3.5);
+  return p;
+}
+
 export function buildEnemies(scene: Phaser.Scene) {
   const two = (key: string, fn: (f: number) => PC, rate: number) => {
     addSheet(scene, key, [fn(0), fn(1)]);
@@ -318,7 +438,14 @@ export function buildEnemies(scene: Phaser.Scene) {
   two('en_tiejia', tiejia, 5);
   two('en_zhushe', zhushe, 6);
   two('en_zhangchan', zhangchan, 3);
+  two('en_shanxiao', shanxiao, 5);
+  // 穿山甲：0、1 走路，2、3 钻地的土包
+  addSheet(scene, 'en_chuanshan', [0, 1, 2, 3].map(chuanshan));
+  addAnim(scene, 'en_chuanshan_move', 'en_chuanshan', [0, 1], 5);
+  addAnim(scene, 'en_chuanshan_dig', 'en_chuanshan', [2, 3], 8);
   addSheet(scene, 'boss_langyao', [0, 1, 2, 3].map(langyao));
   addAnim(scene, 'boss_langyao_move', 'boss_langyao', [0, 1, 2, 3], 8);
   two('boss_shuyao', shuyao, 2);
+  addSheet(scene, 'boss_shanxiao', [0, 1, 2, 3].map(shanxiaoBoss));
+  addAnim(scene, 'boss_shanxiao_move', 'boss_shanxiao', [0, 1, 2, 3], 6);
 }

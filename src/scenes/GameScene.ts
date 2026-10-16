@@ -15,6 +15,7 @@ import { SkillSystem } from '../game/Skills';
 import { PuppetManager } from '../game/Puppets';
 import { PlayerStatus } from '../game/Status';
 import { World } from '../game/World';
+import { Hazards } from '../game/Hazards';
 import { loadSave, writeSave } from '../game/save';
 import { talentMods, daoPoints, legacyPoints } from '../game/talents';
 import { createDebug, debugEnabled } from '../game/debug';
@@ -70,6 +71,8 @@ export class GameScene extends Phaser.Scene {
   fx!: Fx;
   skills!: SkillSystem;
   world!: World;
+  /** 关卡地形机制（落石等），没有就为空 */
+  hazards: Hazards | null = null;
 
   /** 局内时钟（秒），暂停时不走 */
   now = 0;
@@ -95,6 +98,8 @@ export class GameScene extends Phaser.Scene {
   zhoutian: El | null = null;
   private zhoutianAt = 0;
 
+  /** Boss 半血后已换成狂暴版 BGM */
+  private rageMusic = false;
   private pendingLevelUps = 0;
   private iframeUntil = 0;
   private spawnAcc = 0;
@@ -114,6 +119,7 @@ export class GameScene extends Phaser.Scene {
     this.kills = 0;
     this.boss = null;
     this.over = false;
+    this.rageMusic = false;
     this.pendingLevelUps = 0;
     this.iframeUntil = 0;
     this.spawnAcc = 0;
@@ -142,6 +148,7 @@ export class GameScene extends Phaser.Scene {
     this.status = new PlayerStatus(this);
     this.player = new Player(this);
     this.puppets = new PuppetManager(this);
+    this.hazards = L.rockfall ? new Hazards(this) : null;
     if (this.char.balanced) {
       this.zhoutian = GEN_ORDER[Math.floor(Math.random() * 5)];
       this.zhoutianAt = this.zhoutianPeriod();
@@ -152,7 +159,12 @@ export class GameScene extends Phaser.Scene {
     const d = L.duration;
     this.timeline = [
       { t: d * 0.35, done: false, fn: () => this.swarm() },
-      { t: d * 0.5, done: false, fn: () => this.spawnElite() },
+      {
+        t: d * 0.5, done: false, fn: () => {
+          this.spawnElite();
+          if (L.bgmDanger) audio.music(L.bgmDanger, 2);
+        },
+      },
       { t: d * 0.7, done: false, fn: () => this.swarm() },
       { t: d - 90, done: false, fn: () => this.spawnElite() },
       { t: d - 60, done: false, fn: () => this.spawnBoss() },
@@ -200,11 +212,17 @@ export class GameScene extends Phaser.Scene {
     this.pickups.update(dt);
     this.fx.update(dt);
     this.world.update(dt);
+    this.hazards?.update();
     this.runTasks();
 
     if (!this.over && !this.boss) {
       const L = this.levelDef;
       audio.setIntensity(0.1 + (0.6 * this.elapsed) / Math.max(60, L.duration - 60) + (0.4 * this.enemies.count) / 200);
+    }
+
+    if (this.boss && !this.over && !this.rageMusic && this.boss.hp < this.boss.maxHp * 0.5) {
+      this.rageMusic = true;
+      audio.music('boss_rage', 1.5);
     }
 
     if (!this.over) {
@@ -468,6 +486,14 @@ export class GameScene extends Phaser.Scene {
     const dmg = Math.max(1, Math.round(v * this.pstats.dotMult));
     e.hp -= dmg;
     if (e.boss || e.elite) this.fx.text(e.x + 8, e.y - e.sprite.displayHeight * 0.6, `${dmg}`, kind === 'burn' ? '#ffa060' : '#8fe06a', 0.6);
+    if (e.hp <= 0) this.enemies.kill(e);
+  }
+
+  /** 地形造成的伤害（落石）：固定数值，不吃玩家加成和护甲 */
+  envDamage(e: Enemy, v: number) {
+    if (!e.alive) return;
+    e.hp -= Math.max(1, Math.round(v));
+    e.flashUntil = this.now + 0.05;
     if (e.hp <= 0) this.enemies.kill(e);
   }
 

@@ -18,6 +18,8 @@ export class Puppet {
   alive = true;
   radius = 7;
   atkAt = 0;
+  /** 出招中（举拳到收势）站定不走 */
+  busyUntil = 0;
   flashUntil = 0;
   target: Enemy | null = null;
   constructor(
@@ -108,7 +110,7 @@ export class PuppetManager {
     const p = g.player;
     const a = Math.random() * Math.PI * 2;
     const tex = giant ? 'pp_giant' : 'pp_golem';
-    const sprite = g.add.sprite(0, 0, tex, 0).setOrigin(0.5, giant ? 0.92 : 0.9);
+    const sprite = g.add.sprite(0, 0, tex, 0).setOrigin(0.5, giant ? 0.91 : 0.95);
     sprite.play(`${tex}_move`);
     const hpBg = g.add.rectangle(0, 0, giant ? 22 : 14, 3, 0x1c1424).setOrigin(0.5, 0);
     const hpFill = g.add.rectangle(0, 0, giant ? 20 : 12, 1, 0xdaa53e).setOrigin(0, 0);
@@ -243,43 +245,54 @@ export class PuppetManager {
       const dx = tx - p.x;
       const dy = ty - p.y;
       const d = Math.hypot(dx, dy) || 1;
-      if (d > reach + 1) {
+      if (d > reach + 1 && now >= p.busyUntil) {
         const v = Math.min(sp * (p.target ? 1 : Math.min(1.6, d / 20)), d / dt);
         p.x += (dx / d) * v * dt;
         p.y += (dy / d) * v * dt;
       }
-      if (Math.abs(dx) > 1) p.sprite.setFlipX(dx < 0);
+      // 卡在岩壁后面时靠上面的瞬移回身边兜底
+      g.world.push(p, p.radius);
+      if (Math.abs(dx) > 1 && now >= p.busyUntil) p.sprite.setFlipX(dx < 0);
 
       const s = p.sprite;
-      // 攻击
+      // 攻击：双拳拍地。举拳蓄力时站定、转向目标，拳头落地那一帧才结算，落点在身前朝目标的方向
       if (st && p.target && d <= reach + 2 && now >= p.atkAt) {
         p.atkAt = now + st.atkCd;
         const tex = p.giant ? 'pp_giant' : 'pp_golem';
-        p.sprite.play(`${tex}_atk`);
-        p.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => p.alive && p.sprite.play(`${tex}_move`));
+        const fps = p.giant ? 10 : 14;
+        p.busyUntil = now + 5 / fps;
+        s.setFlipX(dx < 0);
+        s.play(`${tex}_atk`);
+        s.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => p.alive && s.play(`${tex}_move`));
         const shell = p.el !== 'earth';
         const dmg = st.dmg * g.pstats.puppetDmg * (p.giant ? 2.5 : 1) * (shell ? 1 + (mods['mo.shellDmg'] ?? 0) : 1);
         const proc = shell && mods['mo.shellProc'] ? 1 : SKILLS.puppet.proc;
         const col = EL_INFO[p.el].color;
-        // 扑下去压扁一下再弹回来
-        s.setScale(1.2, 0.8);
-        g.tweens.add({ targets: s, scaleX: 1, scaleY: 1, duration: 160, ease: 'Back.out' });
-        if (p.giant) {
-          // 巨傀震地：周围一圈都挨打并被定身
-          const r = 30 * g.pstats.area * (1 + (mods['mo.quake'] ?? 0));
-          this.impact(p.x, p.y, r, col, 18);
-          g.cameras.main.shake(60, 0.002);
-          audio.sfx('spike', { rate: 0.7, vol: 0.5 });
-          for (const e of g.enemies.inRadius(p.x, p.y, r, this.tmp)) g.hitEnemy(e, dmg, p.el, { kb: 50, fromX: p.x, fromY: p.y, stun: 0.4, puppet: true });
-        } else {
-          // 扑击：目标和它身边一圈都挨打
-          const tx = p.target.x;
-          const ty = p.target.y;
-          const r = st.cleave * g.pstats.area * (shell ? 1 + (mods['mo.shellCleave'] ?? 0) : 1);
-          this.impact(tx, ty, r, col, 8);
-          audio.sfx('spike', { rate: 1.5, vol: 0.25 });
-          for (const e of g.enemies.inRadius(tx, ty, r, this.tmp)) g.hitEnemy(e, dmg, p.el, { kb: 35, fromX: p.x, fromY: p.y, proc, puppet: true });
-        }
+        // 落点：小傀儡就是目标脚下（不超过出手距离），巨傀砸在身前
+        const ux = dx / d;
+        const uy = dy / d;
+        const fwd = p.giant ? 16 : Math.min(d, reach);
+        g.later(2 / fps, () => {
+          if (!p.alive || g.over) return;
+          const x = p.x + ux * fwd;
+          const y = p.y + uy * fwd * 0.8;
+          // 拍下去压扁一下再弹回来
+          s.setScale(1.15, 0.85);
+          g.tweens.add({ targets: s, scaleX: 1, scaleY: 1, duration: 160, ease: 'Back.out' });
+          if (p.giant) {
+            // 巨傀震地：一大圈都挨打并被定身
+            const r = 30 * g.pstats.area * (1 + (mods['mo.quake'] ?? 0));
+            this.impact(x, y, r, col, 18);
+            g.cameras.main.shake(70, 0.0025);
+            audio.sfx('spike', { rate: 0.7, vol: 0.5 });
+            for (const e of g.enemies.inRadius(x, y, r, this.tmp)) g.hitEnemy(e, dmg, p.el, { kb: 50, fromX: x, fromY: y, stun: 0.4, puppet: true });
+          } else {
+            const r = st.cleave * g.pstats.area * (shell ? 1 + (mods['mo.shellCleave'] ?? 0) : 1);
+            this.impact(x, y, r, col, 8);
+            audio.sfx('spike', { rate: 1.5, vol: 0.3 });
+            for (const e of g.enemies.inRadius(x, y, r, this.tmp)) g.hitEnemy(e, dmg, p.el, { kb: 35, fromX: x, fromY: y, proc, puppet: true });
+          }
+        });
       }
 
       g.pickups.magnetNear(p.x, p.y, GEM_R);
