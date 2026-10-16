@@ -2,21 +2,25 @@ import Phaser from 'phaser';
 import { PC, addSheet, addAnim, OUTLINE, OUTLINE_LIT } from './painter';
 import { HERO_DIRS, HERO_FRAMES_PER_DIR, type HeroDir } from './heroXiao';
 
-// 傀儡师·墨衡：清瘦的匠人，比剑客矮 1 像素。黑方巾垂两条巾脚，土黄窄袖长袍外罩皮围裙，
-// 腰侧挂工具袋；右手一直提着十字提线木架，几根细线垂下来——这是剪影标志。
+// 傀儡师·墨衡：墨家匠人，取“衣褐带索”与偃师造倡者。比剑客矮 1 像素，清瘦。
+// 头发挽髻，墨色布巾贴着头顶包住、髻上打结垂两条短巾脚；及膝褐色交领短褐，腰束麻绳；
+// 裤腿打绑腿、草鞋；腰挂墨斗，背上一把木矩尺；右手提一块竹制勾牌，几根灵丝垂下——这是剪影标志。
 
-// 色阶采用冷暖色相偏移：暖黄长袍高光偏蜜金、暗部偏橄榄褐，皮围裙暗部偏深红紫褐
+// 土系褐色：比旧版更暗、更朴素；高光偏暖麦黄，暗部偏深茶褐
 const SK = 0xf4cfb0, SKS = 0xd29278;
 const HR = 0x261f30;
-const CAP = 0x221d2e, CAPH = 0x4f4762, CAPB = 0x74502e;
-const RB = 0xd19c3e, RBS = 0x9e6c28, RBH = 0xf0c668, RBD = 0x744d1e;
-const AP = 0x824e2e, APS = 0x563022, APH = 0xa86c42;
-const BELT = 0x38231a, BUCK = 0xffe484;
-const POUCH = 0x704c30, POUS = 0x4a2e22;
-const PT = 0x5c4234, BT = 0x2c2232, BTH = 0x524258;
+const CAP = 0x2a2432, CAPH = 0x50485e;
+const RB = 0xa8763c, RBS = 0x7a5228, RBH = 0xcc9a56, RBD = 0x56381c;
+const IN = 0xe6dcc2;
+const ROPE = 0xdcc68e, ROPES = 0x9e8854;
+const PT = 0x4a3a30, WRAP = 0xcbb98e, WRAPS = 0x948458, SANDAL = 0xc8a85e;
 const WD = 0xb27a40, WDS = 0x784c26, WDH = 0xdca862;
+const BAM = 0xc8b062, BAMS = 0x8e7a3a, BAMH = 0xeedc8c;
+const INKBOX = 0x5a3a24, REEL = 0x9a6a3c;
 const STR = 0xf0e4c8, GLOW = 0xffeca4;
 const EYE = 0x1c1424;
+const MUS = 0x8a6658;
+const BROW = 0x2a2232;
 
 const FACING: Record<HeroDir, number> = { s: 90, se: 45, e: 0, ne: -45, n: -90 };
 
@@ -25,15 +29,16 @@ interface Pose {
   f: number;
   bob: number;
   swing: number;
-  /** 提线与帽巾摆动相位 */
+  /** 灵丝与巾脚摆动相位 */
   wavePhase: number;
   blink: boolean;
   atk: number;
 }
 
-const HEAD_Y = 12;
-const BODY_Y = 18;
+const HEAD_Y = 10;
+const BODY_Y = 16;
 
+/** 短褐下露出打绑腿的小腿和草鞋 */
 function drawLegs(p: PC, d: HeroDir, pose: Pose) {
   const phi = (pose.f / 8) * Math.PI * 2;
   const s = pose.run ? Math.sin(phi) : 0;
@@ -50,9 +55,15 @@ function drawLegs(p: PC, d: HeroDir, pose: Pose) {
     const liftY = Math.max(0, Math.round(1.8 * pc));
     const footX = baseX + strideX;
     const footY = 29 - liftY;
-    p.line(baseX, 26, footX, footY, shade ? 0x433024 : PT, 2);
-    p.span(footY, footX, footX + 1, BT);
-    if (!shade) p.set(footX + 1, footY, BTH);
+    p.line(baseX, 23, footX, footY - 1, shade ? 0x3a2e26 : PT, 2);
+    // 绑腿：小腿上三道浅麻色缠布
+    for (const t of [0.4, 0.62, 0.84]) {
+      const y = Math.round(23 + (footY - 1 - 23) * t);
+      const x = Math.round(baseX + strideX * t);
+      p.span(y, x, x + 1, shade ? WRAPS : WRAP);
+    }
+    p.span(footY, footX, footX + 1, SANDAL);
+    if (!shade) p.set(footX + 1, footY, 0x8a6e36);
   };
 
   if (d === 'e') {
@@ -64,10 +75,10 @@ function drawLegs(p: PC, d: HeroDir, pose: Pose) {
   }
 }
 
-/** 窄身长袍到小腿，正面罩一件立体皮围裙 */
+/** 及膝交领短褐，腰束麻绳，绳结垂下两截 */
 function drawRobe(p: PC, d: HeroDir, pose: Pose) {
   const k = d === 'e' ? 0.75 : d === 's' || d === 'n' ? 1 : 0.88;
-  const half = [4, 4, 4, 4, 4, 5, 5, 5, 5];
+  const half = [6, 6, 5, 5, 5, 6, 6, 7];
   const cx = d === 'e' ? 15 : 16;
   const hem = pose.run ? Math.round(Math.sin(pose.wavePhase - 0.8) * 1.1) : 0;
   for (let i = 0; i < half.length; i++) {
@@ -80,83 +91,129 @@ function drawRobe(p: PC, d: HeroDir, pose: Pose) {
     p.set(x0, y, RBH);
     p.set(x1, y, RBD);
     if (hw > 3) p.set(x1 - 1, y, RBS);
-    if (i === half.length - 1) p.span(y, x0, x1, RBD);
+    if (i === half.length - 1) p.span(y, x0, x1, RBS);
   }
-  if (d === 'n') {
-    p.span(BODY_Y + 3, cx - 4, cx + 3, BELT);
-    p.rect(cx - 1, BODY_Y + 4, 2, 2, APS);
-    return;
-  }
+  // 交领：右衽，领口露米白中衣
   if (d === 's' || d === 'se') {
     const o = d === 'se' ? 1 : 0;
-    p.line(14 + o, BODY_Y, 16 + o, BODY_Y + 2, RBD);
-    p.line(18 + o, BODY_Y, 16 + o, BODY_Y + 2, RBD);
-    p.set(16 + o, BODY_Y, SK);
-  }
-  // 皮围裙：带高光铆钉与铜扣
-  const ax = d === 'e' ? cx : cx + (d === 'se' ? 1 : 0);
-  const aw = d === 'e' ? 2 : 3;
-  for (let y = BODY_Y + 2; y <= BODY_Y + 8; y++) {
-    const w = y < BODY_Y + 4 ? aw - 1 : aw;
-    p.span(y, ax - w, ax + w - 1, AP);
-    p.set(ax + w - 1, y, APS);
-    if (y === BODY_Y + 8) p.span(y, ax - w, ax + w - 1, APS);
-  }
-  p.set(ax - aw + 1, BODY_Y + 5, APH);
-  p.set(ax - aw + 1, BODY_Y + 2, BUCK);
-  p.span(BODY_Y + 3, cx - Math.round(4 * k), cx + Math.round(4 * k) - 1, BELT);
-  if (d !== 'e') p.set(ax, BODY_Y + 3, BUCK);
-  // 工具袋挂在左腰，探出金属扳手高光
-  if (d === 's' || d === 'se') {
-    const px = d === 's' ? 11 : 12;
-    p.rect(px, BODY_Y + 4, 3, 3, POUCH);
-    p.span(BODY_Y + 4, px, px + 2, POUS);
-    p.set(px + 1, BODY_Y + 3, 0xeef4f8);
-    p.set(px + 2, BODY_Y + 3, 0xbfc9d2);
+    p.set(15 + o, BODY_Y, IN);
+    p.set(16 + o, BODY_Y, IN);
+    p.set(16 + o, BODY_Y + 1, IN);
+    p.line(14 + o, BODY_Y, 17 + o, BODY_Y + 3, RBD);
   } else if (d === 'e') {
-    p.rect(12, BODY_Y + 4, 2, 3, POUCH);
+    p.set(18, BODY_Y, IN);
+    p.line(18, BODY_Y + 1, 17, BODY_Y + 3, RBD);
+  } else {
+    p.line(cx, BODY_Y + 4, cx, BODY_Y + 6, RBS);
+  }
+  // 麻绳腰带
+  const bw = Math.round(4 * k);
+  p.span(BODY_Y + 3, cx - bw, cx + bw - 1, ROPE);
+  for (let x = cx - bw + 1; x <= cx + bw - 1; x += 2) p.set(x, BODY_Y + 3, ROPES);
+  const sway = pose.run ? Math.round(Math.sin(pose.wavePhase - 1) * 1) : 0;
+  if (d === 's' || d === 'se') {
+    const kx = cx + (d === 'se' ? 2 : 1);
+    p.set(kx, BODY_Y + 3, ROPES);
+    p.line(kx, BODY_Y + 4, kx + sway, BODY_Y + 6, ROPE);
+    p.line(kx + 1, BODY_Y + 4, kx + 1 + sway, BODY_Y + 5, ROPES);
+  }
+  // 腰挂墨斗：木匣带一个圆线轮，墨线垂下一截
+  if (d === 's' || d === 'se' || d === 'e') {
+    const mx = d === 's' ? 10 : d === 'se' ? 11 : 11;
+    p.rect(mx, BODY_Y + 4, 3, 2, INKBOX);
+    p.set(mx + 1, BODY_Y + 4, REEL);
+    p.set(mx, BODY_Y + 4, 0x7a5232);
+    p.line(mx + 2, BODY_Y + 6, mx + 2 + sway, BODY_Y + 7, 0x1c1424);
+  }
+}
+
+/** 背上的木矩尺：背面看到完整 L 形，正面、侧面只从肩后探出一角 */
+function drawSquare(p: PC, d: HeroDir, over: boolean) {
+  if (over && (d === 'n' || d === 'ne')) {
+    const x = d === 'n' ? 12 : 13;
+    p.line(x, BODY_Y - 2, x, BODY_Y + 6, WD, 2);
+    p.line(x, BODY_Y + 6, x + 6, BODY_Y + 6, WD, 2);
+    p.line(x, BODY_Y - 2, x, BODY_Y + 6, WDH);
+    p.line(x + 1, BODY_Y + 7, x + 6, BODY_Y + 7, WDS);
+    for (const y of [BODY_Y, BODY_Y + 2, BODY_Y + 4]) p.set(x + 1, y, 0x3a2418);
+    return;
+  }
+  if (over) return;
+  if (d === 's' || d === 'se') {
+    p.line(10, BODY_Y - 5, 10, BODY_Y + 1, WD, 2);
+    p.line(10, BODY_Y - 5, 13, BODY_Y - 5, WD, 2);
+    p.set(10, BODY_Y - 5, WDH);
+    p.set(11, BODY_Y - 3, 0x3a2418);
+  } else if (d === 'e') {
+    p.line(10, BODY_Y - 4, 11, BODY_Y + 3, WD, 2);
+    p.line(10, BODY_Y - 4, 13, BODY_Y - 5, WD, 2);
+    p.set(10, BODY_Y - 4, WDH);
   }
 }
 
 function drawArms(p: PC, d: HeroDir, pose: Pose) {
   const sw = Math.round(pose.swing);
   if (d === 'e') {
-    p.rect(14 - sw, BODY_Y + 1, 2, 5, RBS);
+    p.rect(14 - sw, BODY_Y + 1, 3, 4, RBS);
+    p.rect(13 - sw, BODY_Y + 4, 4, 2, RBS);
+    p.set(14 - sw, BODY_Y + 6, SK);
     return;
   }
-  const lx = d === 's' || d === 'n' ? 11 : 12;
-  p.rect(lx, BODY_Y + 1 + sw, 2, 5, RB);
-  p.set(lx + 1, BODY_Y + 1 + sw, RBS);
-  p.set(lx, BODY_Y + 6 + sw, SK);
+  // 匠人袖：上臂 3 像素，袖口下张到 4 像素，露一点手
+  const lx = d === 's' || d === 'n' ? 9 : 10;
+  const y0 = BODY_Y + 1 + sw;
+  p.rect(lx, y0, 3, 3, RB);
+  p.set(lx + 2, y0, RBS);
+  p.rect(lx - 1, y0 + 3, 4, 2, RB);
+  p.span(y0 + 4, lx - 1, lx + 2, RBS);
+  p.set(lx - 1, y0 + 3, RBH);
+  p.set(lx + 1, y0 + 5, SK);
 }
 
 function drawHead(p: PC, d: HeroDir, pose: Pose) {
   const Y = HEAD_Y;
   const hx = d === 'e' ? 16.5 : 16;
-  p.ellipse(hx, Y + 0.5, 5, 4.5, HR);
+  p.ellipse(hx, Y + 0.5, 5.4, 5, HR);
   if (d === 's') {
     p.ellipse(16, Y + 1.2, 4.2, 4, SK);
     if (pose.blink) {
       p.span(Y + 2, 12, 14, SKS);
       p.span(Y + 2, 17, 19, SKS);
     } else {
+      // 黑瞳 + 外侧一点高光，和其他人同一种画法
       p.rect(13, Y + 1, 1, 2, EYE);
       p.set(12, Y + 1, 0xffffff);
       p.rect(18, Y + 1, 1, 2, EYE);
       p.set(19, Y + 1, 0xffffff);
     }
-    p.span(Y + 4, 15, 16, SKS);
+    // 细眉，眉尾外挑：专注、精明
+    p.set(14, Y, BROW);
+    p.set(13, Y, BROW);
+    p.set(12, Y - 1, BROW);
+    p.set(17, Y, BROW);
+    p.set(18, Y, BROW);
+    p.set(19, Y - 1, BROW);
+    // 淡淡的短须，下巴一点山羊胡
+    p.set(15, Y + 3, MUS);
+    p.set(16, Y + 3, MUS);
+    p.set(16, Y + 5, HR);
   } else if (d === 'se') {
     p.ellipse(17.2, Y + 1.2, 3.8, 4, SK);
     if (pose.blink) {
       p.span(Y + 2, 15, 17, SKS);
-      p.span(Y + 2, 18, 20, SKS);
+      p.span(Y + 2, 19, 20, SKS);
     } else {
       p.rect(16, Y + 1, 1, 2, EYE);
       p.set(15, Y + 1, 0xffffff);
       p.rect(19, Y + 1, 1, 2, EYE);
     }
-    p.set(17, Y + 4, SKS);
+    p.set(16, Y, BROW);
+    p.set(15, Y - 1, BROW);
+    p.set(19, Y, BROW);
+    p.set(20, Y - 1, BROW);
+    p.set(17, Y + 3, MUS);
+    p.set(18, Y + 3, MUS);
+    p.set(18, Y + 5, HR);
   } else if (d === 'e') {
     p.ellipse(18.4, Y + 1.2, 3.2, 4, SK);
     if (pose.blink) p.span(Y + 2, 18, 20, SKS);
@@ -164,51 +221,74 @@ function drawHead(p: PC, d: HeroDir, pose: Pose) {
       p.rect(19, Y + 1, 1, 2, EYE);
       p.set(18, Y + 1, 0xffffff);
     }
+    p.set(19, Y, BROW);
+    p.set(20, Y - 1, BROW);
     p.set(21, Y + 2, SK);
+    p.set(20, Y + 3, MUS);
+    p.set(20, Y + 5, HR);
   } else if (d === 'ne') {
     p.rect(19, Y, 2, 4, SK);
     p.set(19, Y + 3, SKS);
   }
-  drawCap(p, d, pose.wavePhase);
+  drawWrap(p, d, pose.wavePhase);
 }
 
-/** 黑方巾：后面垂两条随风摆动的巾脚 */
-function drawCap(p: PC, d: HeroDir, wavePhase: number) {
+/** 墨色布巾贴着头顶包住发髻，髻上打结，垂两条短巾脚 */
+function drawWrap(p: PC, d: HeroDir, wavePhase: number) {
   const Y = HEAD_Y;
-  const cx = d === 'e' || d === 'se' ? 17 : 16;
+  const hx = d === 'e' ? 16.5 : 16;
   const w1 = Math.sin(wavePhase) * 1.1;
-  p.rect(cx - 4, Y - 9, 8, 6, CAP);
-  p.span(Y - 9, cx - 4, cx + 3, CAPH);
-  p.set(cx + 3, Y - 8, CAPH);
-  p.span(Y - 4, cx - 5, cx + 4, CAPB);
+  // 包头：顶部半个椭圆
+  for (let y = Y - 4; y <= Y - 2; y++) {
+    const t = (y - (Y - 4)) / 2;
+    const hw = Math.round(3.6 + t * 1.4);
+    p.span(y, Math.round(hx - hw), Math.round(hx + hw - 1), CAP);
+  }
+  p.span(Y - 4, Math.round(hx - 2), Math.round(hx), CAPH);
+  // 前额一道巾边
+  if (d !== 'n' && d !== 'ne') p.span(Y - 2, Math.round(hx - 4), Math.round(hx + 3), 0x3e3648);
+  // 发髻与巾结，横插一根木簪
+  const kx = d === 'e' || d === 'se' ? 15 : 16;
+  p.rect(kx - 1, Y - 8, 3, 4, CAP);
+  p.set(kx - 1, Y - 8, CAPH);
+  p.set(kx - 1, Y - 7, CAPH);
+  p.set(kx + 1, Y - 5, 0x14101c);
+  p.line(kx - 3, Y - 6, kx + 3, Y - 7, WD);
+  p.set(kx + 3, Y - 7, WDH);
+  // 巾脚：飘向身后
   if (d === 'e' || d === 'se') {
-    p.strand([[cx - 5, Y - 4], [cx - 7 + w1 * 0.5, Y], [cx - 8 + w1, Y + 3]], CAP, 2);
+    p.strand([[kx - 1, Y - 5], [kx - 4 + w1 * 0.5, Y - 4], [kx - 6 + w1, Y - 2]], CAP, 1);
+    p.strand([[kx - 1, Y - 4], [kx - 4 + w1 * 0.7, Y - 2], [kx - 5 + w1, Y]], CAP, 1);
   } else if (d === 'n' || d === 'ne') {
-    p.strand([[cx - 2, Y - 3], [cx - 3 + w1 * 0.7, Y + 4]], CAP, 2);
-    p.strand([[cx + 1, Y - 3], [cx + 2 + w1 * 0.7, Y + 4]], CAP, 2);
+    p.strand([[kx - 1, Y - 4], [kx - 2 + w1 * 0.6, Y + 1]], CAP, 1);
+    p.strand([[kx + 1, Y - 4], [kx + 2 + w1 * 0.6, Y + 1]], CAP, 1);
+  } else {
+    p.strand([[kx + 2, Y - 5], [kx + 4 + w1 * 0.5, Y - 4]], CAP, 1);
   }
 }
 
-function cross(p: PC, x: number, y: number, tilt: number) {
+/** 竹制提线勾牌：一块横板带竹节 */
+function board(p: PC, x: number, y: number, tilt: number) {
   x = Math.round(x);
   y = Math.round(y);
-  p.line(x - 3, y - tilt, x + 3, y + tilt, WD);
-  p.set(x + 3, y + tilt, WDS);
-  p.line(x, y - 2, x, y + 2, WDS);
-  p.set(x, y - 2, WDH);
+  p.line(x - 3, y - tilt, x + 3, y + tilt, BAM);
+  p.line(x - 3, y + 1 - tilt, x + 3, y + 1 + tilt, BAMS);
+  p.set(x - 3, y - tilt, BAMH);
+  p.set(x, y, BAMS);
 }
 
 function strings(p: PC, x: number, y: number, tilt: number, sway: number, col: number, len: number, glow = false) {
   x = Math.round(x);
   y = Math.round(y);
-  const ends: [number, number][] = [[x - 3, y - tilt], [x + 3, y + tilt], [x, y + 2]];
+  const ends: [number, number][] = [[x - 3, y - tilt], [x, y], [x + 3, y + tilt]];
+  // 灵丝用半透明画，外描边只套不透明像素，细线就不会被描成一排黑白梳齿
   for (const [sx, sy] of ends) {
-    if (glow) p.line(sx, sy + 1, sx + sway, sy + len, GLOW, 2, 95);
-    p.line(sx, sy + 1, sx + sway, sy + len, col);
+    if (glow) p.line(sx, sy + 2, sx + sway, sy + len, GLOW, 2, 95);
+    p.line(sx, sy + 2, sx + sway, sy + len, col, 1, 235);
   }
 }
 
-/** 平时：右手提着木架，线随正弦波柔顺摆动；出招 6 帧：木架扬起，灵丝绷直泛起金光 */
+/** 平时：右手提着竹勾牌，灵丝随正弦波柔顺摆动；出招 6 帧：勾牌扬起，灵丝绷直泛起金光 */
 function drawRig(p: PC, d: HeroDir, pose: Pose) {
   const theta = (FACING[d] * Math.PI) / 180;
   if (pose.atk < 0) {
@@ -220,7 +300,7 @@ function drawRig(p: PC, d: HeroDir, pose: Pose) {
     const ty = hy - 2;
     const sway = Math.round(Math.sin(pose.wavePhase - 0.6) * 1.4);
     strings(p, tx, ty, 0, sway, STR, 8);
-    cross(p, tx, ty, 0);
+    board(p, tx, ty, 0);
     return;
   }
   const k = pose.atk;
@@ -238,7 +318,7 @@ function drawRig(p: PC, d: HeroDir, pose: Pose) {
   const len = [7, 9, 11, 10, 8, 7][k];
   const sway = taut ? Math.round(5 * Math.cos(theta)) : 0;
   strings(p, hx + 1, hy - 2, tilt, sway, taut ? GLOW : STR, len, taut);
-  cross(p, hx + 1, hy - 2, tilt);
+  board(p, hx + 1, hy - 2, tilt);
   if (k === 2 || k === 3) {
     const ex = Math.round(hx + 1 + sway);
     const ey = Math.round(hy + len - 2);
@@ -253,8 +333,10 @@ function drawHero(d: HeroDir, pose: Pose): PC {
   drawLegs(p, d, pose);
   p.oy = pose.bob;
   const back = d === 'n' || d === 'ne';
+  if (!back) drawSquare(p, d, false);
   if (back) drawRig(p, d, pose);
   drawRobe(p, d, pose);
+  if (back) drawSquare(p, d, true);
   drawArms(p, d, pose);
   drawHead(p, d, pose);
   if (!back) drawRig(p, d, pose);
