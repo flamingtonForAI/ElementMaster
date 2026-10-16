@@ -1,13 +1,13 @@
 import Phaser from 'phaser';
 import { CHARACTERS } from '../config/characters';
-import { EL_INFO, GEN_ORDER } from '../config/elements';
+import { EL_INFO, SAY_ORDER } from '../config/elements';
 import { SLOTS, activeSlot, deleteSlot, exportSlot, importSlot, listSlots, newSlot, useSlot, type Save } from '../game/save';
 import { label, hex } from '../ui/text';
 import { isTouch } from '../ui/touch';
 import { audio } from '../audio/Audio';
 import { canFullscreen, isFullscreen, isIOS, isStandalone, toggleFullscreen, IOS_TIP } from '../ui/fullscreen';
 import { wrap } from '../ui/wrap';
-import { TOD_LIST, getTod, getTodPreset, getVistaCloudKey, getVistaFgKey, getVistaTextureKey, isVistaPainted, setTod } from '../art/vistaArt';
+import { TOD_LIST, getTod, getTodPreset, getVistaCloudKey, getVistaFgKey, getVistaTextureKey, isVistaPainted, setTod, type TodId } from '../art/vistaArt';
 
 const PANEL = 0x161220;
 const LINE = 0x4a3f5c;
@@ -30,6 +30,17 @@ const duration = (sec: number) => {
 };
 const farthest = (s: Save) => Math.max(0, ...Object.values(s.clears).flat());
 
+/** 首页背景按清晨→白天→傍晚→夜里循环：每个时辰停 HOLD 毫秒，再用 FADE 毫秒淡入下一个 */
+const HOLD = 14000;
+const FADE = 4000;
+
+/** 一个时辰的远景三层 */
+interface Vista {
+  bg: Phaser.GameObjects.TileSprite;
+  clouds: Phaser.GameObjects.TileSprite;
+  fg: Phaser.GameObjects.TileSprite;
+}
+
 /** 首页：继续游戏、新游戏、存档（五个槽位）、设置 */
 export class TitleScene extends Phaser.Scene {
   private view: View = 'main';
@@ -40,10 +51,11 @@ export class TitleScene extends Phaser.Scene {
   private full = false;
   private slots: (Save | null)[] = [];
   private layer!: Phaser.GameObjects.Container;
-  private bg!: Phaser.GameObjects.TileSprite;
-  private clouds!: Phaser.GameObjects.TileSprite;
-  private fg!: Phaser.GameObjects.TileSprite;
+  /** cur 是当前时辰，under 在下面垫着下一个时辰 */
+  private cur!: Vista;
+  private under!: Vista;
   private veil!: Phaser.GameObjects.Rectangle;
+  private nextTodAt = 0;
   private toast: Phaser.GameObjects.Text | null = null;
 
   constructor() {
@@ -57,12 +69,11 @@ export class TitleScene extends Phaser.Scene {
     this.slots = listSlots();
     this.slotSel = activeSlot() - 1;
     this.sel = 0;
-    this.bg = this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey()).setOrigin(0);
-    this.clouds = this.add.tileSprite(0, 0, 640, 360, getVistaCloudKey()).setOrigin(0).setAlpha(0.32);
-    this.fg = this.add.tileSprite(0, 0, 640, 360, getVistaFgKey()).setOrigin(0).setAlpha(0.75);
-    this.veil = this.add.rectangle(0, 0, 640, 360, 0x07050b, getTodPreset().veilAlpha).setOrigin(0);
-    this.syncVistaLayers();
-    this.layer = this.add.container(0, 0);
+    this.under = this.vista(getTod(), 0);
+    this.cur = this.vista(getTod(), 1);
+    this.veil = this.add.rectangle(0, 0, 640, 360, 0x07050b, getTodPreset().veilAlpha).setOrigin(0).setDepth(2);
+    this.nextTodAt = this.time.now + HOLD;
+    this.layer = this.add.container(0, 0).setDepth(3);
     audio.music('menu');
     this.render();
     this.input.keyboard!.on('keydown', (e: KeyboardEvent) => this.onKey(e));
@@ -70,8 +81,62 @@ export class TitleScene extends Phaser.Scene {
 
   update(t: number, dms: number) {
     // 远景云层极慢速横移，前景松竹随风微摆
-    this.clouds.tilePositionX += dms * 0.004;
-    this.fg.x = Math.round(Math.sin(t * 0.0012) * 1.5);
+    for (const v of [this.cur, this.under]) {
+      v.clouds.tilePositionX += dms * 0.004;
+      v.fg.x = Math.round(Math.sin(t * 0.0012) * 1.5);
+    }
+    if (t >= this.nextTodAt) {
+      this.nextTodAt = t + HOLD + FADE;
+      this.advanceTod();
+    }
+  }
+
+  private vista(id: TodId, depth: number): Vista {
+    const v = {
+      bg: this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey(id)).setOrigin(0),
+      clouds: this.add.tileSprite(0, 0, 640, 360, getVistaCloudKey(id)).setOrigin(0),
+      fg: this.add.tileSprite(0, 0, 640, 360, getVistaFgKey(id)).setOrigin(0),
+    };
+    this.setVista(v, id, 1);
+    for (const o of [v.bg, v.clouds, v.fg]) o.setDepth(depth);
+    return v;
+  }
+
+  /** 换贴图并按整体透明度 a 设三层的透明度；生图远景自带云和前景，不叠程序画的 */
+  private setVista(v: Vista, id: TodId, a: number) {
+    const painted = isVistaPainted(id);
+    v.bg.setTexture(getVistaTextureKey(id)).setAlpha(a);
+    v.clouds.setTexture(getVistaCloudKey(id)).setAlpha(0.32 * a).setVisible(!painted);
+    v.fg.setTexture(getVistaFgKey(id)).setAlpha(0.75 * a).setVisible(!painted);
+  }
+
+  /** 下一个时辰垫到下面，上面的淡出后两层对调；记下当前时辰，菜单和洞府沿用 */
+  private advanceTod() {
+    const i = TOD_LIST.findIndex((t) => t.id === getTod());
+    const next = TOD_LIST[(i + 1) % TOD_LIST.length].id;
+    const front = this.cur;
+    const back = this.under;
+    this.setVista(back, next, 1);
+    const k = { a: 1 };
+    this.tweens.add({
+      targets: k,
+      a: 0,
+      duration: FADE,
+      ease: 'Sine.inOut',
+      onUpdate: () => {
+        front.bg.setAlpha(k.a);
+        front.clouds.setAlpha(0.32 * k.a);
+        front.fg.setAlpha(0.75 * k.a);
+      },
+      onComplete: () => {
+        for (const o of [front.bg, front.clouds, front.fg]) o.setDepth(0);
+        for (const o of [back.bg, back.clouds, back.fg]) o.setDepth(1);
+        this.cur = back;
+        this.under = front;
+      },
+    });
+    this.tweens.add({ targets: this.veil, fillAlpha: getTodPreset(next).veilAlpha, duration: FADE, ease: 'Sine.inOut' });
+    setTod(next);
   }
 
   private current() {
@@ -121,7 +186,7 @@ export class TitleScene extends Phaser.Scene {
   private renderMain() {
     const L = this.layer;
     L.add(label(this, 48, 52, '五行师', '#f4eee0', 48));
-    GEN_ORDER.forEach((e, i) => L.add(label(this, 50 + i * 26, 106, EL_INFO[e].name, hex(EL_INFO[e].color))));
+    SAY_ORDER.forEach((e, i) => L.add(label(this, 50 + i * 26, 106, EL_INFO[e].name, hex(EL_INFO[e].color))));
 
     const items = this.mainItems();
     this.sel = Math.min(this.sel, items.length - 1);
@@ -138,49 +203,12 @@ export class TitleScene extends Phaser.Scene {
 
     this.renderCard(this.current(), activeSlot(), 340, 158);
 
-    // 右下角：时辰切换栏（清晨 | 白天 | 傍晚 | 夜里）
-    this.renderTodBar();
-
     // 手机上提供全屏；iPhone 网页不支持，点了显示“添加到主屏幕”的说明
     if (isTouch() && !isStandalone() && (canFullscreen() || isIOS())) {
       L.add(this.hit(label(this, 634, 6, '⛶ 全屏', MUTED).setOrigin(1, 0), () => (canFullscreen() ? toggleFullscreen() : this.showTip(IOS_TIP))));
     }
     L.add(label(this, 634, 344, 'Demo M1', '#6a6474').setOrigin(1, 0));
     if (!isTouch()) this.hint('↑ ↓ 选择　Enter 确认');
-  }
-
-  private syncVistaLayers() {
-    const painted = isVistaPainted();
-    this.clouds.setVisible(!painted);
-    this.fg.setVisible(!painted);
-  }
-
-  private renderTodBar() {
-    const L = this.layer;
-    const bx = 348;
-    const by = 304;
-    L.add(this.add.rectangle(bx - 8, by - 3, 260, 20, PANEL, 0.82).setOrigin(0).setStrokeStyle(1, LINE));
-    L.add(label(this, bx, by, '换个时辰：', '#b8aec8'));
-    const cur = getTod();
-    TOD_LIST.forEach((t, i) => {
-      const ox = bx + 64 + i * 48;
-      if (i > 0) L.add(label(this, ox - 8, by, '|', '#5a5464'));
-      const on = t.id === cur;
-      const btn = label(this, ox, by, t.name, on ? GOLD : '#d8d0e4');
-      L.add(
-        this.hit(btn, () => {
-          if (getTod() === t.id) return;
-          setTod(t.id);
-          audio.sfx('tick');
-          this.bg.setTexture(getVistaTextureKey(t.id));
-          this.clouds.setTexture(getVistaCloudKey(t.id));
-          this.fg.setTexture(getVistaFgKey(t.id));
-          this.syncVistaLayers();
-          this.veil.setFillStyle(0x07050b, getTodPreset(t.id).veilAlpha);
-          this.render();
-        }, 4, 3),
-      );
-    });
   }
 
   /** 存档卡片：最近用的角色 + 进度摘要 */

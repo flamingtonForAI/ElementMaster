@@ -3,6 +3,9 @@ export type El = 'metal' | 'wood' | 'water' | 'fire' | 'earth';
 /** 相生顺序，五行盘按这个顺序排布 */
 export const GEN_ORDER: El[] = ['wood', 'fire', 'earth', 'metal', 'water'];
 
+/** 口头习惯的顺序“金木水火土”，标题等纯展示处用 */
+export const SAY_ORDER: El[] = ['metal', 'wood', 'water', 'fire', 'earth'];
+
 export const EL_INFO: Record<El, { name: string; color: number; css: string; dark: number }> = {
   metal: { name: '金', color: 0xe9e4d4, css: '#e9e4d4', dark: 0x8f8a7e },
   wood: { name: '木', color: 0x4fbf7a, css: '#4fbf7a', dark: 0x2e7a4a },

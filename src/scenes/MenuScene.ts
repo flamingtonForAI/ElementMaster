@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { CHARACTERS } from '../config/characters';
 import { LEVELS } from '../config/levels';
-import { EL_INFO, GEN_ORDER } from '../config/elements';
+import { EL_INFO, GEN_ORDER, SAY_ORDER } from '../config/elements';
 import { activeSlot, loadSave } from '../game/save';
 import { daoPoints, legacyPoints } from '../game/talents';
+import { PORTRAIT_W, PORTRAIT_H } from '../art/portraits';
 import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
 import { isTouch } from '../ui/touch';
@@ -41,7 +42,7 @@ export class MenuScene extends Phaser.Scene {
 
     // 标题：五个元素字环绕
     label(this, 320, 18, '五行师', '#f4eee0', 48).setOrigin(0.5, 0);
-    GEN_ORDER.forEach((e, i) => {
+    SAY_ORDER.forEach((e, i) => {
       label(this, 320 + (i - 2) * 26, 72, EL_INFO[e].name, hex(EL_INFO[e].color)).setOrigin(0.5, 0);
     });
     label(this, 634, 344, `存档 ${activeSlot()} · 灵石 ${save.lingshi}`, '#6a6474').setOrigin(1, 0);
@@ -107,9 +108,13 @@ export class MenuScene extends Phaser.Scene {
     L.add(this.add.rectangle(X0, py, W, ph, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, LINE));
     const col = c.balanced ? 0xd8d0e4 : EL_INFO[c.el].color;
     if (c.available) {
-      const big = this.add.sprite(X0 + 52, py + ph / 2 + 4, `hero_${c.id}`, 0).setScale(3);
-      big.play(`${c.id}_s_idle`);
-      L.add(big);
+      // 生图像素肖像与程序画后备共用同一显示尺寸。
+      const pw = PORTRAIT_W * 2;
+      const pht = PORTRAIT_H * 2;
+      const px = X0 + 52 - pw / 2;
+      const pty = py + (ph - pht) / 2;
+      L.add(this.add.image(px, pty, `portrait_${c.id}`).setOrigin(0).setDisplaySize(pw, pht));
+      L.add(this.add.rectangle(px - 1, pty - 1, pw + 2, pht + 2).setOrigin(0).setStrokeStyle(1, col, 0.7));
     } else {
       L.add(label(this, X0 + 52, py + ph / 2, '?', '#5a5266', 48).setOrigin(0.5));
     }
