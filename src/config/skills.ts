@@ -11,6 +11,8 @@ export interface SkillDef {
   glyph: string;
   el: El;
   maxLv: number;
+  /** 命中时触发本元素异常的基础几率；水龙、石刺自带必定的迟缓、眩晕 */
+  proc: number;
   /** 专属术只出现在对应角色的升级池 */
   exclusive?: string;
   /** desc[0] 是习得时的描述，desc[n] 是升到 n+1 级的变化 */
@@ -31,7 +33,7 @@ const at = (arr: number[], lv: number) => arr[Math.min(arr.length, lv) - 1];
 
 export const SKILLS: Record<SkillId, SkillDef> = {
   slash: {
-    id: 'slash', name: '剑气斩', glyph: '斩', el: 'metal', maxLv: 8, exclusive: 'xiao',
+    id: 'slash', name: '剑气斩', glyph: '斩', el: 'metal', maxLv: 8, proc: 0.2, exclusive: 'xiao',
     desc: ['向面朝方向挥出扇形剑气', '伤害提高', '范围扩大', '伤害提高，冷却缩短', '范围扩大', '伤害提高', '范围扩大，冷却缩短', '前后双斩，并斩出剑气波'],
     stats: (lv) => ({
       dmg: at([16, 20, 20, 25, 25, 31, 31, 38], lv),
@@ -42,7 +44,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   talisman: {
-    id: 'talisman', name: '火符', glyph: '符', el: 'fire', maxLv: 8, exclusive: 'zhu',
+    id: 'talisman', name: '火符', glyph: '符', el: 'fire', maxLv: 8, proc: 0.3, exclusive: 'zhu',
     desc: ['符纸追踪飞向最近的敌人，贴上后片刻爆开', '伤害提高', '爆炸范围扩大', '冷却缩短', '一次抛出两张', '伤害提高，爆炸范围扩大', '伤害提高，冷却缩短', '一次抛出三张'],
     stats: (lv) => ({
       dmg: at([20, 25, 25, 25, 25, 31, 38, 40], lv),
@@ -52,7 +54,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   crossbow: {
-    id: 'crossbow', name: '分水连弩', glyph: '弩', el: 'water', maxLv: 8, exclusive: 'ruan',
+    id: 'crossbow', name: '分水连弩', glyph: '弩', el: 'water', maxLv: 8, proc: 0.08, exclusive: 'ruan',
     desc: ['朝最近的敌人连射三箭，射程最远，可贯穿 1 个', '伤害提高', '贯穿 +1', '伤害提高', '每轮 +1 箭', '冷却缩短', '伤害提高', '命中溅起水花，减速周围敌人'],
     stats: (lv) => ({
       dmg: at([7, 9, 9, 11, 11, 11, 14, 15], lv),
@@ -63,7 +65,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   flysword: {
-    id: 'flysword', name: '飞剑', glyph: '剑', el: 'metal', maxLv: 8,
+    id: 'flysword', name: '飞剑', glyph: '剑', el: 'metal', maxLv: 8, proc: 0.15,
     desc: ['追踪最近的敌人，可穿透', '伤害提高', '飞剑 +1', '穿透 +1', '飞剑 +1', '伤害提高，穿透 +1', '飞剑 +1', '伤害大幅提高，冷却缩短'],
     stats: (lv) => ({
       dmg: at([10, 13, 13, 13, 13, 17, 17, 24], lv),
@@ -73,7 +75,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   fireball: {
-    id: 'fireball', name: '火球', glyph: '火', el: 'fire', maxLv: 8,
+    id: 'fireball', name: '火球', glyph: '火', el: 'fire', maxLv: 8, proc: 0.35,
     desc: ['慢速高抛火球，砸向敌人最密的地方，大范围爆炸', '伤害提高', '爆炸范围扩大', '火球 +1', '伤害提高', '爆炸范围扩大', '火球 +1', '伤害大幅提高，范围扩大'],
     stats: (lv) => ({
       dmg: at([26, 32, 32, 32, 40, 40, 40, 55], lv),
@@ -83,7 +85,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   leaf: {
-    id: 'leaf', name: '飞叶', glyph: '叶', el: 'wood', maxLv: 8,
+    id: 'leaf', name: '飞叶', glyph: '叶', el: 'wood', maxLv: 8, proc: 0.1,
     desc: ['飞叶在敌人之间弹射', '弹射 +1', '伤害提高', '飞叶 +1', '弹射 +2', '伤害提高', '冷却缩短', '飞叶 +1，伤害提高'],
     stats: (lv) => ({
       dmg: at([8, 8, 11, 11, 11, 14, 14, 17], lv),
@@ -93,7 +95,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   waterdragon: {
-    id: 'waterdragon', name: '水龙', glyph: '龙', el: 'water', maxLv: 8,
+    id: 'waterdragon', name: '水龙', glyph: '龙', el: 'water', maxLv: 8, proc: 0,
     desc: ['水龙贯穿一线敌人并减速', '伤害提高', '水龙变粗', '减速延长', '伤害提高', '水龙 +1', '水龙变粗，伤害提高', '冷却缩短，伤害提高'],
     stats: (lv) => ({
       dmg: at([16, 21, 21, 21, 27, 27, 33, 38], lv),
@@ -104,7 +106,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   stonespike: {
-    id: 'stonespike', name: '石刺', glyph: '刺', el: 'earth', maxLv: 8,
+    id: 'stonespike', name: '石刺', glyph: '刺', el: 'earth', maxLv: 8, proc: 0,
     desc: ['敌人脚下突起石刺，造成眩晕', '石刺 +1', '伤害提高', '眩晕延长', '石刺 +1', '伤害提高，范围扩大', '石刺 +1', '石刺 +1，伤害提高'],
     stats: (lv) => ({
       dmg: at([20, 20, 26, 26, 26, 32, 32, 40], lv),

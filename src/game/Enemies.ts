@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
-import { ENEMIES, type EnemyDef, type PoisonDef } from '../config/enemies';
+import { ENEMIES, type EnemyDef } from '../config/enemies';
+import { STATUS_INFO, type Inflict } from '../config/status';
 import { EL_INFO } from '../config/elements';
 import { SpatialGrid } from './SpatialGrid';
 import { PLAYER_RADIUS } from './Player';
 import { label, hex } from '../ui/text';
-import type { GameScene } from '../scenes/GameScene';
+import type { GameScene, HurtOpts } from '../scenes/GameScene';
 import { audio } from '../audio/Audio';
 
 export class Enemy {
@@ -27,6 +28,16 @@ export class Enemy {
   slowUntil = 0;
   slowF = 1;
   stunUntil = 0;
+  /** 定身结束后的免疫期 */
+  stunImmuneUntil = 0;
+  /** 身上的异常：中毒单层、灼烧叠层（每层 burnDps）、破绽 */
+  poisonUntil = 0;
+  poisonDps = 0;
+  burnUntil = 0;
+  burnStacks = 0;
+  burnDps = 0;
+  flawUntil = 0;
+  dotTick = 0;
   flashUntil = 0;
   contactAt = 0;
   counterShown = false;
@@ -38,13 +49,22 @@ export class Enemy {
   dashX = 0;
   dashY = 0;
   tint = -1;
-  /** 攻击附带的毒伤（每秒），随时间成长 */
-  poisonDps = 0;
+  /** 攻击附带异常的每秒伤害（中毒、灼烧），随时间成长 */
+  atkDps = 0;
   /** Boss 已按每 20% 血量掉过几瓶解毒药 */
   dropStage = 0;
   glyph: Phaser.GameObjects.Text | null = null;
   constructor(readonly sprite: Phaser.GameObjects.Sprite) {}
 }
+
+const TINTS: Record<number, number> = {
+  2: STATUS_INFO.stun.tint,
+  3: STATUS_INFO.slow.tint,
+  4: 0xff9a8a,
+  5: STATUS_INFO.burn.tint,
+  6: STATUS_INFO.poison.tint,
+  7: STATUS_INFO.flaw.tint,
+};
 
 export interface SpawnOpts {
   hpMult?: number;
@@ -78,11 +98,12 @@ export class EnemyManager {
     e.radius = def.radius * (e.elite ? 1.5 : 1);
     e.speed = def.speed * (0.9 + Math.random() * 0.2);
     e.xp = o.noXp ? 0 : e.elite ? 20 : def.xp;
-    e.poisonDps = def.poison ? def.poison.dps * (e.elite ? 1.5 : 1) * (e.boss ? 1 : this.g.dmgScale()) : 0;
+    e.atkDps = (def.inflict?.dps ?? 0) * (e.elite ? 1.5 : 1) * (e.boss ? 1 : this.g.dmgScale());
     e.dropStage = 0;
     e.alive = true;
     e.kbx = e.kby = 0;
-    e.slowUntil = e.stunUntil = e.flashUntil = e.contactAt = 0;
+    e.slowUntil = e.stunUntil = e.stunImmuneUntil = e.flashUntil = e.contactAt = 0;
+    e.poisonUntil = e.poisonDps = e.burnUntil = e.burnStacks = e.burnDps = e.flawUntil = e.dotTick = 0;
     e.counterShown = false;
     e.state = 0;
     e.timer = 1 + Math.random() * 2;
@@ -127,7 +148,19 @@ export class EnemyManager {
         vx = mv[0];
         vy = mv[1];
       }
-      if (e.def.regen) e.hp = Math.min(e.maxHp, e.hp + e.def.regen * dt);
+      // 中毒期间不回血
+      const poisoned = now < e.poisonUntil;
+      const burning = now < e.burnUntil;
+      if (e.def.regen && !poisoned) e.hp = Math.min(e.maxHp, e.hp + e.def.regen * dt);
+      if (poisoned || burning) {
+        e.dotTick -= dt;
+        if (e.dotTick <= 0) {
+          e.dotTick += 0.5;
+          const dps = (poisoned ? e.poisonDps : 0) + (burning ? e.burnStacks * e.burnDps : 0);
+          g.dotEnemy(e, dps * 0.5, burning ? 'burn' : 'poison');
+          if (!e.alive) continue;
+        }
+      }
 
       // 击退衰减
       vx += e.kbx;
@@ -160,21 +193,29 @@ export class EnemyManager {
       // 接触伤害
       if (p.alive && dist < e.radius + PLAYER_RADIUS && now >= e.contactAt) {
         e.contactAt = now + 0.8;
-        g.hurtPlayer(e.dmg, e.def.el, this.poisonOf(e));
+        // 狼妖扑咬有前摇，冲刺中撞到必定暴击
+        g.hurtPlayer(e.dmg, e.def.el, this.hurtOf(e, e.def.behavior === 'boss_wolf' && e.state === 2));
       }
 
       const s = e.sprite;
       s.setPosition(e.x, e.y);
       s.setDepth(e.y);
       if (Math.abs(dx) > 2) s.setFlipX(dx < 0);
-      const tint = now < e.flashUntil ? 1 : stunned ? 2 : slow < 1 ? 3 : e.state === 1 && (e.def.behavior === 'charge' || e.boss) ? 4 : 0;
+      // 着色优先级：受击闪白 > 定身 > 冲锋预警 > 灼烧 > 中毒 > 迟缓 > 破绽
+      const tint =
+        now < e.flashUntil ? 1
+        : stunned ? 2
+        : e.state === 1 && (e.def.behavior === 'charge' || e.boss) ? 4
+        : burning ? 5
+        : poisoned ? 6
+        : slow < 1 ? 3
+        : now < e.flawUntil ? 7
+        : 0;
       if (tint !== e.tint) {
         e.tint = tint;
         if (tint === 1) s.setTintFill(0xffffff);
-        else if (tint === 2) s.setTint(0xe8d38a);
-        else if (tint === 3) s.setTint(0x9fc0ff);
-        else if (tint === 4) s.setTint(0xff9a8a);
-        else s.clearTint();
+        else if (tint === 0) s.clearTint();
+        else s.setTint(TINTS[tint]);
       }
       if (e.glyph) e.glyph.setPosition(Math.round(e.x), Math.round(e.y - s.displayHeight * 0.9)).setDepth(e.y + 1);
     }
@@ -231,7 +272,7 @@ export class EnemyManager {
         e.timer -= dt;
         if (e.timer <= 0 && dist < 180) {
           e.timer = 4;
-          g.proj.enemyShot('ep_poison', e.x, e.y - 8, nx * 90, ny * 90, e.dmg, e.def.el, this.poisonOf(e));
+          g.proj.enemyShot('ep_poison', e.x, e.y - 8, nx * 90, ny * 90, e.dmg, e.def.el, this.hurtOf(e));
           audio.sfx('bossShot', { rate: 1.6, vol: 0.4 });
         }
         if (dist > 90) return [nx * sp, ny * sp];
@@ -262,10 +303,11 @@ export class EnemyManager {
             e.state = 3;
             e.timer = 0.6;
             const n = e.hp < e.maxHp * 0.5 ? 16 : 12;
+            const hurt = this.hurtOf(e);
             audio.sfx('bossShot');
             for (let i = 0; i < n; i++) {
               const a = (i / n) * Math.PI * 2;
-              g.proj.enemyShot('ep_wind', e.x, e.y - 12, Math.cos(a) * 95, Math.sin(a) * 95, 10, 'metal');
+              g.proj.enemyShot('ep_wind', e.x, e.y - 12, Math.cos(a) * 95, Math.sin(a) * 95, 10, 'metal', hurt);
             }
           }
           return [e.dashX * 250, e.dashY * 250];
@@ -280,7 +322,7 @@ export class EnemyManager {
         e.timer -= dt;
         e.timer2 -= dt;
         const half = e.hp < e.maxHp * 0.5;
-        const poison = this.poisonOf(e);
+        const hurt = this.hurtOf(e);
         if (e.timer <= 0) {
           e.timer = half ? 2.6 : 3.2;
           const n = half ? 20 : 14;
@@ -288,7 +330,7 @@ export class EnemyManager {
           const off = Math.random() * Math.PI;
           for (let i = 0; i < n; i++) {
             const a = off + (i / n) * Math.PI * 2;
-            g.proj.enemyShot('ep_leaf', e.x, e.y - 30, Math.cos(a) * 100, Math.sin(a) * 100, 9, 'wood', poison);
+            g.proj.enemyShot('ep_leaf', e.x, e.y - 30, Math.cos(a) * 100, Math.sin(a) * 100, 9, 'wood', hurt);
           }
         }
         if (e.timer2 <= 0) {
@@ -303,7 +345,7 @@ export class EnemyManager {
           e.timer3 -= dt;
           if (e.timer3 <= 0) {
             e.timer3 = 4.5;
-            this.thornLine(e.x, e.y, Math.atan2(ny, nx), poison);
+            this.thornLine(e.x, e.y, Math.atan2(ny, nx), hurt);
           }
         }
         return [nx * sp, ny * sp];
@@ -330,29 +372,31 @@ export class EnemyManager {
     if (e.xp > 0) g.pickups.gem(e.x, e.y, e.xp);
     if (e.elite) g.pickups.chest(e.x, e.y);
     else if (!e.boss && Math.random() < 0.012) g.pickups.pill(e.x + 6, e.y);
-    else if (!e.boss && e.def.poison && Math.random() < 0.015) g.pickups.antidote(e.x - 6, e.y);
+    else if (!e.boss && e.def.inflict?.kind === 'poison' && Math.random() < 0.015) g.pickups.antidote(e.x - 6, e.y);
     if (e.def.behavior === 'explode') {
       const x = e.x;
       const y = e.y;
+      // 自爆必定灼烧
+      const burn: Inflict | undefined = e.def.inflict && { ...e.def.inflict, chance: 1, dps: e.atkDps };
       g.fx.disc(x, y, 18, 0xff5a3a, 0.28, 0.6);
       g.later(0.6, () => {
         g.fx.anim('fx_explosion', x, y, { scale: 0.8 });
         audio.sfx('explode', { rate: 1.3, vol: 0.6 });
         const p = g.player;
-        if (Math.hypot(p.x - x, p.y - y) < 18 + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale(), 'fire');
+        if (Math.hypot(p.x - x, p.y - y) < 18 + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale(), 'fire', { inflict: burn });
       });
     }
     if (e.boss) g.onBossKilled(e);
   }
 
-  /** 敌人这次攻击附带的毒 */
-  private poisonOf(e: Enemy): PoisonDef | undefined {
-    const p = e.def.poison;
-    return p && { chance: p.chance, dps: e.poisonDps, dur: p.dur };
+  /** 敌人这次攻击附带的异常和暴击 */
+  private hurtOf(e: Enemy, forceCrit = false): HurtOpts {
+    const f = e.def.inflict;
+    return { inflict: f && { ...f, dps: e.atkDps }, crit: e.def.crit, critDmg: e.def.critDmg, forceCrit };
   }
 
   /** 预警 0.7 秒后沿直线钻出毒刺，压到玩家就造成伤害 */
-  private thornLine(x: number, y: number, a: number, poison?: PoisonDef) {
+  private thornLine(x: number, y: number, a: number, hurt?: HurtOpts) {
     const g = this.g;
     const len = 260;
     const cx = Math.cos(a);
@@ -369,7 +413,7 @@ export class EnemyManager {
       // 玩家到线段的距离
       const p = g.player;
       const t = Math.max(0, Math.min(len, (p.x - x) * cx + (p.y - y) * cy));
-      if (Math.hypot(p.x - (x + cx * t), p.y - (y + cy * t)) < 10 + PLAYER_RADIUS) g.hurtPlayer(16, 'wood', poison);
+      if (Math.hypot(p.x - (x + cx * t), p.y - (y + cy * t)) < 10 + PLAYER_RADIUS) g.hurtPlayer(16, 'wood', hurt);
     });
   }
 

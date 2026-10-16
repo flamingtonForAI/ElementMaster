@@ -1,9 +1,8 @@
 import Phaser from 'phaser';
 import type { El } from '../config/elements';
-import type { PoisonDef } from '../config/enemies';
 import { PLAYER_RADIUS } from './Player';
 import type { Enemy } from './Enemies';
-import type { GameScene } from '../scenes/GameScene';
+import type { GameScene, HurtOpts } from '../scenes/GameScene';
 
 export type ProjKind = 'sword' | 'fu' | 'bolt' | 'wave' | 'leaf' | 'water' | 'lob' | 'enemy';
 
@@ -21,6 +20,8 @@ export class Proj {
   radius = 4;
   life = 0;
   slow = 0;
+  /** 命中触发本元素异常的几率 */
+  proc = 0;
   kb = 0;
   target: Enemy | null = null;
   hit = new Set<number>();
@@ -43,8 +44,8 @@ export class Proj {
   arc = 36;
   /** 抛物线落地时代替默认爆炸 */
   onLand: ((x: number, y: number) => void) | null = null;
-  /** 敌方弹幕附带的毒 */
-  poison: PoisonDef | undefined = undefined;
+  /** 敌方弹幕的异常和暴击 */
+  hurt: HurtOpts | undefined = undefined;
   constructor(readonly sprite: Phaser.GameObjects.Sprite) {}
 }
 
@@ -56,6 +57,7 @@ export interface FireOpts {
   bounces?: number;
   radius?: number;
   slow?: number;
+  proc?: number;
   kb?: number;
   target?: Enemy | null;
   anim?: string;
@@ -97,6 +99,7 @@ export class ProjectileManager {
     p.bounces = o.bounces ?? 0;
     p.radius = o.radius ?? 4;
     p.slow = o.slow ?? 0;
+    p.proc = o.proc ?? 0;
     p.kb = o.kb ?? 20;
     p.target = o.target ?? null;
     p.onHit = o.onHit ?? null;
@@ -121,15 +124,16 @@ export class ProjectileManager {
     p.aoe = aoe;
     p.onLand = onLand ?? null;
     p.stick = false;
+    p.proc = 0;
     p.arc = arc;
     p.life = dur + 1;
     p.sprite.play(anim);
     return p;
   }
 
-  enemyShot(tex: string, x: number, y: number, vx: number, vy: number, dmg: number, el: El, poison?: PoisonDef) {
+  enemyShot(tex: string, x: number, y: number, vx: number, vy: number, dmg: number, el: El, hurt?: HurtOpts) {
     const p = this.take(tex);
-    p.poison = poison;
+    p.hurt = hurt;
     p.kind = 'enemy';
     p.x = x;
     p.y = y;
@@ -160,7 +164,7 @@ export class ProjectileManager {
         p.sprite.setPosition(p.x, p.y - Math.sin(k * Math.PI) * p.arc).setDepth(p.y + 20);
         if (k >= 1) {
           if (p.onLand) p.onLand(p.x, p.y);
-          else g.explode(p.x, p.y, p.aoe, p.dmg, p.el, 80);
+          else g.explode(p.x, p.y, p.aoe, p.dmg, p.el, 80, undefined, p.proc);
           this.release(p);
         }
         continue;
@@ -204,7 +208,7 @@ export class ProjectileManager {
 
       if (p.kind === 'enemy') {
         if (pl.alive && Math.hypot(pl.x - p.x, pl.y - 6 - p.y) < p.radius + PLAYER_RADIUS) {
-          g.hurtPlayer(p.dmg, p.el, p.poison);
+          g.hurtPlayer(p.dmg, p.el, p.hurt);
           this.release(p);
         }
         continue;
@@ -220,7 +224,7 @@ export class ProjectileManager {
           this.release(p);
           break;
         }
-        g.hitEnemy(e, p.dmg * (p.dmgAt?.(e) ?? 1), p.el, { kb: p.kb, fromX: p.x - p.vx, fromY: p.y - p.vy, slow: p.slow });
+        g.hitEnemy(e, p.dmg * (p.dmgAt?.(e) ?? 1), p.el, { kb: p.kb, fromX: p.x - p.vx, fromY: p.y - p.vy, slow: p.slow, proc: p.proc });
         p.onHit?.(e);
         if (p.kind === 'leaf') {
           p.bounces--;

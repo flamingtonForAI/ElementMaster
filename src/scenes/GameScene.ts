@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
 import { LEVELS, DIFF, type LevelDef } from '../config/levels';
-import { ENEMIES, type PoisonDef } from '../config/enemies';
+import { ENEMIES } from '../config/enemies';
+import { ENEMY_CRIT, ENEMY_CRIT_DMG, ON_ENEMY, STATUS_OF, statusChance, type Inflict, type StatusId } from '../config/status';
 import { EL_INFO, GEN_ORDER, REL_MULT, relation, terrainMod, type El } from '../config/elements';
 import { SKILLS } from '../config/skills';
 import { Build, upgradeSum, type Option, type PlayerStats } from '../game/Build';
@@ -11,6 +12,7 @@ import { ProjectileManager } from '../game/Projectiles';
 import { PickupManager } from '../game/Pickups';
 import { Fx } from '../game/Fx';
 import { SkillSystem } from '../game/Skills';
+import { PlayerStatus } from '../game/Status';
 import { World } from '../game/World';
 import { loadSave, writeSave } from '../game/save';
 import { talentMods } from '../game/talents';
@@ -28,6 +30,16 @@ export interface HitOpts {
   noCrit?: boolean;
   /** 浪花溅射的层数，0 或不填是原始命中 */
   splash?: number;
+  /** 触发本元素异常的几率（再乘五行关系） */
+  proc?: number;
+}
+
+/** 敌人打玩家：附带的异常、暴击率（不填按元素）、暴击倍率、必定暴击（有前摇的重击） */
+export interface HurtOpts {
+  inflict?: Inflict;
+  crit?: number;
+  critDmg?: number;
+  forceCrit?: boolean;
 }
 
 export interface RunResult {
@@ -68,12 +80,8 @@ export class GameScene extends Phaser.Scene {
   banishes = 0;
   /** 升级卡拿到的灵石，结算时发放 */
   cardLingshi = 0;
-  /** 中毒：同一时间只有一层，新毒取更强的伤害和更晚的结束时间 */
-  poisonUntil = 0;
-  poisonDps = 0;
-  /** 解毒药的免疫期 */
-  antidoteUntil = 0;
-  private poisonTick = 0;
+  /** 玩家身上的异常 */
+  status!: PlayerStatus;
 
   private pendingLevelUps = 0;
   private iframeUntil = 0;
@@ -96,7 +104,6 @@ export class GameScene extends Phaser.Scene {
     this.over = false;
     this.pendingLevelUps = 0;
     this.iframeUntil = 0;
-    this.poisonUntil = this.poisonDps = this.antidoteUntil = this.poisonTick = 0;
     this.spawnAcc = 0;
     this.tasks = [];
     this.terrainMods = Object.fromEntries(GEN_ORDER.map((e) => [e, terrainMod(e, this.levelDef.terrain)])) as Record<El, number>;
@@ -118,6 +125,7 @@ export class GameScene extends Phaser.Scene {
     this.proj = new ProjectileManager(this);
     this.pickups = new PickupManager(this);
     this.skills = new SkillSystem(this);
+    this.status = new PlayerStatus(this);
     this.player = new Player(this);
 
     this.cameras.main.startFollow(this.player.sprite, true, 1, 1);
@@ -163,7 +171,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.over) this.elapsed += dt;
 
     this.player.update(dt);
-    this.poisonUpdate(dt);
+    this.status.update(dt);
     if (!this.over) this.spawnUpdate(dt);
     this.enemies.update(dt);
     if (this.player.alive) this.skills.update(dt);
@@ -300,11 +308,12 @@ export class GameScene extends Phaser.Scene {
       const dy = e.y - this.player.y;
       if (dx * dx + dy * dy <= ps.meleeRange * ps.meleeRange) m *= 1 + ps.meleeBonus;
     }
-    const crit = !o.noCrit && Math.random() < this.pstats.crit;
+    const flaw = this.now < e.flawUntil ? (e.boss ? ON_ENEMY.flaw.bossCrit : ON_ENEMY.flaw.crit) : 0;
+    const crit = !o.noCrit && Math.random() < this.pstats.crit + flaw;
     const dmg = Math.max(1, Math.round(base * m * (crit ? this.pstats.critDmg : 1) - e.armor));
     e.hp -= dmg;
     // 带毒的 Boss 每掉 20% 血掉一瓶解毒药，落在 Boss 和玩家之间
-    if (e.boss && e.def.poison && e.hp > 0) {
+    if (e.boss && e.def.inflict?.kind === 'poison' && e.hp > 0) {
       const stage = Math.min(4, Math.floor((1 - e.hp / e.maxHp) / 0.2));
       while (e.dropStage < stage) {
         e.dropStage++;
@@ -324,11 +333,9 @@ export class GameScene extends Phaser.Scene {
       e.kbx += (dx / d) * k;
       e.kby += (dy / d) * k;
     }
-    if (o.stun) e.stunUntil = Math.max(e.stunUntil, this.now + o.stun * ps.stunMult * (e.boss ? 0.3 : 1));
-    if (o.slow) {
-      e.slowUntil = this.now + o.slow * ps.slowMult;
-      e.slowF = e.boss ? 0.75 : 0.5;
-    }
+    if (o.stun) this.stunEnemy(e, o.stun);
+    if (o.slow) this.slowEnemy(e, o.slow);
+    if (o.proc && e.hp > 0 && Math.random() < o.proc * statusChance(STATUS_OF[el], e.def.el, false)) this.afflict(e, STATUS_OF[el], dmg);
 
     let prefix = '';
     if (rel === 'counter' && !e.counterShown) {
@@ -355,64 +362,104 @@ export class GameScene extends Phaser.Scene {
     for (const e of near) this.hitEnemy(e, base * k, 'water', { kb: 20, fromX: src.x, fromY: src.y, splash: depth, noCrit: !canCrit });
   }
 
-  explode(x: number, y: number, radius: number, dmg: number, el: El, kb: number, tint?: number) {
+  explode(x: number, y: number, radius: number, dmg: number, el: El, kb: number, tint?: number, proc = 0) {
     audio.sfx('explode');
     this.fx.anim('fx_explosion', x, y - 4, { scale: radius / 22, tint });
     const tmp: Enemy[] = [];
-    for (const e of this.enemies.inRadius(x, y, radius, tmp)) this.hitEnemy(e, dmg, el, { kb, fromX: x, fromY: y });
+    for (const e of this.enemies.inRadius(x, y, radius, tmp)) this.hitEnemy(e, dmg, el, { kb, fromX: x, fromY: y, proc });
   }
 
-  /** 带毒的攻击命中后再按概率判定中毒 */
-  hurtPlayer(base: number, el: El, poison?: PoisonDef) {
+  // ---------- 敌人身上的异常 ----------
+
+  /** 同元素的敌人免疫该异常 */
+  private immune(e: Enemy, kind: StatusId) {
+    return statusChance(kind, e.def.el, false) === 0;
+  }
+
+  slowEnemy(e: Enemy, dur: number) {
+    if (this.immune(e, 'slow')) return;
+    e.slowUntil = Math.max(e.slowUntil, this.now + dur * this.pstats.slowMult);
+    e.slowF = e.boss ? ON_ENEMY.slow.bossF : ON_ENEMY.slow.f;
+  }
+
+  /** Boss 不会被定身，改为迟缓；定身结束后短暂免疫 */
+  stunEnemy(e: Enemy, dur: number) {
+    if (this.immune(e, 'stun')) return;
+    const d = dur * this.pstats.stunMult;
+    if (e.boss) {
+      e.slowUntil = Math.max(e.slowUntil, this.now + d);
+      e.slowF = ON_ENEMY.slow.bossF;
+      return;
+    }
+    if (this.now < e.stunUntil || this.now < e.stunImmuneUntil) return;
+    e.stunUntil = this.now + d;
+    e.stunImmuneUntil = e.stunUntil + ON_ENEMY.stun.immune;
+  }
+
+  /** 按几率触发的异常；中毒、灼烧的伤害按本次命中伤害折算 */
+  private afflict(e: Enemy, kind: StatusId, dmg: number) {
+    const now = this.now;
+    switch (kind) {
+      case 'slow':
+        return this.slowEnemy(e, ON_ENEMY.slow.dur);
+      case 'stun':
+        return this.stunEnemy(e, ON_ENEMY.stun.dur);
+      case 'poison':
+        if (now >= e.poisonUntil && now >= e.burnUntil) e.dotTick = 0.5;
+        if (now >= e.poisonUntil) e.poisonDps = 0;
+        e.poisonDps = Math.max(e.poisonDps, dmg * ON_ENEMY.poison.k);
+        e.poisonUntil = now + ON_ENEMY.poison.dur;
+        return;
+      case 'burn':
+        if (now >= e.poisonUntil && now >= e.burnUntil) e.dotTick = 0.5;
+        if (now >= e.burnUntil) e.burnStacks = e.burnDps = 0;
+        e.burnStacks = Math.min(ON_ENEMY.burn.max, e.burnStacks + 1);
+        e.burnDps = Math.max(e.burnDps, dmg * ON_ENEMY.burn.k);
+        e.burnUntil = now + ON_ENEMY.burn.dur;
+        return;
+      case 'flaw':
+        e.flawUntil = now + ON_ENEMY.flaw.dur;
+        return;
+    }
+  }
+
+  /** 中毒、灼烧的结算：不吃护甲、不暴击；只给精英和 Boss 跳数字，免得刷屏 */
+  dotEnemy(e: Enemy, v: number, kind: StatusId) {
+    if (!e.alive) return;
+    const dmg = Math.max(1, Math.round(v));
+    e.hp -= dmg;
+    if (e.boss || e.elite) this.fx.text(e.x + 8, e.y - e.sprite.displayHeight * 0.6, `${dmg}`, kind === 'burn' ? '#ffa060' : '#8fe06a', 0.6);
+    if (e.hp <= 0) this.enemies.kill(e);
+  }
+
+  /** 敌人的攻击：按元素判定暴击（破绽时更高），先乘暴击再减护甲，命中后判定异常 */
+  hurtPlayer(base: number, el: El, o: HurtOpts = {}) {
     const p = this.player;
     if (!p.alive || this.dbg.god || this.over || this.now < this.iframeUntil) return;
     this.iframeUntil = this.now + 0.35;
     const rel = relation(el, this.build.benming);
     const armor = this.pstats.armor + (p.moving ? 0 : this.pstats.stillArmor);
-    const dmg = Math.max(1, Math.round(base * REL_MULT[rel] * this.pstats.resist[el] - armor));
+    const crit = o.forceCrit || Math.random() < (o.crit ?? ENEMY_CRIT[el]) + this.status.critTaken;
+    const critDmg = crit ? (o.critDmg ?? ENEMY_CRIT_DMG) : 1;
+    const dmg = Math.max(1, Math.round(base * critDmg * REL_MULT[rel] * this.pstats.resist[el] - armor));
     p.hurt();
-    audio.sfx('hurt');
-    this.fx.number(p.x, p.y - 30, dmg, 'player', false);
-    if (poison && Math.random() < poison.chance) this.poisonPlayer(poison);
-    this.loseHp(dmg);
-  }
-
-  private poisonPlayer(po: PoisonDef) {
-    if (this.now < this.antidoteUntil) return;
-    const p = this.player;
-    if (this.now >= this.poisonUntil) {
-      this.poisonDps = 0;
-      this.poisonTick = 0.5;
-      this.fx.text(p.x, p.y - 40, '中毒', '#8fe06a', 0.8);
-    }
-    this.poisonDps = Math.max(this.poisonDps, po.dps);
-    this.poisonUntil = Math.max(this.poisonUntil, this.now + po.dur);
-  }
-
-  /** 毒伤每 0.5 秒结算一次，不吃护甲和无敌帧 */
-  private poisonUpdate(dt: number) {
-    if (this.now >= this.poisonUntil || !this.player.alive || this.over) return;
-    this.poisonTick -= dt;
-    if (this.poisonTick > 0) return;
-    this.poisonTick += 0.5;
-    if (this.dbg.god) return;
-    const p = this.player;
-    const dmg = Math.max(1, Math.round(this.poisonDps * 0.5));
-    this.fx.text(p.x + 8, p.y - 26, `${dmg}`, '#8fe06a', 0.6);
+    audio.sfx('hurt', crit ? { rate: 0.75 } : undefined);
+    if (crit) this.cameras.main.shake(90, 0.004);
+    this.fx.number(p.x, p.y - 30, dmg, 'player', crit);
+    if (o.inflict) this.status.inflict(o.inflict);
     this.loseHp(dmg);
   }
 
   /** 解毒药：清毒并免疫一段时间 */
   curePoison() {
     const p = this.player;
-    this.poisonUntil = 0;
-    this.antidoteUntil = this.now + 6;
+    this.status.cure(6);
     this.fx.text(p.x, p.y - 30, '解毒', '#8fe06a', 0.8);
     this.fx.ring(p.x, p.y - 8, 40, 0x8fe06a, 0.4);
     audio.sfx('pill');
   }
 
-  private loseHp(dmg: number) {
+  loseHp(dmg: number) {
     const p = this.player;
     p.hp -= dmg;
     if (p.hp <= 0) {
@@ -429,7 +476,7 @@ export class GameScene extends Phaser.Scene {
     this.revives--;
     p.hp = Math.round(this.pstats.maxHp * 0.5);
     this.iframeUntil = this.now + 2;
-    this.poisonUntil = 0;
+    this.status.clear();
     this.proj.clearEnemyShots();
     this.fx.ring(p.x, p.y - 8, 90, 0xffd23f, 0.6);
     const tmp: Enemy[] = [];

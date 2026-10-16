@@ -1,14 +1,19 @@
 import Phaser from 'phaser';
 import { dirFromVector, type HeroDir } from '../art/heroXiao';
 import type { GameScene } from '../scenes/GameScene';
+import { STATUS_INFO, type StatusId } from '../config/status';
 import { stick } from '../ui/touch';
 
 export const PLAYER_RADIUS = 7;
+const PIP_ORDER: StatusId[] = ['stun', 'burn', 'poison', 'slow', 'flaw'];
 
 export class Player {
   readonly sprite: Phaser.GameObjects.Sprite;
   private readonly hpBg: Phaser.GameObjects.Rectangle;
   private readonly hpFill: Phaser.GameObjects.Rectangle;
+  /** 血条下方一排异常色块，和震慑累积条 */
+  private readonly pips: Record<StatusId, Phaser.GameObjects.Rectangle>;
+  private readonly stunBar: Phaser.GameObjects.Rectangle;
   x = 0;
   y = 0;
   hp: number;
@@ -28,6 +33,10 @@ export class Player {
     this.sprite = g.add.sprite(0, 0, `hero_${g.char.id}`, 0).setOrigin(0.5, 0.92);
     this.hpBg = g.add.rectangle(0, 0, 20, 3, 0x1c1424).setOrigin(0.5, 0);
     this.hpFill = g.add.rectangle(0, 0, 18, 1, 0xe8503f).setOrigin(0, 0);
+    this.pips = Object.fromEntries(
+      PIP_ORDER.map((k) => [k, g.add.rectangle(0, 0, 3, 2, STATUS_INFO[k].tint).setOrigin(0, 0).setVisible(false)]),
+    ) as Record<StatusId, Phaser.GameObjects.Rectangle>;
+    this.stunBar = g.add.rectangle(0, 0, 18, 1, 0xdaa53e).setOrigin(0, 0).setVisible(false);
     this.keys = g.input.keyboard!.addKeys('UP,DOWN,LEFT,RIGHT,W,A,S,D') as Record<string, Phaser.Input.Keyboard.Key>;
   }
 
@@ -44,13 +53,17 @@ export class Player {
       my = stick.y;
       speedK = Math.min(1, Math.hypot(mx, my));
     }
+    const st = g.status;
+    // 定身时不能移动，术照常自动释放
+    if (st.stunned) mx = my = 0;
     this.moving = mx !== 0 || my !== 0;
     if (this.moving) {
       const len = Math.hypot(mx, my);
       mx /= len;
       my /= len;
-      this.x += mx * g.pstats.speed * speedK * dt;
-      this.y += my * g.pstats.speed * speedK * dt;
+      const sp = g.pstats.speed * speedK * st.speedMult;
+      this.x += mx * sp * dt;
+      this.y += my * sp * dt;
       this.facing.x = mx;
       this.facing.y = my;
     }
@@ -65,18 +78,39 @@ export class Player {
     this.sprite.setFlipX(this.flip);
     this.sprite.setPosition(this.x, this.y);
     this.sprite.setDepth(this.y);
-    const poisoned = g.now < g.poisonUntil;
+    const tint = st.stunned ? 'stun' : st.burning ? 'burn' : st.poisoned ? 'poison' : st.slowed ? 'slow' : st.flawed ? 'flaw' : null;
     if (g.now < this.hurtUntil) this.sprite.setTintFill(0xff5a5a);
-    else if (poisoned) this.sprite.setTint(0xb8f0a0);
+    else if (tint) this.sprite.setTint(STATUS_INFO[tint].tint);
     else this.sprite.clearTint();
 
-    // 回血
+    // 回血，中毒时减半
     const max = g.pstats.maxHp;
-    if (g.pstats.regen > 0) this.hp = Math.min(max, this.hp + g.pstats.regen * dt);
+    if (g.pstats.regen > 0) this.hp = Math.min(max, this.hp + g.pstats.regen * st.regenMult * dt);
     this.hpBg.setPosition(this.x, this.y + 4).setDepth(this.y + 1);
     this.hpFill.setPosition(this.x - 9, this.y + 5).setDepth(this.y + 2);
     this.hpFill.width = Math.max(0, 18 * (this.hp / max));
-    this.hpFill.fillColor = poisoned ? 0x7ad04a : 0xe8503f;
+    this.hpFill.fillColor = st.poisoned ? 0x7ad04a : 0xe8503f;
+    this.updatePips();
+  }
+
+  private updatePips() {
+    const st = this.g.status;
+    const on: Record<StatusId, boolean> = { stun: st.stunned, burn: st.burning, poison: st.poisoned, slow: st.slowed, flaw: st.flawed };
+    const active = PIP_ORDER.filter((k) => on[k]);
+    let x = this.x - (active.length * 4 - 1) / 2;
+    for (const k of PIP_ORDER) {
+      const r = this.pips[k];
+      r.setVisible(on[k]);
+      if (!on[k]) continue;
+      r.setPosition(Math.round(x), this.y + 9).setDepth(this.y + 2);
+      x += 4;
+    }
+    const m = st.stunMeter;
+    this.stunBar.setVisible(m > 0);
+    if (m > 0) {
+      this.stunBar.width = Math.round(18 * m);
+      this.stunBar.setPosition(this.x - 9, this.y + 7).setDepth(this.y + 2);
+    }
   }
 
   /** 播放出招动画，持续期间锁定朝向；自动瞄准的术传入目标方向，身体转向目标出招 */
@@ -100,6 +134,8 @@ export class Player {
     this.g.tweens.add({ targets: this.sprite, angle: 90, alpha: 0.6, duration: 500 });
     this.hpBg.setVisible(false);
     this.hpFill.setVisible(false);
+    this.stunBar.setVisible(false);
+    for (const k of PIP_ORDER) this.pips[k].setVisible(false);
   }
 
   private play(key: string) {

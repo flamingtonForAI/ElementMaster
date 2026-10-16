@@ -41,6 +41,7 @@ export class SkillSystem {
     const area = g.pstats.area;
     const cx = p.x;
     const cy = p.y - 8;
+    const proc = SKILLS[id].proc;
 
     switch (id) {
       case 'slash': {
@@ -64,7 +65,7 @@ export class SkillSystem {
         const chain = this.mod('xiao.chain') > 0 && this.slashCount % 3 === 0;
         if (chain && !st.back) {
           g.proj.fire('wave', 'pj_wave', cx, cy, Math.cos(ang) * 210, Math.sin(ang) * 210, {
-            dmg: st.dmg * 0.6, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40,
+            dmg: st.dmg * 0.6, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40, proc,
           });
         }
         if (st.back) {
@@ -73,7 +74,7 @@ export class SkillSystem {
             this.slash(ang + Math.PI, st);
           });
           g.proj.fire('wave', 'pj_wave', cx, cy, Math.cos(ang) * 210, Math.sin(ang) * 210, {
-            dmg: st.dmg * 0.6, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40,
+            dmg: st.dmg * 0.6, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40, proc,
           });
         }
         return true;
@@ -117,7 +118,7 @@ export class SkillSystem {
             const a = Math.atan2(ay - (p.y - 8), ax - p.x) + (Math.random() - 0.5) * 0.06;
             audio.sfx('sword', { rate: 1.3 });
             g.proj.fire('bolt', 'pj_bolt', p.x, p.y - 8, Math.cos(a) * speed, Math.sin(a) * speed, {
-              dmg: st.dmg, el: 'water', life: range / speed, pierce, radius: 4, kb: 15, onHit, dmgAt,
+              dmg: st.dmg, el: 'water', life: range / speed, pierce, radius: 4, kb: 15, proc, onHit, dmgAt,
             });
           });
         }
@@ -131,7 +132,7 @@ export class SkillSystem {
           const t = targets[i % targets.length];
           const a = Math.atan2(t.y - 6 - cy, t.x - cx) + (i - (st.count - 1) / 2) * 0.25;
           g.proj.fire('sword', 'pj_sword', cx, cy, Math.cos(a) * 230, Math.sin(a) * 230, {
-            dmg: st.dmg, el: 'metal', life: 1.4, pierce: st.pierce, radius: 4, target: t, kb: 25,
+            dmg: st.dmg, el: 'metal', life: 1.4, pierce: st.pierce, radius: 4, target: t, kb: 25, proc,
           });
         }
         return true;
@@ -145,7 +146,9 @@ export class SkillSystem {
         audio.sfx('fireball', { rate: 0.8 });
         for (let i = 0; i < st.count; i++) {
           const t = spots[i % spots.length].e;
-          g.proj.lob('pj_fireball', 'pj_fireball', cx, cy, t.x, t.y, 0.8, st.dmg, 'fire', r, undefined, 70).sprite.setScale(1.6);
+          const ball = g.proj.lob('pj_fireball', 'pj_fireball', cx, cy, t.x, t.y, 0.8, st.dmg, 'fire', r, undefined, 70);
+          ball.sprite.setScale(1.6);
+          ball.proc = proc;
         }
         return true;
       }
@@ -157,7 +160,7 @@ export class SkillSystem {
           const t = targets[i % targets.length];
           const a = Math.atan2(t.y - 6 - cy, t.x - cx) + i * 0.3;
           g.proj.fire('leaf', 'pj_leaf', cx, cy, Math.cos(a) * 260, Math.sin(a) * 260, {
-            dmg: st.dmg, el: 'wood', life: 2, bounces: st.bounces, radius: 5, kb: 10,
+            dmg: st.dmg, el: 'wood', life: 2, bounces: st.bounces, radius: 5, kb: 10, proc,
           });
         }
         return true;
@@ -233,11 +236,12 @@ export class SkillSystem {
       s.mark.destroy();
       this.sticks.splice(i, 1);
       const tint = s.el === 'fire' ? undefined : EL_INFO[s.el].color;
-      g.explode(s.x, s.y, s.radius, s.dmg, s.el, 80, tint);
+      const proc = SKILLS.talisman.proc;
+      g.explode(s.x, s.y, s.radius, s.dmg, s.el, 80, tint, proc);
       // 符海：原地再爆一次
       const echo = this.mod('zhu.echo');
       const { x, y, radius, dmg, el } = s;
-      if (echo) g.later(0.6, () => g.explode(x, y, radius * 0.8, dmg * echo, el, 40, tint));
+      if (echo) g.later(0.6, () => g.explode(x, y, radius * 0.8, dmg * echo, el, 40, tint, proc));
     }
   }
 
@@ -245,10 +249,7 @@ export class SkillSystem {
   private boltSplash(e: Enemy) {
     const g = this.g;
     g.fx.ring(e.x, e.y - 6, 22, 0x8fc0ff, 0.25);
-    for (const o of g.enemies.inRadius(e.x, e.y, 22 * g.pstats.area, this.tmp)) {
-      o.slowUntil = Math.max(o.slowUntil, g.now + 0.8 * g.pstats.slowMult);
-      o.slowF = o.boss ? 0.75 : 0.5;
-    }
+    for (const o of g.enemies.inRadius(e.x, e.y, 22 * g.pstats.area, this.tmp)) g.slowEnemy(o, 0.8);
   }
 
   private retreating() {
@@ -279,7 +280,7 @@ export class SkillSystem {
       const ey = e.y - 6 - cy;
       const d = Math.hypot(ex, ey);
       const diff = Math.abs(Math.atan2(Math.sin(Math.atan2(ey, ex) - ang), Math.cos(Math.atan2(ey, ex) - ang)));
-      if (d < 12 || diff <= half) g.hitEnemy(e, st.dmg * mult, 'metal', { kb: 70, fromX: cx, fromY: cy });
+      if (d < 12 || diff <= half) g.hitEnemy(e, st.dmg * mult, 'metal', { kb: 70, fromX: cx, fromY: cy, proc: SKILLS.slash.proc });
     }
   }
 }
