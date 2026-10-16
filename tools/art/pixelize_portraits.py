@@ -6,6 +6,8 @@ from PIL import Image, ImageOps
 ROOT = Path(__file__).resolve().parents[2]
 IDS = ('xiao', 'zhu', 'ruan', 'qingdai', 'moheng', 'xuanyi')
 OUT = ROOT / 'public/assets/portraits'
+# 六人对照图只给人看，放在不进仓库的 reports 目录，不随游戏打包
+REPORTS = ROOT / 'tools/art/reports'
 
 
 def pixelize(name):
@@ -20,8 +22,9 @@ def pixelize(name):
 
 if __name__ == '__main__':
     OUT.mkdir(parents=True, exist_ok=True)
+    REPORTS.mkdir(parents=True, exist_ok=True)
     preview = Image.new('RGB', (88 * len(IDS), 112))
     for i, name in enumerate(IDS):
         preview.paste(pixelize(name), (i * 88, 0))
-    preview.resize((88 * len(IDS) * 3, 112 * 3), Image.Resampling.NEAREST).save(OUT / 'preview.png')
-    print('Saved six 88×112 portraits and preview.png')
+    preview.resize((88 * len(IDS) * 3, 112 * 3), Image.Resampling.NEAREST).save(REPORTS / 'portraits_preview.png')
+    print('Saved six 88×112 portraits; preview at tools/art/reports/portraits_preview.png')
