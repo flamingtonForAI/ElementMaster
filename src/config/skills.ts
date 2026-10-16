@@ -57,7 +57,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     id: 'crossbow', name: '分水连弩', glyph: '弩', el: 'water', maxLv: 8, proc: 0.08, exclusive: 'ruan',
     desc: ['朝最近的敌人连射三箭，射程最远，可贯穿 1 个', '伤害提高', '贯穿 +1', '伤害提高', '每轮 +1 箭', '冷却缩短', '伤害提高', '命中溅起水花，减速周围敌人'],
     stats: (lv) => ({
-      dmg: at([7, 9, 9, 11, 11, 11, 14, 15], lv),
+      dmg: at([9, 11, 11, 13, 13, 13, 16, 18], lv),
       shots: at([3, 3, 3, 3, 4, 4, 4, 4], lv),
       pierce: at([1, 1, 2, 2, 2, 2, 2, 2], lv),
       cd: at([1.4, 1.4, 1.4, 1.4, 1.4, 1.25, 1.25, 1.25], lv),

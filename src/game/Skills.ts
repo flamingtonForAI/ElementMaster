@@ -113,8 +113,8 @@ export class SkillSystem {
         const speed = 320 * (1 + this.mod('ruan.range'));
         const pierce = st.pierce + this.mod('ruan.pierce');
         const onHit = st.splash ? (e: Enemy) => this.boltSplash(e) : undefined;
-        // 近身弱：贴脸 ×0.6，拉开到 180px 以上 ×1.15，鼓励边退边打
-        const dmgAt = (e: Enemy) => 0.6 + 0.55 * Phaser.Math.Clamp((Math.hypot(e.x - p.x, e.y - p.y) - 60) / 120, 0, 1);
+        // 远射：贴脸不打折，拉开到 180px 以上 ×1.2，奖励边退边打
+        const dmgAt = (e: Enemy) => 1 + 0.2 * Phaser.Math.Clamp((Math.hypot(e.x - p.x, e.y - p.y) - 60) / 120, 0, 1);
         for (let i = 0; i < st.shots; i++) {
           g.later(i * 0.07, () => {
             // 目标死了就沿上一箭的方向继续射
