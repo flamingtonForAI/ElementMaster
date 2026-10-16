@@ -345,6 +345,12 @@ export function runReadabilityCheck({ writeImages = true } = {}) {
       'gem_s',
       'gem_m',
       'gem_l',
+      'chest',
+      'chest_copper',
+      'crate',
+      'item_bao',
+      'item_ding',
+      'item_dun',
     ];
     const entityChecks = [];
     for (const key of targets) {

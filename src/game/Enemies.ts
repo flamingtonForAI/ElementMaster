@@ -6,6 +6,7 @@ import { SpatialGrid } from './SpatialGrid';
 import { PLAYER_RADIUS } from './Player';
 import { label, hex } from '../ui/text';
 import type { GameScene, HurtOpts } from '../scenes/GameScene';
+import type { ChestKind } from './Pickups';
 import { audio } from '../audio/Audio';
 
 export class Enemy {
@@ -22,6 +23,8 @@ export class Enemy {
   xp = 0;
   alive = false;
   elite = false;
+  /** 精英掉的宝箱：游荡精英掉铜匣，精英潮和 Boss 前的精英掉金宝箱 */
+  chest: ChestKind = 'gold';
   boss = false;
   kbx = 0;
   kby = 0;
@@ -76,6 +79,7 @@ const TINTS: Record<number, number> = {
 export interface SpawnOpts {
   hpMult?: number;
   elite?: boolean;
+  chest?: ChestKind;
   /** 不掉经验（Boss 召唤的小怪） */
   noXp?: boolean;
 }
@@ -97,6 +101,7 @@ export class EnemyManager {
     e.x = x;
     e.y = y;
     e.elite = !!o.elite;
+    e.chest = o.chest ?? 'gold';
     e.boss = !!def.boss;
     const hpMult = (o.hpMult ?? 1) * (e.elite ? 10 : 1);
     e.maxHp = e.hp = Math.round(def.hp * hpMult);
@@ -201,7 +206,8 @@ export class EnemyManager {
       e.x += vx * dt;
       e.y += vy * dt;
       // 岩壁挡住普通敌人：推出去，再沿岩壁切线绕行；Boss 和钻地中的穿山甲不受影响
-      if (!e.boss && !this.underground(e) && g.world.push(e, e.radius)) {
+      const solid = !e.boss && !this.underground(e);
+      if (solid ? g.world.push(e, e.radius) : g.world.clamp(e, e.radius)) {
         const tx = -g.world.hitNy;
         const ty = g.world.hitNx;
         const side = tx * nx + ty * ny >= 0 ? 1 : -1;
@@ -254,9 +260,7 @@ export class EnemyManager {
         this.pool.push(e);
       } else if (!e.boss && !e.elite && (Math.abs(e.x - p.x) > 520 || Math.abs(e.y - p.y) > 380)) {
         // 离得太远的普通怪拉回玩家附近，保持压力
-        const a = Math.random() * Math.PI * 2;
-        e.x = p.x + Math.cos(a) * 390;
-        e.y = p.y + Math.sin(a) * 390;
+        [e.x, e.y] = g.ringPos(390);
       }
     }
   }
@@ -518,7 +522,7 @@ export class EnemyManager {
     if (e.boss || e.elite) audio.sfx('killBig');
     else audio.sfx('kill');
     if (e.xp > 0) g.pickups.gem(e.x, e.y, e.xp);
-    if (e.elite) g.pickups.chest(e.x, e.y);
+    if (e.elite) g.pickups.chest(e.x, e.y, e.chest);
     else if (!e.boss && Math.random() < 0.012) g.pickups.pill(e.x + 6, e.y);
     else if (!e.boss && e.def.inflict?.kind === 'poison' && Math.random() < 0.015) g.pickups.antidote(e.x - 6, e.y);
     if (e.def.behavior === 'explode') {

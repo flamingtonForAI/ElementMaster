@@ -1,4 +1,5 @@
 import type { El, Terrain } from './elements';
+import type { RidgeDef } from '../game/terrain';
 
 export interface LevelDef {
   id: number;
@@ -19,8 +20,14 @@ export interface LevelDef {
   ground: string;
   decor: { tex: string; w: number }[];
   decorPerChunk: number;
+  /** 方形地图边长，出生点在中心 */
+  size: number;
+  /** 地图边缘那圈墙用的装饰贴图 */
+  edge: string;
+  /** 游荡精英：first 秒出第一只，之后间隔从 every[0] 线性缩到 every[1]，Boss 现身后停 */
+  elites: { first: number; every: [number, number] };
   /** 岩壁：沿低频噪声的等高线排成山脊，挡住玩家和普通敌人，缺口处留出山道 */
-  ridges?: { tex: string; radius: number; bands: number[] };
+  ridges?: RidgeDef;
   /** 落石：start 秒后开始，间隔和每次的块数从开局到结束线性插值 */
   rockfall?: { start: number; every: [number, number]; count: [number, number]; radius: number; warn: number; dmg: number };
   lesson: string;
@@ -46,6 +53,9 @@ export const LEVELS: LevelDef[] = [
     ground: 'ground_1',
     decor: [{ tex: 'dc_rock', w: 3 }, { tex: 'dc_tuft', w: 6 }, { tex: 'dc_tablet', w: 1 }, { tex: 'dc_deadtree', w: 1 }],
     decorPerChunk: 7,
+    size: 3600, edge: 'dc_rock', elites: { first: 60, every: [55, 30] },
+    // 新手关：一道稀疏的乱石带，大半是缺口
+    ridges: { tex: 'dc_rock', radius: 8, bands: [0.5], scale: 620, gap: 0.5 },
     lesson: '新手关：留意黄色的“克”字',
     available: true,
   },
@@ -58,6 +68,8 @@ export const LEVELS: LevelDef[] = [
     ground: 'ground_2',
     decor: [{ tex: 'dc_bamboo', w: 5 }, { tex: 'dc_shoot', w: 3 }, { tex: 'dc_mossrock', w: 2 }, { tex: 'dc_fern', w: 4 }],
     decorPerChunk: 9,
+    size: 3900, edge: 'dc_bamboo', elites: { first: 60, every: [60, 32] },
+    ridges: { tex: 'dc_bamboo', radius: 8, bands: [0.42, 0.62], scale: 480, gap: 0.42 },
     lesson: '金克木，火借势烧木',
     available: true,
   },
@@ -70,7 +82,8 @@ export const LEVELS: LevelDef[] = [
     ground: 'ground_3',
     decor: [{ tex: 'dc_pine', w: 4 }, { tex: 'dc_mossrock', w: 3 }, { tex: 'dc_rock', w: 2 }, { tex: 'dc_fern', w: 3 }, { tex: 'dc_tuft', w: 3 }],
     decorPerChunk: 8,
-    ridges: { tex: 'dc_cliff', radius: 11, bands: [0.3, 0.7] },
+    size: 4200, edge: 'dc_cliff', elites: { first: 60, every: [60, 32] },
+    ridges: { tex: 'dc_cliff', radius: 11, bands: [0.4, 0.6], scale: 440, gap: 0.3 },
     rockfall: { start: 20, every: [7, 3.5], count: [1, 3], radius: 20, warn: 1.1, dmg: 12 },
     lesson: '顺地气：土生金，金很舒服；山道窄，留意头顶落石',
     available: true,
@@ -87,6 +100,7 @@ export const LEVELS: LevelDef[] = [
   ] as const).map(([id, name, duration, terrain, bossName, lesson]): LevelDef => ({
     id, name, duration, terrain, bossName, lesson,
     enemies: [], spawn: [], hpMult: 1, boss: '', bgm: 'level1', ground: 'ground_1', decor: [], decorPerChunk: 0,
+    size: 3600, edge: 'dc_rock', elites: { first: 60, every: [55, 30] },
     available: false,
   })),
 ];

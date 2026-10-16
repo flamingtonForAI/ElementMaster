@@ -1,6 +1,19 @@
 import Phaser from 'phaser';
 import type { GameScene } from '../scenes/GameScene';
 import { audio } from '../audio/Audio';
+import { TALISMANS, type TalismanId } from '../config/map';
+
+export type ChestKind = 'gold' | 'copper';
+
+/** 地图上刷出来的东西，不会因为离得远而消失，到时间才消失 */
+export interface MapItem {
+  img: Phaser.GameObjects.Image;
+  kind: 'crate' | 'talisman';
+  talisman?: TalismanId;
+  expire: number;
+  /** 刷出的时刻，小地图上新东西闪一下 */
+  born: number;
+}
 
 class Gem {
   active = false;
@@ -17,7 +30,8 @@ const MAX_GEMS = 400;
 export class PickupManager {
   private gems: Gem[] = [];
   private pool: Gem[] = [];
-  private chests: Phaser.GameObjects.Image[] = [];
+  readonly chests: { img: Phaser.GameObjects.Image; kind: ChestKind }[] = [];
+  readonly items: MapItem[] = [];
   private pills: Phaser.GameObjects.Image[] = [];
   private antidotes: Phaser.GameObjects.Image[] = [];
 
@@ -52,11 +66,24 @@ export class PickupManager {
     this.gems.push(gm);
   }
 
-  chest(x: number, y: number) {
-    const c = this.g.add.image(x, y, 'chest').setOrigin(0.5, 0.9).setDepth(y);
+  chest(x: number, y: number, kind: ChestKind = 'gold') {
+    const c = this.g.add.image(x, y, kind === 'gold' ? 'chest' : 'chest_copper').setOrigin(0.5, 0.9).setDepth(y);
     this.g.tweens.add({ targets: c, y: y - 3, yoyo: true, repeat: -1, duration: 500, ease: 'Sine.inOut' });
     c.setData('y', y);
-    this.chests.push(c);
+    this.chests.push({ img: c, kind });
+  }
+
+  /** 木匣：碰到就开 */
+  crate(x: number, y: number, life: number) {
+    this.items.push({ img: this.g.add.image(x, y, 'crate').setOrigin(0.5, 0.9).setDepth(y), kind: 'crate', expire: this.g.now + life, born: this.g.now });
+  }
+
+  /** 符箓：飘在空中，拾取即用 */
+  talisman(x: number, y: number, id: TalismanId, life: number) {
+    const img = this.g.add.image(x, y, `item_${id}`).setOrigin(0.5, 0.9).setDepth(y);
+    this.g.tweens.add({ targets: img, y: y - 4, yoyo: true, repeat: -1, duration: 700, ease: 'Sine.inOut' });
+    img.setData('y', y);
+    this.items.push({ img, kind: 'talisman', talisman: id, expire: this.g.now + life, born: this.g.now });
   }
 
   /** 回气丹：拾取回复 15% 生命 */
@@ -139,12 +166,38 @@ export class PickupManager {
       }
     }
     for (let i = this.chests.length - 1; i >= 0; i--) {
-      const c = this.chests[i];
+      const { img: c, kind } = this.chests[i];
       if (Math.hypot(p.x - c.x, p.y - c.getData('y')) < 16) {
         this.chests.splice(i, 1);
         g.tweens.killTweensOf(c);
         c.destroy();
-        g.openChest();
+        if (kind === 'gold') g.openChest();
+        else g.openCopper();
+      }
+    }
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const it = this.items[i];
+      const c = it.img;
+      const left = it.expire - g.now;
+      if (left <= 0) {
+        this.items.splice(i, 1);
+        g.tweens.killTweensOf(c);
+        c.destroy();
+        continue;
+      }
+      // 最后 10 秒闪烁，越接近消失闪得越快
+      c.setAlpha(left < 10 ? (Math.sin(g.now * (left < 4 ? 18 : 9)) > 0 ? 1 : 0.35) : 1);
+      if (Math.hypot(p.x - c.x, p.y - (c.getData('y') ?? c.y)) < 15) {
+        this.items.splice(i, 1);
+        g.tweens.killTweensOf(c);
+        if (it.kind === 'crate') {
+          g.fx.burst(c.x, c.y - 6, 0xa8783a, 8);
+          g.openCrate(c.x, c.y);
+        } else {
+          g.useTalisman(it.talisman!);
+          g.hud.toast(TALISMANS[it.talisman!].name, TALISMANS[it.talisman!].css);
+        }
+        c.destroy();
       }
     }
   }

@@ -214,3 +214,86 @@ test('默认选关取最高已解锁且开放的关卡，不再写死第二关',
     LEVELS[2].available = available;
   }
 });
+
+const { itemSpot, ITEM_SPAWN } = await import('../src/config/map.ts');
+const { rng } = await import('../src/art/painter.ts');
+
+test('刷新道具落在玩家周围的环上、地图内、避开岩壁；贴边时也找得到点', () => {
+  const half = 1800;
+  const blocked = (x, y) => Math.abs(x - y) < 60;
+  const [d0, d1] = ITEM_SPAWN.dist;
+  for (const [px, py] of [[0, 0], [half - 30, half - 30], [-half + 30, 200]]) {
+    for (let seed = 1; seed <= 30; seed++) {
+      const spot = itemSpot(px, py, half, blocked, rng(seed));
+      assert.ok(spot, `玩家在 (${px}, ${py}) 时找不到点`);
+      const [x, y] = spot;
+      const d = Math.hypot(x - px, y - py);
+      assert.ok(d >= d0 - 1 && d <= d1 + 1, '不在刷新环上');
+      assert.ok(Math.abs(x) <= half - 80 && Math.abs(y) <= half - 80, '贴边或出界');
+      assert.ok(!blocked(x, y), '刷在岩壁上');
+    }
+  }
+});
+
+test('升级预览给出选后的灵根与本命，且不改动当前构筑', () => {
+  const build = new Build(character('xiao'), LEVELS[0]);
+  assert.equal(build.benming, 'metal');
+  // 一口气给木系很多级，本命应翻成木
+  build.skills.set('leaf', 1);
+  build.recompute();
+  const v0 = build.version;
+  const lingen0 = { ...build.lingen };
+  const pv = build.preview({ kind: 'skill', id: 'leaf', lv: 1 + build.lingen.metal });
+  assert.equal(pv.benming, 'wood');
+  assert.deepEqual(build.lingen, lingen0);
+  assert.equal(build.skills.get('leaf'), 1);
+  assert.equal(build.version, v0);
+  assert.equal(build.benming, 'metal');
+});
+
+const { isRidge, woodland } = await import('../src/game/terrain.ts');
+
+test('三关山脊从出生点基本全图连通，第 1 关最稀、第 3 关最密', () => {
+  const ratio = {};
+  for (const level of LEVELS.filter((l) => l.available)) {
+    const def = level.ridges;
+    assert.ok(def, `第 ${level.id} 关没有配山脊`);
+    const cell = 16;
+    const n = Math.floor(level.size / cell);
+    const half = level.size / 2;
+    const wall = new Uint8Array(n * n);
+    let walls = 0;
+    for (let y = 0; y < n; y++)
+      for (let x = 0; x < n; x++) {
+        const wx = -half + (x + 0.5) * cell;
+        const wy = -half + (y + 0.5) * cell;
+        // 玩家半径约 6，按墙加厚 4 算更保守
+        if (Math.hypot(wx, wy) >= 170 && isRidge(wx, wy, level.id, def, 4)) (wall[y * n + x] = 1), walls++;
+      }
+    const seen = new Uint8Array(n * n);
+    const start = Math.floor(n / 2) * n + Math.floor(n / 2);
+    const stack = [start];
+    seen[start] = 1;
+    let reach = 0;
+    while (stack.length) {
+      const i = stack.pop();
+      reach++;
+      const x = i % n;
+      const y = (i / n) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue;
+        const j = ny * n + nx;
+        if (seen[j] || wall[j]) continue;
+        seen[j] = 1;
+        stack.push(j);
+      }
+    }
+    const open = n * n - walls;
+    assert.ok(reach / open > 0.95, `第 ${level.id} 关只有 ${((reach / open) * 100).toFixed(1)}% 的空地走得到`);
+    ratio[level.id] = walls / (n * n);
+  }
+  assert.ok(ratio[1] < ratio[2] && ratio[2] < ratio[3], `山脊密度应逐关上升：${JSON.stringify(ratio)}`);
+  assert.ok(woodland(123, 456, 1) >= 0 && woodland(123, 456, 1) <= 1);
+});

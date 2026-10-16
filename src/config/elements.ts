@@ -37,6 +37,11 @@ export function counters(el: El): El {
   return CTRL[el];
 }
 
+/** 克 el 的那一系 */
+export function counteredBy(el: El): El {
+  return (Object.keys(CTRL) as El[]).find((k) => CTRL[k] === el)!;
+}
+
 export type Terrain = Record<El, number>;
 
 /** 地气修正 = 1 + 0.3×生我占比 + 0.15×同我占比 − 0.3×克我占比，限制在 ±25% */

@@ -19,6 +19,7 @@ import { Hazards } from '../game/Hazards';
 import { loadSave, writeSave } from '../game/save';
 import { talentMods, daoPoints, legacyPoints } from '../game/talents';
 import { createDebug, debugEnabled } from '../game/debug';
+import { CRATE_LOOT, ITEM_SPAWN, TALISMANS, itemSpot, pickWeighted, type TalismanId } from '../config/map';
 import { hex } from '../ui/text';
 import { audio } from '../audio/Audio';
 import type { HudScene } from './HudScene';
@@ -97,6 +98,14 @@ export class GameScene extends Phaser.Scene {
   /** 散人·周天：当前轮到的元素和下次轮转的时间 */
   zhoutian: El | null = null;
   private zhoutianAt = 0;
+  /** 遁符：无敌并加速到这个时刻 */
+  dunUntil = 0;
+  /** 下一只游荡精英的时间 */
+  private nextEliteAt = 0;
+  /** 待打开的铜匣（和升级一样排队弹三选一） */
+  private pendingCopper = 0;
+  /** 下一次刷木匣/符箓的时间 */
+  private nextItemAt = 0;
 
   /** Boss 半血后已换成狂暴版 BGM */
   private rageMusic = false;
@@ -121,6 +130,8 @@ export class GameScene extends Phaser.Scene {
     this.over = false;
     this.rageMusic = false;
     this.pendingLevelUps = 0;
+    this.pendingCopper = 0;
+    this.dunUntil = 0;
     this.iframeUntil = 0;
     this.spawnAcc = 0;
     this.shield = 0;
@@ -155,18 +166,23 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.cameras.main.startFollow(this.player.sprite, true, 1, 1);
+    // 镜头最多看到墙外一点
+    const h = this.world.half + 56;
+    this.cameras.main.setBounds(-h, -h, h * 2, h * 2);
 
     const d = L.duration;
+    this.nextEliteAt = L.elites.first;
+    this.nextItemAt = ITEM_SPAWN.first;
     this.timeline = [
       { t: d * 0.35, done: false, fn: () => this.swarm() },
       {
         t: d * 0.5, done: false, fn: () => {
-          this.spawnElite();
+          this.eliteWave(3);
           if (L.bgmDanger) audio.music(L.bgmDanger, 2);
         },
       },
       { t: d * 0.7, done: false, fn: () => this.swarm() },
-      { t: d - 90, done: false, fn: () => this.spawnElite() },
+      { t: d - 90, done: false, fn: () => this.spawnElite('gold') },
       { t: d - 60, done: false, fn: () => this.spawnBoss() },
     ];
 
@@ -225,6 +241,18 @@ export class GameScene extends Phaser.Scene {
       audio.music('boss_rage', 1.5);
     }
 
+    if (!this.over && this.elapsed >= this.nextEliteAt && this.elapsed < this.levelDef.duration - 60) {
+      const { every } = this.levelDef.elites;
+      const k = Math.min(1, this.elapsed / this.levelDef.duration);
+      this.nextEliteAt = this.elapsed + every[0] + (every[1] - every[0]) * k;
+      this.spawnElite('copper');
+    }
+
+    if (!this.over && this.elapsed >= this.nextItemAt) {
+      this.nextItemAt = this.elapsed + ITEM_SPAWN.every;
+      this.spawnItem();
+    }
+
     if (!this.over) {
       for (const ev of this.timeline) {
         if (!ev.done && this.elapsed >= ev.t) {
@@ -237,6 +265,11 @@ export class GameScene extends Phaser.Scene {
     if (this.pendingLevelUps > 0 && !this.over && this.player.alive) {
       this.pendingLevelUps--;
       this.openLevelUp();
+    } else if (this.pendingCopper > 0 && !this.over && this.player.alive) {
+      this.pendingCopper--;
+      this.scene.pause();
+      audio.sfx('chest');
+      this.hud.showLevelUp(this.build.options(3), false, '铜匣 · 选择一项');
     }
   }
 
@@ -290,9 +323,17 @@ export class GameScene extends Phaser.Scene {
     return list[0].id;
   }
 
-  private ringPos(r: number): [number, number] {
-    const a = Math.random() * Math.PI * 2;
-    return [this.player.x + Math.cos(a) * r, this.player.y + Math.sin(a) * r];
+  /** 玩家周围 r 处的随机点；贴着地图边缘时换个方向，实在不行夹回地图内 */
+  ringPos(r: number): [number, number] {
+    let x = 0;
+    let y = 0;
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * Math.PI * 2;
+      x = this.player.x + Math.cos(a) * r;
+      y = this.player.y + Math.sin(a) * r;
+      if (this.world.inside(x, y, 20)) return [x, y];
+    }
+    return this.world.clampPt(x, y, 20);
   }
 
   private spawnUpdate(dt: number) {
@@ -311,18 +352,30 @@ export class GameScene extends Phaser.Scene {
     const n = 28;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2;
-      this.enemies.spawn(id, this.player.x + Math.cos(a) * 230, this.player.y + Math.sin(a) * 150, { hpMult: this.hpScale() });
+      const [x, y] = this.world.clampPt(this.player.x + Math.cos(a) * 230, this.player.y + Math.sin(a) * 150, 20);
+      this.enemies.spawn(id, x, y, { hpMult: this.hpScale() });
     }
     audio.sfx('warn');
     this.hud.toast(`${ENEMIES[id].name}成群来袭！`, EL_INFO[ENEMIES[id].el].css);
   }
 
-  spawnElite() {
-    const id = this.pickEnemy();
+  /** 游荡精英掉铜匣，精英潮和 Boss 前的精英掉金宝箱 */
+  spawnElite(chest: 'gold' | 'copper' = 'copper', id = this.pickEnemy()) {
     const [x, y] = this.ringPos(260);
-    this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), elite: true });
+    this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), elite: true, chest });
     audio.sfx('warn');
-    this.hud.toast(`精英 · ${ENEMIES[id].name} 出现，击败可得宝箱`, '#ffd23f');
+    this.hud.toast(`精英 · ${ENEMIES[id].name} 出现，击败可得${chest === 'gold' ? '宝箱' : '铜匣'}`, chest === 'gold' ? '#ffd23f' : '#d89a5a');
+  }
+
+  /** 精英潮：同一种精英一次来 n 只 */
+  private eliteWave(n: number) {
+    const id = this.pickEnemy();
+    for (let i = 0; i < n; i++) {
+      const [x, y] = this.ringPos(240 + i * 20);
+      this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), elite: true, chest: 'gold' });
+    }
+    audio.sfx('warn');
+    this.hud.toast(`精英潮 · ${n} 只${ENEMIES[id].name}来袭`, '#ffd23f');
   }
 
   spawnBoss() {
@@ -624,6 +677,75 @@ export class GameScene extends Phaser.Scene {
     audio.sfx('chest');
     this.fx.ring(this.player.x, this.player.y - 8, 60, 0xffd23f, 0.5);
     if (changed) this.later(0.05, () => this.benmingBurst());
+  }
+
+  /** 在玩家周围屏幕外不远处刷一个木匣或符箓；同类满了就不刷 */
+  private spawnItem() {
+    const items = this.pickups.items;
+    const n = (k: 'crate' | 'talisman') => items.filter((i) => i.kind === k).length;
+    const canT = n('talisman') < ITEM_SPAWN.max.talisman;
+    const canC = n('crate') < ITEM_SPAWN.max.crate;
+    if (!canT && !canC) return;
+    const spot = itemSpot(this.player.x, this.player.y, this.world.half, (x, y) => this.world.blocked(x, y));
+    if (!spot) return;
+    const [x, y] = spot;
+    if (canT && (!canC || Math.random() < ITEM_SPAWN.talismanChance)) {
+      const talis = (Object.keys(TALISMANS) as TalismanId[]).map((id) => ({ id, w: TALISMANS[id].w }));
+      this.pickups.talisman(x, y, pickWeighted(talis), ITEM_SPAWN.life);
+    } else this.pickups.crate(x, y, ITEM_SPAWN.life);
+  }
+
+  /** 铜匣：排队弹一次三选一 */
+  openCopper() {
+    this.pendingCopper++;
+  }
+
+  /** 木匣：随机一项小奖励 */
+  openCrate(x: number, y: number) {
+    const loot = pickWeighted(CRATE_LOOT);
+    audio.sfx('chest');
+    if (loot === 'xp') {
+      const total = 4 + this.build.level * 2;
+      for (let i = 0; i < 5; i++) this.pickups.gem(x + (Math.random() - 0.5) * 24, y + (Math.random() - 0.5) * 16, Math.ceil(total / 5));
+      this.hud.toast('木匣：一捧灵气', '#9fd8ff');
+    } else if (loot === 'pill') {
+      this.healPlayer(0.2);
+      this.hud.toast('木匣：回气丹，回复 20% 生命', '#8fe08a');
+    } else if (loot === 'lingshi') {
+      const v = 5 * this.levelDef.id;
+      this.cardLingshi += v;
+      this.hud.toast(`木匣：灵石 +${v}（结算时发放）`, '#ffd23f');
+    } else {
+      this.pickups.magnetAll();
+      this.hud.toast('木匣：聚灵石，吸取全部灵气', '#9fd8ff');
+    }
+  }
+
+  /** 符箓：爆符清屏伤害，定身符定住屏内敌人，遁符无敌加速 */
+  useTalisman(id: TalismanId) {
+    const p = this.player;
+    const col = TALISMANS[id].color;
+    const onScreen = this.enemies.list.filter((e) => e.alive && Math.abs(e.x - p.x) < 340 && Math.abs(e.y - p.y) < 200);
+    this.fx.ring(p.x, p.y - 8, 120, col, 0.6);
+    if (id === 'bao') {
+      this.cameras.main.flash(180, 255, 140, 90);
+      this.cameras.main.shake(200, 0.006);
+      const dmg = 40 + this.build.level * 6;
+      for (const e of onScreen) this.hitEnemy(e, e.boss ? dmg * 0.25 : dmg, this.build.benming, { kb: 80, fromX: p.x, fromY: p.y, noCrit: true });
+      audio.sfx('killBig');
+    } else if (id === 'ding') {
+      for (const e of onScreen) {
+        if (e.boss) {
+          e.slowUntil = Math.max(e.slowUntil, this.now + 3);
+          e.slowF = ON_ENEMY.slow.bossF;
+        } else e.stunUntil = Math.max(e.stunUntil, this.now + 3);
+      }
+      audio.sfx('benming');
+    } else {
+      this.dunUntil = this.now + 3;
+      this.iframeUntil = Math.max(this.iframeUntil, this.dunUntil);
+      audio.sfx('benming');
+    }
   }
 
   // ---------- 散人·周天 ----------

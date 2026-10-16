@@ -2,32 +2,11 @@ import Phaser from 'phaser';
 import { rng } from '../art/painter';
 import { getTodPreset } from '../art/vistaArt';
 import type { LevelDef } from '../config/levels';
+import { POI_CLEAR_R } from '../config/map';
 import { VIEW_W, VIEW_H } from '../config/view';
+import { woodland, isRidge } from './terrain';
 
 const CHUNK = 256;
-
-/** 低频连续噪声（用于生成“四周密、中间素”的林地遮罩，让装饰物成簇聚集、留出开阔战斗空地） */
-function woodlandMask(wx: number, wy: number, seed: number): number {
-  const s1 = 0.0045;
-  const s2 = 0.011;
-  const v1 = Math.sin(wx * s1 + seed * 1.7) * Math.cos(wy * s1 - seed * 2.3);
-  const v2 = Math.sin((wx + wy) * s2 + seed * 0.9) * 0.5 + Math.cos((wx - wy) * s2 - seed * 1.4) * 0.5;
-  return (v1 * 0.65 + v2 * 0.35 + 1) * 0.5; // 归一化到 0..1
-}
-
-/** 山脊走向：比林地遮罩频率略高，等高线间距约 300px，围出窄道 */
-function ridgeField(wx: number, wy: number, seed: number): number {
-  const s = 0.0052;
-  const v1 = Math.sin(wx * s + seed * 2.1) * Math.cos(wy * s * 1.15 - seed * 0.7);
-  const v2 = Math.sin((wx * 0.6 - wy) * s * 1.7 + seed * 1.3);
-  return (v1 * 0.7 + v2 * 0.3 + 1) * 0.5;
-}
-
-/** 山道缺口：沿山脊每隔一段断开，保证不会被围死 */
-function ridgeGap(wx: number, wy: number, seed: number): boolean {
-  const s = 0.021;
-  return Math.sin(wx * s + seed) + Math.sin(wy * s * 1.3 - seed * 0.5) < -0.55;
-}
 
 interface Solid {
   x: number;
@@ -46,7 +25,31 @@ function isSmallDecor(tex: string): boolean {
   return tex === 'dc_tuft' || tex === 'dc_shoot' || tex === 'dc_fern';
 }
 
-/** 无限滚动地面 + 按林地遮罩成簇生成的装饰物 + 有碰撞的岩壁 */
+/** 地图缩略贴图每个像素对应的世界像素 */
+export const MAP_TEXEL = 12;
+
+/** 贴图的平均颜色（取不到时给个暗土色） */
+function averageColor(src: HTMLCanvasElement): [number, number, number] {
+  const d = src.getContext?.('2d')?.getImageData(0, 0, src.width, src.height).data;
+  if (!d) return [90, 80, 60];
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let c = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 128) continue;
+    r += d[i];
+    g += d[i + 1];
+    b += d[i + 2];
+    c++;
+  }
+  return c ? [r / c, g / c, b / c] : [90, 80, 60];
+}
+
+/** 边缘墙的厚度（地图外侧） */
+const EDGE_BAND = 44;
+
+/** 方形有界地图：滚动地面 + 按林地遮罩成簇生成的装饰物 + 有碰撞的岩壁 + 边缘墙 */
 export class World {
   private ground: Phaser.GameObjects.TileSprite;
   private chunks = new Map<string, Phaser.GameObjects.Image[]>();
@@ -56,11 +59,100 @@ export class World {
   hitNy = 0;
   private acc = 1;
   private tint: number;
+  /** 地图半边长，可走范围是 [-half, half] */
+  readonly half: number;
 
-  constructor(private scene: Phaser.Scene, private level: LevelDef) {
+  /** reserved：兴趣点位置，周围不放装饰和岩壁 */
+  constructor(private scene: Phaser.Scene, private level: LevelDef, private reserved: { x: number; y: number }[] = []) {
     this.tint = getTodPreset().worldTint;
+    this.half = level.size / 2;
     this.ground = scene.add.tileSprite(0, 0, VIEW_W, VIEW_H, level.ground).setOrigin(0).setScrollFactor(0).setDepth(-1e7);
     if (this.tint !== 0xffffff) this.ground.setTint?.(this.tint);
+    // 地图外压暗
+    const h = this.half;
+    const far = h + 2000;
+    scene.add.graphics().setDepth(-1e6).fillStyle(0x0a0810, 0.62)
+      .fillRect(-far, -far, far * 2, far - h)
+      .fillRect(-far, h, far * 2, far - h)
+      .fillRect(-far, -h, far - h, h * 2)
+      .fillRect(h, -h, far - h, h * 2);
+  }
+
+  /** 点是否在地图内（留 m 的边距） */
+  inside(x: number, y: number, m = 0): boolean {
+    return Math.abs(x) <= this.half - m && Math.abs(y) <= this.half - m;
+  }
+
+  /** 把点夹回地图内 */
+  clampPt(x: number, y: number, m = 0): [number, number] {
+    const h = this.half - m;
+    return [Math.max(-h, Math.min(h, x)), Math.max(-h, Math.min(h, y))];
+  }
+
+  /** 把半径 r 的对象夹回地图内，碰到边返回 true，法线记在 hitNx/hitNy */
+  clamp(o: { x: number; y: number }, r: number): boolean {
+    const h = this.half - r;
+    let hit = false;
+    if (o.x < -h) (o.x = -h), (this.hitNx = 1), (this.hitNy = 0), (hit = true);
+    else if (o.x > h) (o.x = h), (this.hitNx = -1), (this.hitNy = 0), (hit = true);
+    if (o.y < -h) (o.y = -h), (this.hitNx = 0), (this.hitNy = 1), (hit = true);
+    else if (o.y > h) (o.y = h), (this.hitNx = 0), (this.hitNy = -1), (hit = true);
+    return hit;
+  }
+
+  /**
+   * 生成整张地图的缩略贴图（每像素 MAP_TEXEL 世界像素）：底色取地砖平均色压暗，
+   * 林地更深、空地偏亮，岩壁画成浅色山脊线、缺口留空，边缘一圈墙色。返回贴图 key
+   */
+  buildMapTexture(): string {
+    const key = `minimap_${this.level.id}`;
+    const tm = this.scene.textures;
+    // 只取决于关卡，生成过就复用
+    if (tm.exists(key)) return key;
+    const n = Math.ceil(this.level.size / MAP_TEXEL);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = n;
+    const ctx = canvas.getContext('2d')!;
+    const img = ctx.createImageData(n, n);
+    const [r0, g0, b0] = averageColor(tm.get(this.level.ground).getSourceImage() as HTMLCanvasElement);
+    const def = this.level.ridges;
+    const seed = this.level.id;
+    for (let ty = 0; ty < n; ty++)
+      for (let tx = 0; tx < n; tx++) {
+        const wx = -this.half + (tx + 0.5) * MAP_TEXEL;
+        const wy = -this.half + (ty + 0.5) * MAP_TEXEL;
+        // 林地越密越暗，空地留亮
+        const wood = Math.max(0, Math.min(1, (woodland(wx, wy, seed) - 0.48) / 0.2));
+        let k = 0.62 - 0.3 * wood;
+        let [r, g, b] = [r0 * k, g0 * k, b0 * k];
+        const edge = tx === 0 || ty === 0 || tx === n - 1 || ty === n - 1;
+        const ridge = def && Math.hypot(wx, wy) >= 170 && isRidge(wx, wy, seed, def, MAP_TEXEL * 0.25);
+        if (edge || ridge) {
+          k = 1;
+          [r, g, b] = [150, 142, 158];
+        }
+        const i = (ty * n + tx) * 4;
+        img.data[i] = r;
+        img.data[i + 1] = g;
+        img.data[i + 2] = b;
+        img.data[i + 3] = 255;
+      }
+    ctx.putImageData(img, 0, 0);
+    tm.addCanvas(key, canvas);
+    return key;
+  }
+
+  /** 这里是否在岩壁上或贴着岩壁（按山脊噪声直接算，不依赖区块是否已生成），刷道具时用来避开 */
+  blocked(x: number, y: number): boolean {
+    const def = this.level.ridges;
+    if (!def) return false;
+    // 放宽到能容下道具和石头半径
+    return isRidge(x, y, this.level.id, def, 22);
+  }
+
+  private nearReserved(x: number, y: number, r: number): boolean {
+    const rr = (POI_CLEAR_R + r) ** 2;
+    return this.reserved.some((p) => (p.x - x) ** 2 + (p.y - y) ** 2 < rr);
   }
 
   update(dt: number) {
@@ -83,15 +175,16 @@ export class World {
     }
   }
 
-  /** 把半径 r 的圆形对象推出岩壁，碰到返回 true，法线记在 hitNx/hitNy */
+  /** 把半径 r 的圆形对象推出岩壁和地图边缘，碰到返回 true，法线记在 hitNx/hitNy */
   push(o: { x: number; y: number }, r: number): boolean {
-    if (!this.level.ridges) return false;
+    const edge = this.clamp(o, r);
+    if (!this.level.ridges) return edge;
     const reach = r + SOLID_MAX;
     const x0 = Math.floor((o.x - reach) / CHUNK);
     const x1 = Math.floor((o.x + reach) / CHUNK);
     const y0 = Math.floor((o.y - reach) / CHUNK);
     const y1 = Math.floor((o.y + reach) / CHUNK);
-    let hit = false;
+    let hit = edge;
     for (let cy = y0; cy <= y1; cy++)
       for (let cx = x0; cx <= x1; cx++) {
         const list = this.solids.get(`${cx},${cy}`);
@@ -128,6 +221,7 @@ export class World {
     const dist = Math.hypot(px, py);
     // 大件装饰远离玩家出生点，小件装饰保持基础安全距离
     if (dist < (isLargeDecor(texKey) ? 115 : 55)) return;
+    if (!this.inside(px, py, 8) || this.nearReserved(px, py, 6)) return;
     const tex = this.scene.textures.get(texKey);
     const frameCount = Math.max(1, tex.frameTotal - 1);
     const frame = Math.floor(R() * frameCount);
@@ -149,7 +243,7 @@ export class World {
     for (let c = 0; c < centers && list.length < maxCap; c++) {
       const cx = (x + 0.18 + R() * 0.64) * CHUNK;
       const cy = (y + 0.18 + R() * 0.64) * CHUNK;
-      const mask = woodlandMask(cx, cy, this.level.id);
+      const mask = woodland(cx, cy, this.level.id);
 
       if (mask > 0.52) {
         // 林地聚落：1 个主景物件（枯木/古碑/翠竹/岩石）+ 2~4 个伴生中小物件环绕
@@ -170,26 +264,52 @@ export class World {
     }
 
     if (this.level.ridges) this.buildRidges(x, y, R, list);
+    this.buildEdge(x, y, R, list);
     this.chunks.set(k, list);
   }
 
-  /** 在区块内按 20px 网格采样，落在等高线带上且不是缺口的位置放一块巨石 */
+  /** 地图外侧一圈密排的边缘墙（只是贴图，碰撞靠 clamp） */
+  private buildEdge(x: number, y: number, R: () => number, list: Phaser.GameObjects.Image[]) {
+    const h = this.half;
+    const x0 = x * CHUNK;
+    const y0 = y * CHUNK;
+    // 区块远在墙外，或完全在地图内侧时跳过
+    const out = h + EDGE_BAND;
+    if (x0 > out || x0 + CHUNK < -out || y0 > out || y0 + CHUNK < -out) return;
+    const inner = h - 2;
+    if (x0 >= -inner && x0 + CHUNK <= inner && y0 >= -inner && y0 + CHUNK <= inner) return;
+    const tex = this.scene.textures.get(this.level.edge);
+    const frames = Math.max(1, tex.frameTotal - 1);
+    const STEP = 15;
+    for (let gy = 0; gy < CHUNK; gy += STEP)
+      for (let gx = 0; gx < CHUNK; gx += STEP) {
+        const wx = x0 + gx + (R() - 0.5) * 7;
+        const wy = y0 + gy + (R() - 0.5) * 7;
+        const d = Math.max(Math.abs(wx), Math.abs(wy)) - h;
+        if (d < -2 || d > EDGE_BAND) continue;
+        const img = this.scene.add.image(Math.round(wx), Math.round(wy), this.level.edge, Math.floor(R() * frames)).setOrigin(0.5, 0.92).setDepth(wy);
+        if (R() < 0.5) img.setFlipX(true);
+        if (this.tint !== 0xffffff) img.setTint?.(this.tint);
+        list.push(img);
+      }
+  }
+
+  /** 在区块内按略小于石头直径的网格采样，落在山脊上且不是缺口的位置放一块岩壁 */
   private buildRidges(x: number, y: number, R: () => number, list: Phaser.GameObjects.Image[]) {
     const def = this.level.ridges!;
     const seed = this.level.id;
     const solids: Solid[] = [];
     const tex = this.scene.textures.get(def.tex);
     const frames = Math.max(1, tex.frameTotal - 1);
-    const STEP = 20;
+    const STEP = Math.max(14, Math.round(def.radius * 1.6));
     for (let gy = 0; gy < CHUNK; gy += STEP)
       for (let gx = 0; gx < CHUNK; gx += STEP) {
         const wx = x * CHUNK + gx + (R() - 0.5) * 8;
         const wy = y * CHUNK + gy + (R() - 0.5) * 8;
-        // 出生点附近留一片空地
+        // 出生点附近留一片空地；地图外和兴趣点旁不放
         if (Math.hypot(wx, wy) < 170) continue;
-        const f = ridgeField(wx, wy, seed);
-        if (!def.bands.some((b) => Math.abs(f - b) < 0.024)) continue;
-        if (ridgeGap(wx, wy, seed)) continue;
+        if (!this.inside(wx, wy, 10) || this.nearReserved(wx, wy, def.radius)) continue;
+        if (!isRidge(wx, wy, seed, def)) continue;
         const r = def.radius * (0.85 + R() * 0.3);
         // 碰撞圆心在石头底部偏上，和贴图的落脚点对齐
         solids.push({ x: wx, y: wy - 3, r });

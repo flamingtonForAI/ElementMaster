@@ -64,13 +64,15 @@ export class Player {
       const len = Math.hypot(mx, my);
       mx /= len;
       my /= len;
-      const sp = g.pstats.speed * speedK * st.speedMult;
+      const sp = g.pstats.speed * speedK * st.speedMult * (g.now < g.dunUntil ? 1.4 : 1);
       this.x += mx * sp * dt;
       this.y += my * sp * dt;
       this.facing.x = mx;
       this.facing.y = my;
     }
     g.world.push(this, PLAYER_RADIUS);
+    // 遁符期间半透明闪烁
+    this.sprite.setAlpha(g.now < g.dunUntil ? 0.55 + 0.2 * Math.sin(g.now * 20) : 1);
 
     const attacking = g.now < this.atkUntil;
     if (!attacking) {

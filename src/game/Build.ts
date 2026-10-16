@@ -236,6 +236,23 @@ export class Build {
     return this.recompute();
   }
 
+  /** 选了这一项之后的灵根和本命（不改动当前构筑），升级界面预览用 */
+  preview(o: Option): { lingen: Record<El, number>; benming: El } {
+    const saved = { skills: this.skills, passives: this.passives, lingen: this.lingen, benming: this.benming, last: this.lastLeveled, version: this.version };
+    // 在副本上试算，原来的 Map 不动
+    this.skills = new Map(saved.skills);
+    this.passives = new Map(saved.passives);
+    this.apply(o);
+    const out = { lingen: this.lingen, benming: this.benming };
+    this.skills = saved.skills;
+    this.passives = saved.passives;
+    this.lingen = saved.lingen;
+    this.benming = saved.benming;
+    this.lastLeveled = saved.last;
+    this.version = saved.version;
+    return out;
+  }
+
   /** 宝箱：随机一个未满级的技能 +1 */
   chestUpgrade(): { id: SkillId; lv: number } | null {
     const up = [...this.skills].filter(([id, lv]) => lv < SKILLS[id].maxLv);

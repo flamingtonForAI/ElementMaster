@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { PC, addSheet, addAnim, OUTLINE, rng } from './painter';
 import { EL_INFO, GEN_ORDER } from '../config/elements';
+import { TALISMANS } from '../config/map';
 
 function single(scene: Phaser.Scene, key: string, p: PC) {
   addSheet(scene, key, [p]);
@@ -225,6 +226,59 @@ function chest(): PC {
   p.set(8, 9, GS);
   p.outline(OUTLINE);
   p.under(9, 14, 8, 1.5, 0x000000, 70);
+  return p;
+}
+
+/** 铜匣：和宝箱同形，青铜身、铜绿箍 */
+function copperChest(): PC {
+  const p = new PC(16, 13);
+  const B = 0x9a6a3a, BS = 0x5e3e22, BH = 0xc08a50, V = 0x5ab89a, VS = 0x3a7a66;
+  p.rect(2, 5, 12, 7, B);
+  p.rect(2, 2, 12, 4, B);
+  p.span(2, 3, 12, BH);
+  p.span(11, 2, 13, BS);
+  p.span(5, 2, 13, V);
+  p.rect(2, 2, 1, 10, V);
+  p.rect(13, 2, 1, 10, VS);
+  p.rect(7, 6, 2, 2, V);
+  p.outline(OUTLINE);
+  p.under(8, 12, 7, 1.5, 0x000000, 70);
+  return p;
+}
+
+/** 木匣：浅木板条加深色铁箍 */
+function crate(): PC {
+  const p = new PC(14, 13);
+  const W = 0xc0904a, WS = 0x8a6030, WH = 0xe0b46a, I = 0x3a3040;
+  p.rect(1, 2, 12, 10, W);
+  p.span(2, 1, 12, WH);
+  p.span(6, 1, 12, WS);
+  p.span(9, 1, 12, WS);
+  p.rect(1, 2, 1, 10, I);
+  p.rect(12, 2, 1, 10, I);
+  p.span(11, 1, 12, I);
+  p.line(3, 3, 10, 10, WS);
+  p.outline(OUTLINE);
+  p.under(7, 12, 6, 1.5, 0x000000, 70);
+  return p;
+}
+
+/** 符箓道具：黄纸、彩色边和墨迹，外圈一层同色光 */
+function charm(col: number): PC {
+  const p = new PC(13, 16);
+  const P = 0xf4e2a8, PS = 0xd0b878;
+  p.rect(3, 1, 7, 13, P);
+  p.rect(9, 1, 1, 13, PS);
+  p.rect(3, 1, 7, 1, col);
+  p.rect(3, 13, 7, 1, col);
+  p.rect(6, 3, 1, 8, col);
+  p.span(5, 4, 8, col);
+  p.span(8, 4, 8, col);
+  p.set(5, 10, col);
+  p.set(7, 10, col);
+  p.outline(OUTLINE);
+  p.selectiveOutline(col, col);
+  p.under(6.5, 15, 4, 1, 0x000000, 60);
   return p;
 }
 
@@ -750,6 +804,9 @@ export function buildFx(scene: Phaser.Scene) {
   single(scene, 'gem_l', gem(0xff5a6a, 0xffe0e0, 0xa82a3a));
   single(scene, 'chest', chest());
   single(scene, 'pill', pill());
+  single(scene, 'chest_copper', copperChest());
+  single(scene, 'crate', crate());
+  for (const [id, t] of Object.entries(TALISMANS)) single(scene, `item_${id}`, charm(t.color));
   single(scene, 'fx_ring', ring());
   single(scene, 'fx_disc', disc());
   single(scene, 'ep_leaf', eLeaf());
