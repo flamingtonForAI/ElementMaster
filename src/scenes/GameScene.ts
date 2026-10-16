@@ -16,7 +16,7 @@ import { PuppetManager } from '../game/Puppets';
 import { PlayerStatus } from '../game/Status';
 import { World } from '../game/World';
 import { loadSave, writeSave } from '../game/save';
-import { talentMods } from '../game/talents';
+import { talentMods, daoPoints, legacyPoints } from '../game/talents';
 import { createDebug, debugEnabled } from '../game/debug';
 import { hex } from '../ui/text';
 import { audio } from '../audio/Audio';
@@ -54,6 +54,8 @@ export interface RunResult {
   /** 灵石明细，结算页逐行显示 */
   lingshiLines: string[];
   unlockedNext: boolean;
+  /** 这个角色首通拿到的道点、传承点，没有就为空 */
+  growth: string;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -654,14 +656,21 @@ export class GameScene extends Phaser.Scene {
     const lingshiLines = parts.map(([k, v]) => `${k} ${v}`);
     if (greed) lingshiLines.push(`财运 +${Math.round(greed * 100)}%`);
     save.lingshi += lingshi;
+    const dao0 = daoPoints(save, this.char);
+    const lg0 = legacyPoints(save, this.char);
     if (win) save.clears[this.char.id] = Math.max(save.clears[this.char.id] ?? 0, n);
+    const gain = [daoPoints(save, this.char) - dao0, legacyPoints(save, this.char) - lg0];
+    const growth = gain[0] || gain[1] ? `${this.char.name}首通：${[gain[0] ? `道点 +${gain[0]}` : '', gain[1] ? `传承点 +${gain[1]}` : ''].filter(Boolean).join('　')}` : '';
+    save.runs++;
+    save.playTime += this.elapsed;
+    save.lastChar = this.char.id;
     let unlockedNext = false;
     if (win && save.unlocked <= this.levelDef.id) {
       save.unlocked = this.levelDef.id + 1;
       unlockedNext = LEVELS.some((l) => l.id === save.unlocked && l.available);
     }
     writeSave(save);
-    const result: RunResult = { win, time: this.elapsed, kills: this.kills, level: this.build.level, lingshi, lingshiLines, unlockedNext };
+    const result: RunResult = { win, time: this.elapsed, kills: this.kills, level: this.build.level, lingshi, lingshiLines, unlockedNext, growth };
     this.later(win ? 1.5 : 1.2, () => {
       this.scene.pause();
       this.hud.showResult(result);

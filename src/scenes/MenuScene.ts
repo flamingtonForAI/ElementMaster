@@ -2,12 +2,12 @@ import Phaser from 'phaser';
 import { CHARACTERS } from '../config/characters';
 import { LEVELS } from '../config/levels';
 import { EL_INFO, GEN_ORDER } from '../config/elements';
-import { loadSave } from '../game/save';
+import { activeSlot, loadSave } from '../game/save';
+import { daoPoints, legacyPoints } from '../game/talents';
 import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
 import { isTouch } from '../ui/touch';
 import { audio } from '../audio/Audio';
-import { canFullscreen, isIOS, isStandalone, toggleFullscreen, IOS_TIP } from '../ui/fullscreen';
 
 const PANEL = 0x161220;
 const LINE = 0x4a3f5c;
@@ -23,9 +23,13 @@ export class MenuScene extends Phaser.Scene {
     super('menu');
   }
 
-  create() {
+  /** 从洞府、结算页回来时带着角色，保持选中 */
+  init(data: { char?: string }) {
     this.step = 'char';
-    this.charSel = 0;
+    this.charSel = Math.max(0, CHARACTERS.findIndex((c) => c.id === data?.char));
+  }
+
+  create() {
     const save = loadSave();
     this.levelSel = Math.max(0, Math.min(save.unlocked, 2) - 1);
     this.bg = this.add.tileSprite(0, 0, 640, 360, 'ground_1').setOrigin(0).setAlpha(0.55);
@@ -36,28 +40,11 @@ export class MenuScene extends Phaser.Scene {
     GEN_ORDER.forEach((e, i) => {
       label(this, 320 + (i - 2) * 26, 72, EL_INFO[e].name, hex(EL_INFO[e].color)).setOrigin(0.5, 0);
     });
-    label(this, 634, 344, `Demo M1 · 灵石 ${save.lingshi}`, '#6a6474').setOrigin(1, 0);
+    label(this, 634, 344, `存档 ${activeSlot()} · 灵石 ${save.lingshi}`, '#6a6474').setOrigin(1, 0);
 
-    // 手机上提供全屏；iPhone 网页不支持，点了显示“添加到主屏幕”的说明
-    if (isTouch() && !isStandalone() && (canFullscreen() || isIOS())) {
-      const fs = label(this, 634, 6, '⛶ 全屏', '#b8aec8').setOrigin(1, 0);
-      fs.setInteractive({ useHandCursor: true, hitArea: new Phaser.Geom.Rectangle(-14, -8, fs.width + 22, fs.height + 16), hitAreaCallback: Phaser.Geom.Rectangle.Contains });
-      fs.on('pointerup', () => (canFullscreen() ? toggleFullscreen() : this.showTip(IOS_TIP)));
-    }
-
-    // 声音总开关（音乐和音效分开的开关在游戏内暂停菜单里）
-    const snd = label(this, 6, 6, '', '#b8aec8');
-    const refreshSnd = () => snd.setText(`♪ 声音：${audio.musicOn || audio.sfxOn ? '开' : '关'}　M`);
-    const toggleSnd = () => {
-      const on = !(audio.musicOn || audio.sfxOn);
-      audio.setMusic(on);
-      audio.setSfx(on);
-      refreshSnd();
-    };
-    refreshSnd();
-    snd.setInteractive({ useHandCursor: true, hitArea: new Phaser.Geom.Rectangle(-8, -8, 120, snd.height + 16), hitAreaCallback: Phaser.Geom.Rectangle.Contains });
-    snd.on('pointerup', toggleSnd);
-    this.input.keyboard!.on('keydown-M', toggleSnd);
+    const home = label(this, 8, 8, '‹ 首页', '#b8aec8');
+    home.setInteractive({ useHandCursor: true, hitArea: new Phaser.Geom.Rectangle(-8, -8, home.width + 16, home.height + 16), hitAreaCallback: Phaser.Geom.Rectangle.Contains });
+    home.on('pointerup', () => this.toTitle());
     audio.music('menu');
 
     this.layer = this.add.container(0, 0);
@@ -138,6 +125,12 @@ export class MenuScene extends Phaser.Scene {
       btn.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.confirm());
       L.add(btn);
       L.add(label(this, X0 + W - 44, py + 17, '出发', '#ffd23f').setOrigin(0.5, 0));
+      // 洞府按这个角色进；有没用的道点、传承点就标出来
+      const unused = daoPoints(save, c) - (save.tree[c.id]?.length ?? 0) + legacyPoints(save, c) - (save.legacy[c.id]?.length ?? 0);
+      const df = this.add.rectangle(X0 + W - 80, py + 40, 72, 22, PANEL).setOrigin(0).setStrokeStyle(1, unused > 0 ? 0xffd23f : LINE);
+      df.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.toDongfu());
+      L.add(df);
+      L.add(label(this, X0 + W - 44, py + 45, unused > 0 ? `洞府 +${unused}` : '洞府', unused > 0 ? '#ffd23f' : '#b8aec8').setOrigin(0.5, 0));
     } else {
       // 散人：其余角色各自通关最终关
       const last = LEVELS[LEVELS.length - 1].id;
@@ -145,16 +138,19 @@ export class MenuScene extends Phaser.Scene {
       L.add(label(this, tx, by + 4, `${c.unlock ?? '后续阶段开放'}${c.balanced ? `（${done} / ${n - 1}）` : ''}`, '#8a8494'));
     }
 
-    L.add(label(this, 320, 326, isTouch() ? '点角色查看，再点一次或点“出发”' : '← → 选择　Enter 出发', '#8a8494').setOrigin(0.5, 0));
-    const df = this.add.rectangle(8, 318, 76, 22, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, 0xffd23f, 0.7);
-    df.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.toDongfu());
-    L.add(df);
-    L.add(label(this, 46, 323, isTouch() ? '洞府' : '洞府　Q', '#ffd23f').setOrigin(0.5, 0));
+    L.add(label(this, 320, 326, isTouch() ? '点角色查看，再点一次或点“出发”' : '← → 选择　Enter 出发　Q 洞府　Esc 首页', '#8a8494').setOrigin(0.5, 0));
   }
 
   private toDongfu() {
+    const c = CHARACTERS[this.charSel];
+    if (!c.available) return audio.sfx('deny');
     audio.sfx('select');
-    this.scene.start('dongfu');
+    this.scene.start('dongfu', { char: c.id });
+  }
+
+  private toTitle() {
+    audio.sfx('tick');
+    this.scene.start('title');
   }
 
   private renderLevels() {
@@ -224,16 +220,6 @@ export class MenuScene extends Phaser.Scene {
     L.add(label(this, 320, 330, isTouch() ? '点选关卡查看，再点一次或点“开始”进入' : '↑ ↓ 选择　Enter 开始　Esc 返回', '#8a8494').setOrigin(0.5, 0));
   }
 
-  private showTip(text: string) {
-    const c = this.add.container(0, 0).setDepth(100);
-    const bg = this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.8).setOrigin(0).setInteractive();
-    c.add(bg);
-    c.add(this.add.rectangle(320, 130, 400, 100, PANEL, 1).setOrigin(0.5, 0).setStrokeStyle(1, LINE));
-    c.add(label(this, 140, 146, wrap(text, 360), '#f4eee0', 12, false).setLineSpacing(6));
-    c.add(label(this, 320, 208, '点任意处关闭', '#8a8494').setOrigin(0.5, 0));
-    bg.once('pointerdown', () => c.destroy());
-  }
-
   private confirm() {
     if (this.step === 'char') {
       if (!CHARACTERS[this.charSel].available) {
@@ -261,6 +247,7 @@ export class MenuScene extends Phaser.Scene {
     if (k === 'Enter' || k === ' ' || k === 'z' || k === 'Z') return this.confirm();
     if (this.step === 'char') {
       if (k === 'q' || k === 'Q') return this.toDongfu();
+      if (k === 'Escape') return this.toTitle();
       if (k === 'ArrowLeft' || k === 'a' || k === 'A') this.charSel = (this.charSel + CHARACTERS.length - 1) % CHARACTERS.length;
       else if (k === 'ArrowRight' || k === 'd' || k === 'D') this.charSel = (this.charSel + 1) % CHARACTERS.length;
       else return;

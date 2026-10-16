@@ -3,7 +3,7 @@ import { bell, block, buf, cymbal, dizi, drone, midiHz, pluck, setSampleRate, su
 import { SFX, type SfxName } from './sfx';
 import { TRACKS, type Inst, type LayerDef, type TrackDef } from './tracks';
 import type { Rel } from '../config/elements';
-import { loadSave, writeSave } from '../game/save';
+import { loadSettings, writeSettings } from '../game/save';
 
 // 音频总管：音效、BGM、静音设置。复用 Phaser 的 AudioContext（解锁、失焦挂起都由 Phaser 处理）。
 // 外部音频文件可覆盖程序化版本：缓存里有 `sfx_<名字>` / `bgm_<曲名>` 就优先用文件。
@@ -142,7 +142,7 @@ class AudioManager {
     this.ctx = ctx;
     this.cache = game.cache.audio;
     setSampleRate(ctx.sampleRate);
-    const s = loadSave();
+    const s = loadSettings();
     this.musicOn = s.musicOn;
     this.sfxOn = s.sfxOn;
 
@@ -373,10 +373,7 @@ class AudioManager {
   }
 
   private persist() {
-    const s = loadSave();
-    s.musicOn = this.musicOn;
-    s.sfxOn = this.sfxOn;
-    writeSave(s);
+    writeSettings({ ...loadSettings(), musicOn: this.musicOn, sfxOn: this.sfxOn });
   }
 }
 

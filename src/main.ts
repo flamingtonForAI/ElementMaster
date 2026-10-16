@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
+import { TitleScene } from './scenes/TitleScene';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { HudScene } from './scenes/HudScene';
@@ -39,7 +40,7 @@ async function start() {
     pixelArt: true,
     roundPixels: true,
     scale: { mode: Phaser.Scale.NONE, zoom: zoomFor(), autoCenter: Phaser.Scale.CENTER_BOTH },
-    scene: [BootScene, MenuScene, GameScene, HudScene, ArtScene, DongfuScene],
+    scene: [BootScene, TitleScene, MenuScene, GameScene, HudScene, ArtScene, DongfuScene],
   });
   const onResize = () => {
     game.scale.setZoom(zoomFor());

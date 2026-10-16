@@ -513,7 +513,7 @@ export class HudScene extends Phaser.Scene {
       music,
       sfx,
       { text: '重新开始', fn: () => this.restart(this.g.levelDef.id) },
-      { text: '返回标题', fn: () => this.toMenu() },
+      { text: '返回选角', fn: () => this.toMenu() },
     ];
     if (isTouch() && canFullscreen() && !isStandalone()) {
       items.splice(1, 0, {
@@ -542,11 +542,12 @@ export class HudScene extends Phaser.Scene {
     ];
     // 灵石明细两项一行
     for (let i = 0; i < r.lingshiLines.length; i += 2) lines.push(r.lingshiLines.slice(i, i + 2).join('　'));
+    if (r.growth) lines.push(r.growth);
     const items: MenuItem[] = [];
     const next = LEVELS.find((l) => l.id === this.g.levelDef.id + 1);
     if (r.win && next?.available) items.push({ text: `下一关 · ${next.name}`, fn: () => this.restart(next.id) });
     items.push({ text: '再来一次', fn: () => this.restart(this.g.levelDef.id) });
-    items.push({ text: '返回标题', fn: () => this.toMenu() });
+    items.push({ text: '返回选角', fn: () => this.toMenu() });
     this.showMenu(r.win ? '通关！' : '陨落', r.win ? '#ffd23f' : '#ff6a5a', lines, items, null);
   }
 
@@ -560,7 +561,7 @@ export class HudScene extends Phaser.Scene {
   private toMenu() {
     this.closeModal();
     this.scene.stop('game');
-    this.scene.start('menu');
+    this.scene.start('menu', { char: this.g.char.id });
   }
 
   private closeModal() {

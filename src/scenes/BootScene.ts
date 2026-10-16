@@ -30,6 +30,6 @@ export class BootScene extends Phaser.Scene {
     const level = Number(params.get('level'));
     if (params.has('art')) this.scene.start('art');
     else if (level) this.scene.start('game', { level, char: params.get('char') ?? 'xiao' });
-    else this.scene.start('menu');
+    else this.scene.start('title');
   }
 }

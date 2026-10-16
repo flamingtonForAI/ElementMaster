@@ -3,16 +3,20 @@ import { STAR, CENTER, addMods, litSet, startNode, type Mods } from '../config/s
 import { LEGACIES, LEGACY_LEVELS } from '../config/legacy';
 import type { Save } from './save';
 
-/** 已通关数：通关第 N 关后 unlocked = N + 1 */
-const cleared = (s: Save) => Math.max(0, s.unlocked - 1);
+/** 每个角色开局的道点 */
+export const DAO_START = 2;
 
-/** 道点总数 = 开局 6 + 每首通一关 3 + 悟道（劫数上线后每劫首通 +1） */
-export function daoPoints(s: Save) {
-  return 6 + 3 * cleared(s) + s.wudao;
+/** 这个角色通关过的最高关卡号 */
+const cleared = (s: Save, c: CharacterDef) => s.clears[c.id] ?? 0;
+
+/** 道点 = 开局 2 + 这个角色每首通一关 3 + 这个角色的悟道（劫数上线后每劫首通 +1） */
+export function daoPoints(s: Save, c: CharacterDef) {
+  return DAO_START + 3 * cleared(s, c) + (s.wudao[c.id] ?? 0);
 }
 
-export function legacyPoints(s: Save) {
-  return LEGACY_LEVELS.filter((n) => cleared(s) >= n).length;
+/** 传承点：这个角色首通里程碑关卡各 +1 */
+export function legacyPoints(s: Save, c: CharacterDef) {
+  return LEGACY_LEVELS.filter((n) => cleared(s, c) >= n).length;
 }
 
 export function treeStart(c: CharacterDef) {

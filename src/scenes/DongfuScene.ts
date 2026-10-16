@@ -35,19 +35,18 @@ const BEAST: Record<El, string> = { metal: '白虎', wood: '青龙', water: '玄
 
 type TabId = 'xiulian' | 'star' | 'legacy';
 const TABS: { id: TabId; name: string }[] = [
-  { id: 'xiulian', name: '修炼' },
   { id: 'star', name: '星图' },
   { id: 'legacy', name: '传承' },
+  { id: 'xiulian', name: '修炼 · 通用' },
 ];
 
 const elColor = (el: El | null) => (el ? EL_INFO[el].color : NEUTRAL);
 
-/** 洞府：灵石买修炼（全账号），道点点星图、传承点点传承（每个角色各一套） */
+/** 洞府：从选角页带着角色进来。星图、传承只属于这个角色；修炼用灵石买，全部角色共享 */
 export class DongfuScene extends Phaser.Scene {
   private save!: Save;
-  private tab: TabId = 'xiulian';
-  private chars: CharacterDef[] = [];
-  private charIdx = 0;
+  private tab: TabId = 'star';
+  private char!: CharacterDef;
   private sel = 0;
   private refundArmed = false;
   private resetArmed = false;
@@ -74,11 +73,16 @@ export class DongfuScene extends Phaser.Scene {
     super('dongfu');
   }
 
+  init(data: { char?: string }) {
+    const avail = CHARACTERS.filter((c) => c.available);
+    this.char = avail.find((c) => c.id === data?.char) ?? avail[0];
+  }
+
   create() {
     this.save = loadSave();
-    this.chars = CHARACTERS.filter((c) => c.available);
-    this.charIdx = 0;
-    this.tab = 'xiulian';
+    this.tab = 'star';
+    this.lgBranch = 0;
+    this.lgNode = 0;
     this.sel = 0;
     this.refundArmed = false;
     this.resetArmed = false;
@@ -90,6 +94,7 @@ export class DongfuScene extends Phaser.Scene {
     this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.6).setOrigin(0);
     this.layer = this.add.container(0, 0).setDepth(2);
     this.input.addPointer(1);
+    this.openMap();
     this.render();
     this.input.keyboard!.on('keydown', (e: KeyboardEvent) => this.onKey(e));
     this.input.on('pointerdown', (p: Phaser.Input.Pointer, over: unknown[]) => this.onDown(p, over));
@@ -101,10 +106,6 @@ export class DongfuScene extends Phaser.Scene {
     if (this.save.notice) this.showNotice(this.save.notice);
   }
 
-  private get char() {
-    return this.chars[this.charIdx];
-  }
-
   // ---------- 通用框架 ----------
 
   private render() {
@@ -112,7 +113,8 @@ export class DongfuScene extends Phaser.Scene {
     L.removeAll(true);
     const save = this.save;
 
-    L.add(label(this, 320, 8, '洞府', '#f4eee0', 24).setOrigin(0.5, 0));
+    const c = this.char;
+    L.add(label(this, 320, 8, `${c.name} · 洞府`, '#f4eee0', 24).setOrigin(0.5, 0));
     L.add(label(this, 628, 14, `灵石 ${save.lingshi}`, '#ffd23f').setOrigin(1, 0));
     L.add(this.textButton(12, 14, '‹ 返回', '#b8aec8', () => this.leave()));
 
@@ -122,19 +124,18 @@ export class DongfuScene extends Phaser.Scene {
       const tl = this.textButton(tx, 44, t.name, on ? '#ffd23f' : '#b8aec8', () => this.setTab(t.id));
       L.add(tl);
       if (on) L.add(this.add.rectangle(tx, 59, tl.width, 1, 0xffd23f).setOrigin(0));
+      // 未用的点数直接标在页签上
+      const n = t.id === 'star' ? this.pointsLeft() : t.id === 'legacy' ? legacyPoints(save, c) - (save.legacy[c.id]?.length ?? 0) : 0;
+      if (n > 0) {
+        const dot = label(this, tx + tl.width + 8, 44, String(n), '#120c18', 12, false);
+        L.add(this.add.rectangle(dot.x - 3, 45, dot.width + 6, 12, 0xffd23f).setOrigin(0));
+        L.add(dot);
+        tx += dot.width + 11;
+      }
       tx += tl.width + 22;
     });
-
-    if (this.tab !== 'xiulian') {
-      const c = this.char;
-      const multi = this.chars.length > 1;
-      const s = `${multi ? '‹ ' : ''}${c.title} · ${c.name}${multi ? ' ›' : ''}`;
-      const t = label(this, 628, 44, s, hex(EL_INFO[c.el].color)).setOrigin(1, 0);
-      if (multi) {
-        t.setInteractive({ useHandCursor: true }).on('pointerdown', (p: Phaser.Input.Pointer) => this.setChar(p.x < t.x - t.width / 2 ? -1 : 1));
-      }
-      L.add(t);
-    }
+    const owner = this.tab === 'xiulian' ? '所有角色共享' : `属于${c.title} · ${c.name}`;
+    L.add(label(this, 628, 44, owner, this.tab === 'xiulian' ? '#8a8494' : hex(c.balanced ? 0xd8d0e4 : EL_INFO[c.el].color)).setOrigin(1, 0));
 
     if (this.tab === 'xiulian') this.renderXiulian();
     else if (this.tab === 'star') this.renderStarPanel();
@@ -174,17 +175,6 @@ export class DongfuScene extends Phaser.Scene {
     this.render();
   }
 
-  private setChar(d: number) {
-    if (this.chars.length < 2) return;
-    audio.sfx('tick');
-    this.charIdx = (this.charIdx + d + this.chars.length) % this.chars.length;
-    this.resetArmed = false;
-    this.lgBranch = 0;
-    this.lgNode = 0;
-    if (this.map) this.focusStart();
-    this.render();
-  }
-
   private commit(sfx: 'chest' | 'select') {
     writeSave(this.save);
     audio.sfx(sfx);
@@ -219,7 +209,7 @@ export class DongfuScene extends Phaser.Scene {
 
   private leave() {
     audio.sfx('tick');
-    this.scene.start('menu');
+    this.scene.start('menu', { char: this.char.id });
   }
 
   // ---------- 修炼 ----------
@@ -258,7 +248,7 @@ export class DongfuScene extends Phaser.Scene {
     L.add(label(this, x + 12, 80, d.name, '#f4eee0', 24));
     L.add(label(this, x + 208, 88, `Lv ${lv} / ${d.maxLv}`, max ? '#ffd23f' : '#b8aec8').setOrigin(1, 0));
     L.add(label(this, x + 12, 116, wrap(`每级：${d.desc}`, 196), '#d8d0e4', 12, false).setLineSpacing(4));
-    L.add(label(this, x + 12, 162, wrap('修炼全账号通用。伤害、暴击、范围、冷却在星图里点。', 196), '#8a8494', 12, false).setLineSpacing(4));
+    L.add(label(this, x + 12, 162, wrap('修炼对所有角色生效，换角色不用重买。伤害、暴击、范围、冷却在各角色的星图里点。', 196), '#8a8494', 12, false).setLineSpacing(4));
     if (max) L.add(label(this, x + 110, 276, '已满级', '#ffd23f').setOrigin(0.5, 0));
     else this.button(x + 12, 268, 196, 30, `购买　${p} 灵石`, p <= save.lingshi, () => this.buy());
 
@@ -307,7 +297,7 @@ export class DongfuScene extends Phaser.Scene {
   }
 
   private pointsLeft() {
-    return daoPoints(this.save) - (this.save.tree[this.char.id]?.length ?? 0);
+    return daoPoints(this.save, this.char) - (this.save.tree[this.char.id]?.length ?? 0);
   }
 
   private openMap() {
@@ -443,12 +433,12 @@ export class DongfuScene extends Phaser.Scene {
   private renderStarPanel() {
     const L = this.layer;
     const save = this.save;
-    const total = daoPoints(save);
+    const total = daoPoints(save, this.char);
     const left = this.pointsLeft();
     L.add(this.add.rectangle(VX, VY, VW, VH).setOrigin(0).setStrokeStyle(1, LINE));
     L.add(this.add.rectangle(PX, VY, PW, VH, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, LINE));
     L.add(label(this, PX + 10, VY + 8, `道点　${left} / ${total}`, left > 0 ? '#ffd23f' : '#b8aec8'));
-    L.add(label(this, PX + PW - 10, VY + 8, '首通每关 +3', '#6a6474').setOrigin(1, 0));
+    L.add(label(this, PX + PW - 10, VY + 8, '本角色首通每关 +3', '#6a6474').setOrigin(1, 0));
 
     // 视口内的缩放按钮
     const zb = (x: number, s: string, fn: () => void) => {
@@ -471,7 +461,7 @@ export class DongfuScene extends Phaser.Scene {
     if (nd) this.renderNodeDetail(nd, left);
 
     // 悟道、重置
-    const w = save.wudao;
+    const w = save.wudao[this.char.id] ?? 0;
     const by = VY + VH - 30;
     if (w < WUDAO_MAX) {
       const p = wudaoPrice(w);
@@ -553,10 +543,12 @@ export class DongfuScene extends Phaser.Scene {
 
   private wudao() {
     const s = this.save;
-    const p = wudaoPrice(s.wudao);
-    if (s.wudao >= WUDAO_MAX || p > s.lingshi) return this.deny();
+    const id = this.char.id;
+    const w = s.wudao[id] ?? 0;
+    const p = wudaoPrice(w);
+    if (w >= WUDAO_MAX || p > s.lingshi) return this.deny();
     s.lingshi -= p;
-    s.wudao++;
+    s.wudao[id] = w + 1;
     this.commit('chest');
   }
 
@@ -667,13 +659,13 @@ export class DongfuScene extends Phaser.Scene {
     const L = this.layer;
     const c = this.char;
     const branches = LEGACIES[c.id];
-    const total = legacyPoints(this.save);
+    const total = legacyPoints(this.save, c);
     const learned = this.save.legacy[c.id] ?? [];
     const left = total - learned.length;
 
     L.add(this.add.rectangle(PX, VY, PW, VH, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, LINE));
     L.add(label(this, PX + 10, VY + 8, `传承点　${left} / ${total}`, left > 0 ? '#ffd23f' : '#b8aec8'));
-    L.add(label(this, PX + 10, VY + 26, `首通第 ${LEGACY_LEVELS.join('、')} 关各 +1`, '#6a6474'));
+    L.add(label(this, PX + 10, VY + 26, `本角色首通第 ${LEGACY_LEVELS.join('、')} 关各 +1`, '#6a6474'));
     this.hint(isTouch() ? '点节点查看，再点一次领悟' : '方向键选择　Enter 领悟　X 撤回　Q / E 页签　Esc 返回');
 
     if (!branches) {
@@ -742,7 +734,7 @@ export class DongfuScene extends Phaser.Scene {
     if (!chain) return;
     const learned = this.save.legacy[c.id] ?? [];
     const nd = chain[this.lgNode];
-    const ok = !learned.includes(nd.id) && (this.lgNode === 0 || learned.includes(chain[this.lgNode - 1].id)) && learned.length < legacyPoints(this.save);
+    const ok = !learned.includes(nd.id) && (this.lgNode === 0 || learned.includes(chain[this.lgNode - 1].id)) && learned.length < legacyPoints(this.save, c);
     if (!ok) return this.deny();
     this.save.legacy[c.id] = [...learned, nd.id];
     this.commit('chest');
@@ -768,8 +760,6 @@ export class DongfuScene extends Phaser.Scene {
     const ti = TABS.findIndex((t) => t.id === this.tab);
     if (k === 'q' || k === 'Q') return this.setTab(TABS[(ti + TABS.length - 1) % TABS.length].id);
     if (k === 'e' || k === 'E') return this.setTab(TABS[(ti + 1) % TABS.length].id);
-    if (k === '[') return this.setChar(-1);
-    if (k === ']') return this.setChar(1);
     const ok = k === 'Enter' || k === ' ' || k === 'z' || k === 'Z';
     const undo = k === 'x' || k === 'X' || k === 'Backspace';
     const dir: [number, number] | null =
