@@ -27,17 +27,9 @@ export class Puppet {
   ) {}
 }
 
-interface Wall {
-  x: number;
-  y: number;
-  until: number;
-  sprite: Phaser.GameObjects.Image;
-}
-
 /** 吸仇恨的范围：这个范围内的敌人改追傀儡 */
 const AGGRO = 70;
 const AGGRO_GIANT = 100;
-const WALL_R = 12;
 /** 石身：傀儡受到的伤害减半 */
 const STONE = 0.5;
 /** 傀儡脚下的经验球（多半是它刚打死的怪掉的）飞向本体 */
@@ -51,17 +43,15 @@ const SHATTER_STUN = 0.8;
 const RUBBLE = 0xc8b896;
 /** 傀儡之间至少隔开这么远，免得叠成一团 */
 const SPREAD = 4;
-const WALL_DUR = 4;
 
 /**
  * 傀儡师的石傀儡：跟着本体走，扑向附近的敌人，把周围敌人的仇恨吸过去。
  * 伤害走 hitEnemy，所以继承本体的伤害加成和本命；护甲直接用本体护甲。
  * 灌注：每有一个别系的术，就有一尊傀儡换成该系外壳，攻击用该系结算。
- * 打碎后留下一小段土墙挡路，由石傀儡的冷却重新捏出来。
+ * 打碎时炸开一片碎石，由石傀儡的冷却重新捏出来。
  */
 export class PuppetManager {
   list: Puppet[] = [];
-  private walls: Wall[] = [];
   private tmp: Enemy[] = [];
   private shellVersion = -1;
   /** 每碎一尊记一笔，各自等一个冷却后那个位置才能重新捏；giant 标记碎的是不是巨傀 */
@@ -190,9 +180,6 @@ export class PuppetManager {
     g.cameras.main.shake(p.giant ? 160 : 80, p.giant ? 0.005 : 0.003);
     audio.sfx('explode', { rate: 1.2, vol: 0.5 });
     for (const e of g.enemies.inRadius(p.x, p.y, r, this.tmp)) g.hitEnemy(e, dmg, p.el, { kb: 60, fromX: p.x, fromY: p.y, stun: SHATTER_STUN, puppet: true });
-    // 碎了留一段土墙
-    const sprite = g.add.image(p.x, p.y, 'pp_wall').setOrigin(0.5, 0.86).setDepth(p.y);
-    this.walls.push({ x: p.x, y: p.y, until: g.now + WALL_DUR, sprite });
   }
 
   /** 砸地特效：元素色的爆点和扩散环，地上留裂纹，溅起碎石 */
@@ -309,26 +296,5 @@ export class PuppetManager {
       p.hpFill.setPosition(p.x - w / 2, p.y + 3).setDepth(p.y + 2);
       p.hpFill.width = Math.max(0, w * (p.hp / p.maxHp));
     });
-
-    // 土墙：把敌人推出去，到时间碎掉
-    for (let i = this.walls.length - 1; i >= 0; i--) {
-      const w = this.walls[i];
-      if (now >= w.until) {
-        g.fx.burst(w.x, w.y - 4, EL_INFO.earth.color, 6);
-        w.sprite.destroy();
-        this.walls.splice(i, 1);
-        continue;
-      }
-      if (w.until - now < 0.5) w.sprite.setAlpha((w.until - now) / 0.5);
-      for (const e of g.enemies.inRadius(w.x, w.y, WALL_R, this.tmp)) {
-        if (e.boss) continue;
-        const dx = e.x - w.x;
-        const dy = e.y - w.y;
-        const d = Math.hypot(dx, dy) || 1;
-        const push = WALL_R + e.radius - d;
-        e.x += (dx / d) * push;
-        e.y += (dy / d) * push;
-      }
-    }
   }
 }

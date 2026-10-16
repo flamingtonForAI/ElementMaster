@@ -7,8 +7,7 @@ import { PC, addSheet, addAnim, OUTLINE } from './painter';
 // 主体用浅灰白石色，运行时 setTint 染成五行外壳色（金刀傀、木藤傀、水傀、火傀）。
 //
 // 原点：pp_golem 20×26，脚底在 y=23，setOrigin(0.5, 0.9)；
-//       pp_giant 38×46，脚底在 y=42，setOrigin(0.5, 0.92)；
-//       pp_wall 24×14，底边在 y=12，setOrigin(0.5, 0.86)。
+//       pp_giant 38×46，脚底在 y=42，setOrigin(0.5, 0.92)。
 
 const B = 0xd8d4cc, S = 0xa8a49c, H = 0xf2eee6, D = 0x7a766e;
 const J = 0xe0b04a, JS = 0xa87a2a;
@@ -126,26 +125,6 @@ function giantFrame(pose: GPose): PC {
   return p;
 }
 
-/** 一段夯土墙：三层错缝土砖，顶上一层草泥 */
-function wallFrame(): PC {
-  const p = new PC(24, 14);
-  const W = 0xc49656, WS = 0x93683a, WH = 0xdcb070, WD = 0x6e4c28;
-  p.rect(1, 3, 22, 9, W);
-  p.span(3, 1, 22, WH);
-  p.span(2, 2, 21, 0x8a7a3a);
-  p.set(5, 1, 0x6a8a3a);
-  p.set(16, 1, 0x6a8a3a);
-  for (const y of [6, 9]) p.span(y, 1, 22, WS);
-  for (const [y, xs] of [[4, [6, 13, 19]], [7, [3, 10, 17]], [10, [7, 14, 20]]] as [number, number[]][]) {
-    for (const x of xs) p.rect(x, y, 1, 2, WS);
-  }
-  p.span(11, 1, 22, WD);
-  p.rect(21, 3, 2, 9, WS);
-  p.outline(OUTLINE);
-  p.under(12, 12.5, 11, 1.6, 0x000000, 60);
-  return p;
-}
-
 export function buildPuppetArt(scene: Phaser.Scene) {
   const walk = [0, 1, 2, 3].map((step) => ({ step, atk: -1 }));
   const atk = [0, 1, 2].map((a) => ({ step: 0, atk: a }));
@@ -155,5 +134,4 @@ export function buildPuppetArt(scene: Phaser.Scene) {
   addSheet(scene, 'pp_giant', [...walk, ...atk].map(giantFrame));
   addAnim(scene, 'pp_giant_move', 'pp_giant', [0, 1, 2, 3], 6);
   addAnim(scene, 'pp_giant_atk', 'pp_giant', [4, 5, 6], 10, 0);
-  addSheet(scene, 'pp_wall', [wallFrame()]);
 }

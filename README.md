@@ -27,7 +27,7 @@ npm run build      # 输出到 dist/，纯静态文件
 ## 调试入口
 
 - `?level=1`、`?level=2`：跳过菜单直接进关卡，加 `&char=zhu` / `ruan` / `qingdai` / `moheng` / `xuanyi` 用符师 / 海贼 / 药师 / 傀儡师 / 散人
-- `?art`：美术预览（主角 8 方向的全部动画、敌人、弹幕、装饰）；`?art=zhu` / `ruan` / `qingdai` / `moheng` / `xuanyi` 看其他角色（同屏还有石傀儡、巨傀、土墙）
+- `?art`：美术预览（主角 8 方向的全部动画、敌人、弹幕、装饰）；`?art=zhu` / `ruan` / `qingdai` / `moheng` / `xuanyi` 看其他角色（同屏还有石傀儡、巨傀）
 - 调试面板：无敌、时间倍速、刷怪倍率、升级、跳时间、刷精英/Boss、实时调五行倍率
 
 ## 结构

@@ -34,7 +34,6 @@ export class ArtScene extends Phaser.Scene {
     this.add.sprite(530, 236, 'pp_golem', 0).play('pp_golem_move');
     this.add.sprite(560, 236, 'pp_golem', 0).setTint(0x9fc0ff).play('pp_golem_move');
     this.add.sprite(605, 230, 'pp_giant', 0).play('pp_giant_move');
-    this.add.image(530, 270, 'pp_wall');
     const fx = ['pj_sword', 'pj_bolt', 'pj_leaf', 'pj_wave', 'gem_s', 'gem_m', 'gem_l', 'chest', 'ep_leaf', 'ep_wind', 'ep_poison', 'antidote'];
     fx.forEach((k, i) => this.add.image(60 + i * 30, 300, k));
     this.add.sprite(420, 300, 'pj_water', 0).play('pj_water');
