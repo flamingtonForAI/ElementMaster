@@ -6,17 +6,17 @@ import type { Save } from './save';
 /** 每个角色开局的道点 */
 export const DAO_START = 2;
 
-/** 这个角色通关过的最高关卡号 */
-const cleared = (s: Save, c: CharacterDef) => s.clears[c.id] ?? 0;
+/** 这个角色实际通关过的关卡 */
+const cleared = (s: Save, c: CharacterDef) => s.clears[c.id] ?? [];
 
 /** 道点 = 开局 2 + 这个角色每首通一关 3 + 这个角色的悟道（劫数上线后每劫首通 +1） */
 export function daoPoints(s: Save, c: CharacterDef) {
-  return DAO_START + 3 * cleared(s, c) + (s.wudao[c.id] ?? 0);
+  return DAO_START + 3 * cleared(s, c).length + (s.wudao[c.id] ?? 0);
 }
 
 /** 传承点：这个角色首通里程碑关卡各 +1 */
 export function legacyPoints(s: Save, c: CharacterDef) {
-  return LEGACY_LEVELS.filter((n) => cleared(s, c) >= n).length;
+  return LEGACY_LEVELS.filter((n) => cleared(s, c).includes(n)).length;
 }
 
 export function treeStart(c: CharacterDef) {

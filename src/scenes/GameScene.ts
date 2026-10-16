@@ -342,7 +342,7 @@ export class GameScene extends Phaser.Scene {
       if (dx * dx + dy * dy <= ps.meleeRange * ps.meleeRange) m *= 1 + ps.meleeBonus;
     }
     const flaw = this.now < e.flawUntil ? (e.boss ? ON_ENEMY.flaw.bossCrit : ON_ENEMY.flaw.crit) : 0;
-    const crit = !o.noCrit && Math.random() < this.pstats.crit + flaw;
+    const crit = !o.noCrit && !this.build.mods.noCrit && Math.random() < this.pstats.crit + flaw;
     const dmg = Math.max(1, Math.round(base * m * (crit ? this.pstats.critDmg : 1) - e.armor));
     e.hp -= dmg;
     // 带毒的 Boss 每掉 20% 血掉一瓶解毒药，落在 Boss 和玩家之间
@@ -586,6 +586,9 @@ export class GameScene extends Phaser.Scene {
     let changed = false;
     if (r) {
       changed = this.build.recompute();
+      const prevMax = this.pstats.maxHp;
+      this.pstats = this.build.stats();
+      if (this.pstats.maxHp > prevMax) this.player.hp += this.pstats.maxHp - prevMax;
       this.hud.toast(`宝箱：${SKILLS[r.id].name} 升到 Lv${r.lv}`, '#ffd23f');
     } else {
       this.player.hp = this.pstats.maxHp;
@@ -658,7 +661,10 @@ export class GameScene extends Phaser.Scene {
     save.lingshi += lingshi;
     const dao0 = daoPoints(save, this.char);
     const lg0 = legacyPoints(save, this.char);
-    if (win) save.clears[this.char.id] = Math.max(save.clears[this.char.id] ?? 0, n);
+    if (win) {
+      const clears = save.clears[this.char.id] ??= [];
+      if (!clears.includes(n)) clears.push(n);
+    }
     const gain = [daoPoints(save, this.char) - dao0, legacyPoints(save, this.char) - lg0];
     const growth = gain[0] || gain[1] ? `${this.char.name}首通：${[gain[0] ? `道点 +${gain[0]}` : '', gain[1] ? `传承点 +${gain[1]}` : ''].filter(Boolean).join('　')}` : '';
     save.runs++;

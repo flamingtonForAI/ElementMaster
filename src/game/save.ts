@@ -1,6 +1,9 @@
-import { wudaoPrice } from '../config/meta';
+import { UPGRADES, WUDAO_MAX, wudaoPrice } from '../config/meta';
 import { CHARACTERS } from '../config/characters';
-import { daoPoints, legacyPoints } from './talents';
+import { LEVELS } from '../config/levels';
+import { STAR, CENTER } from '../config/startree';
+import { LEGACIES } from '../config/legacy';
+import { daoPoints, legacyPoints, treeStart } from './talents';
 
 /** 一个存档槽的全部进度 */
 export interface Save {
@@ -14,8 +17,8 @@ export interface Save {
   tree: Record<string, string[]>;
   /** 每个角色点亮的传承节点 */
   legacy: Record<string, string[]>;
-  /** 每个角色通关过的最高关卡号 */
-  clears: Record<string, number>;
+  /** 每个角色实际通关过的关卡号 */
+  clears: Record<string, number[]>;
   /** 每个角色悟道买过的道点 */
   wudao: Record<string, number>;
   /** 洞府提示，看过后清空 */
@@ -44,7 +47,7 @@ const PREFIX = 'elementmaster.';
 const LEGACY_KEY = 'save';
 const SETTINGS_KEY = 'settings';
 const slotKey = (n: number) => `slot.${n}`;
-const VER = 3;
+const VER = 4;
 
 /** 存储层：现在是 localStorage，以后上云只换这里 */
 const store = {
@@ -80,33 +83,84 @@ function parse(raw: string | null): Record<string, any> | null {
   if (!raw) return null;
   try {
     const s = JSON.parse(raw);
-    return s && typeof s === 'object' ? s : null;
+    return s && typeof s === 'object' && !Array.isArray(s) ? s : null;
   } catch {
     return null;
   }
 }
 
-/** 补齐缺的字段并按版本迁移 */
+const record = (v: unknown): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {};
+const number = (v: unknown, fallback = 0, max = Number.MAX_SAFE_INTEGER) =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : fallback;
+const integer = (v: unknown, fallback = 0, max = Number.MAX_SAFE_INTEGER) => Math.floor(number(v, fallback, max));
+const ids = (v: unknown, allowed: Set<string>) =>
+  Array.isArray(v) ? [...new Set(v.filter((id): id is string => typeof id === 'string' && allowed.has(id)))] : [];
+
+/** 只留和起点连通的星图节点；中宫只有散人能点 */
+function connected(start: string, v: unknown) {
+  const lit = new Set(ids(v, new Set(Object.keys(STAR))));
+  lit.delete(start);
+  if (start !== CENTER) lit.delete(CENTER);
+  const seen = new Set<string>();
+  const q = [start];
+  while (q.length) {
+    for (const l of STAR[q.pop()!].links) {
+      if (lit.has(l) && !seen.has(l)) {
+        seen.add(l);
+        q.push(l);
+      }
+    }
+  }
+  return [...lit].filter((id) => seen.has(id));
+}
+
+/** 补齐缺的字段并按版本迁移；本地读取和导入共用校验 */
 function normalize(s: Record<string, any>): Save {
   const base = fresh();
+  const ver = integer(s.ver, 1);
   const save: Save = {
     ...base,
-    unlocked: s.unlocked ?? 1,
-    lingshi: s.lingshi ?? 0,
-    meta: s.meta ?? {},
-    spent: s.spent ?? 0,
-    tree: s.tree ?? {},
-    legacy: s.legacy ?? {},
-    clears: s.clears ?? {},
-    wudao: typeof s.wudao === 'object' && s.wudao ? s.wudao : {},
-    notice: s.notice ?? '',
-    lastChar: s.lastChar ?? '',
-    runs: s.runs ?? 0,
-    playTime: s.playTime ?? 0,
-    createdAt: s.createdAt ?? base.createdAt,
-    updatedAt: s.updatedAt ?? base.updatedAt,
+    unlocked: Math.max(1, integer(s.unlocked, 1, Math.max(...LEVELS.map((l) => l.id)) + 1)),
+    lingshi: integer(s.lingshi),
+    spent: integer(s.spent),
+    notice: typeof s.notice === 'string' ? s.notice : '',
+    lastChar: CHARACTERS.some((c) => c.id === s.lastChar) ? s.lastChar : '',
+    runs: integer(s.runs),
+    playTime: number(s.playTime),
+    createdAt: number(s.createdAt, base.createdAt),
+    updatedAt: number(s.updatedAt, base.updatedAt),
   };
-  const ver = s.ver ?? 1;
+  const meta = record(s.meta);
+  for (const u of UPGRADES) if (u.id in meta) save.meta[u.id] = integer(meta[u.id], 0, u.maxLv);
+  const clears = record(s.clears);
+  const tree = record(s.tree);
+  const legacy = record(s.legacy);
+  const wudao = record(s.wudao);
+  for (const c of CHARACTERS) {
+    const oldClear = clears[c.id];
+    // 旧版只记最高关号，按原规则保留已获得的点数；新版只记实际通关。
+    save.clears[c.id] = ver < 4 && typeof oldClear === 'number'
+      ? LEVELS.filter((l) => l.id <= integer(oldClear)).map((l) => l.id)
+      : Array.isArray(oldClear) ? [...new Set(oldClear.filter((n): n is number => LEVELS.some((l) => l.id === n)))] : [];
+    save.tree[c.id] = connected(treeStart(c), tree[c.id]);
+    // 传承同一分支要按顺序点，断层之后的不算
+    const lg = new Set(ids(legacy[c.id], new Set((LEGACIES[c.id] ?? []).flatMap((b) => b.nodes.map((n) => n.id)))));
+    save.legacy[c.id] = (LEGACIES[c.id] ?? []).flatMap((b) => {
+      const k = b.nodes.findIndex((n) => !lg.has(n.id));
+      return b.nodes.slice(0, k < 0 ? b.nodes.length : k).map((n) => n.id);
+    });
+    save.wudao[c.id] = integer(wudao[c.id], 0, WUDAO_MAX);
+  }
+  // 点数不够撑起已点的星图或传承时清空重点（v3 改制及手改存档码）
+  const reset: string[] = [];
+  for (const c of CHARACTERS) {
+    if (save.tree[c.id].length > daoPoints(save, c) || save.legacy[c.id].length > legacyPoints(save, c)) {
+      save.tree[c.id] = [];
+      save.legacy[c.id] = [];
+      reset.push(c.name);
+    }
+  }
+  if (reset.length) save.notice = `${reset.join('、')}的星图与传承超出可用点数，已清空，可重新点。`;
   // v1 的五行天赋树改成了星图，部分修炼搬进星图：修炼和天赋全部按花费退还
   if (ver < 2 && save.spent > 0) {
     save.notice = `洞府重修：天赋树改为星图，威力、锐眼、广域、迅捷搬进星图。原有修炼与天赋已全部退还 ${save.spent} 灵石。`;
@@ -117,20 +171,12 @@ function normalize(s: Record<string, any>): Save {
   // v3：道点、传承点改成每个角色自己首通才给，悟道改成每个角色各买各的
   if (ver < 3) {
     const notes: string[] = [];
-    const bought = typeof s.wudao === 'number' ? s.wudao : 0;
+    const bought = integer(s.wudao, 0, WUDAO_MAX);
     if (bought > 0) {
       let back = 0;
       for (let i = 0; i < bought; i++) back += wudaoPrice(i);
       save.lingshi += back;
       notes.push(`悟道改为每个角色各自购买，已退还 ${back} 灵石`);
-    }
-    const reset: string[] = [];
-    for (const c of CHARACTERS) {
-      if ((save.tree[c.id]?.length ?? 0) > daoPoints(save, c) || (save.legacy[c.id]?.length ?? 0) > legacyPoints(save, c)) {
-        save.tree[c.id] = [];
-        save.legacy[c.id] = [];
-        reset.push(c.name);
-      }
     }
     if (reset.length) notes.push(`${reset.join('、')}的星图与传承已清空，可重新点`);
     if (notes.length) save.notice = `洞府改制：道点和传承点改为每个角色自己首通才给。${notes.join('；')}。`;
@@ -197,7 +243,7 @@ export function deleteSlot(n: number) {
 export function exportSlot(n: number): string {
   const s = readSlot(n);
   if (!s) return '';
-  return 'EM3:' + btoa(unescape(encodeURIComponent(JSON.stringify(s))));
+  return `EM${VER}:` + btoa(unescape(encodeURIComponent(JSON.stringify(s))));
 }
 
 export function importSlot(n: number, code: string): boolean {
@@ -209,7 +255,7 @@ export function importSlot(n: number, code: string): boolean {
   } catch {
     return false;
   }
-  if (!s || typeof s.unlocked !== 'number') return false;
+  if (!s || typeof s.unlocked !== 'number' || !Number.isFinite(s.unlocked) || (typeof s.ver === 'number' && s.ver > VER)) return false;
   store.set(slotKey(n), JSON.stringify(normalize(s)));
   return true;
 }

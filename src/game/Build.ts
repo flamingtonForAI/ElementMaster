@@ -129,7 +129,7 @@ export class Build {
   stats(): PlayerStats {
     const c = this.char;
     // 本系心法效果 +20%
-    const p = (id: PassiveId) => (this.passives.get(id) ?? 0) * (PASSIVES[id].el === c.el ? 1.2 : 1);
+    const p = (id: PassiveId) => (this.passives.get(id) ?? 0) * (!c.balanced && PASSIVES[id].el === c.el ? 1.2 : 1);
     const u = (stat: UpgradeStat) => upgradeSum(this.meta, stat);
     const gr = (stat: string) =>
       c.growth.filter((g) => g.stat === stat).reduce((s, g) => s + Math.min(g.cap ?? Infinity, Math.floor(this.level / g.every) * g.v), 0);

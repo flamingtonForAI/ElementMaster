@@ -27,7 +27,7 @@ const duration = (sec: number) => {
   const m = Math.floor(sec / 60);
   return m >= 60 ? `${Math.floor(m / 60)}小时${m % 60}分` : `${m}分`;
 };
-const farthest = (s: Save) => Math.max(0, ...Object.values(s.clears));
+const farthest = (s: Save) => Math.max(0, ...Object.values(s.clears).flat());
 
 /** 首页：继续游戏、新游戏、存档（五个槽位）、设置 */
 export class TitleScene extends Phaser.Scene {

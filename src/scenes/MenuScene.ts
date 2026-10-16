@@ -31,7 +31,7 @@ export class MenuScene extends Phaser.Scene {
 
   create() {
     const save = loadSave();
-    this.levelSel = Math.max(0, Math.min(save.unlocked, 2) - 1);
+    this.levelSel = LEVELS.reduce((selected, lv, i) => lv.available && lv.id <= save.unlocked ? i : selected, 0);
     this.bg = this.add.tileSprite(0, 0, 640, 360, 'ground_1').setOrigin(0).setAlpha(0.55);
     this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.45).setOrigin(0);
 
@@ -77,7 +77,7 @@ export class MenuScene extends Phaser.Scene {
     CHARACTERS.forEach((c, i) => {
       const x = X0 + i * (TW + GAP);
       const on = i === this.charSel;
-      const col = EL_INFO[c.el].color;
+      const col = c.balanced ? 0xd8d0e4 : EL_INFO[c.el].color;
       const bg = this.add.rectangle(x, 110, TW, TW, on ? 0x2a2238 : PANEL, 0.95).setOrigin(0).setStrokeStyle(on ? 2 : 1, on ? 0xffd23f : c.available ? col : LINE, on ? 1 : 0.6);
       bg.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
         if (this.charSel === i) return this.confirm();
@@ -134,7 +134,7 @@ export class MenuScene extends Phaser.Scene {
     } else {
       // 散人：其余角色各自通关最终关
       const last = LEVELS[LEVELS.length - 1].id;
-      const done = CHARACTERS.filter((o) => !o.balanced && (save.clears[o.id] ?? 0) >= last).length;
+      const done = CHARACTERS.filter((o) => !o.balanced && (save.clears[o.id] ?? []).includes(last)).length;
       L.add(label(this, tx, by + 4, `${c.unlock ?? '后续阶段开放'}${c.balanced ? `（${done} / ${n - 1}）` : ''}`, '#8a8494'));
     }
 

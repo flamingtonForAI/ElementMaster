@@ -333,7 +333,7 @@ export class DongfuScene extends Phaser.Scene {
   /** 镜头对准起点往外一点，选中起点 */
   private focusStart() {
     const start = treeStart(this.char);
-    const s2 = STAR[`${this.char.el}.s2`] ?? STAR[start];
+    const s2 = this.char.balanced ? STAR[start] : STAR[`${this.char.el}.s2`] ?? STAR[start];
     this.camX = s2.x * 0.8;
     this.camY = s2.y * 0.8;
     this.zoom = 0.75;
@@ -672,7 +672,8 @@ export class DongfuScene extends Phaser.Scene {
       L.add(label(this, VX + VW / 2, VY + 110, `${c.title}的传承尚未开放`, '#6a6474').setOrigin(0.5, 0));
       return;
     }
-    const col = EL_INFO[c.el].color;
+    const col = c.balanced ? 0xd8d0e4 : EL_INFO[c.el].color;
+    const dark = c.balanced ? 0x5a5266 : EL_INFO[c.el].dark;
     branches.forEach((b, bi) => {
       const x = VX + 8 + bi * 204;
       L.add(label(this, x, VY + 4, b.name, '#ffd23f', 24));
@@ -689,7 +690,7 @@ export class DongfuScene extends Phaser.Scene {
           else this.selectLegacy(bi, ni);
         });
         L.add(bg);
-        L.add(this.add.circle(x + 20, y + 23, 12, has ? col : 0x0e0b14).setStrokeStyle(1.5, can || has ? col : EL_INFO[c.el].dark));
+        L.add(this.add.circle(x + 20, y + 23, 12, has ? col : 0x0e0b14).setStrokeStyle(1.5, can || has ? col : dark));
         L.add(label(this, x + 20, y + 23, nd.glyph, has ? '#120c18' : can ? '#f4eee0' : '#6a6474', 12, false).setOrigin(0.5, 0.5));
         L.add(label(this, x + 40, y + 8, nd.name, has ? '#f4eee0' : '#b8aec8'));
         L.add(label(this, x + 40, y + 26, has ? '已领悟' : can ? '可领悟' : '需先领悟上一层', has ? hex(col) : '#6a6474'));
