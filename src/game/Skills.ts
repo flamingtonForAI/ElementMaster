@@ -5,6 +5,9 @@ import type { Enemy } from './Enemies';
 import type { GameScene } from '../scenes/GameScene';
 import { audio } from '../audio/Audio';
 
+/** 毒雾光环是地上的一圈，上下压扁 */
+const AURA_FLAT = 0.6;
+
 /** 按冷却自动释放已习得的术 */
 export class SkillSystem {
   private timers = new Map<SkillId, number>();
@@ -15,11 +18,14 @@ export class SkillSystem {
   /** 符师：累计抛出的符数（五雷用）、贴在敌人身上还没爆的符 */
   private fuCount = 0;
   private sticks: { e: Enemy; mark: Phaser.GameObjects.Sprite; x: number; y: number; t: number; dmg: number; el: El; radius: number }[] = [];
+  /** 药师：脚下的毒雾光环 */
+  private aura: Phaser.GameObjects.Image | null = null;
 
   constructor(private g: GameScene) {}
 
   update(dt: number) {
     this.updateSticks(dt);
+    this.updateAura();
     // 海贼·退射：背离最近的敌人移动时冷却走得更快
     const kite = this.mod('ruan.kite');
     if (kite && this.retreating()) dt *= 1 + kite;
@@ -124,6 +130,19 @@ export class SkillSystem {
         }
         return true;
       }
+      case 'duwu': {
+        // 毒雾光环：每次判定给光环里的敌人挂上中毒，离开后还会再毒一阵；药师的毒连木系也毒得动
+        const r = this.auraRadius(st);
+        const linger = st.linger + this.mod('qing.cloudDur');
+        for (const e of g.enemies.inRadius(p.x, p.y, r, this.tmp)) {
+          if (((e.x - p.x) / r) ** 2 + ((e.y - p.y) / (r * AURA_FLAT)) ** 2 > 1) continue;
+          g.poisonEnemy(e, st.dps * g.dmgMult(e, 'wood'), linger, true);
+        }
+        if (Math.random() < 0.7) g.fx.burst(p.x + (Math.random() - 0.5) * r * 1.4, p.y + (Math.random() - 0.5) * r * AURA_FLAT, 0x9fe06a, 2);
+        return true;
+      }
+      case 'puppet':
+        return g.puppets.summon(st.cd * g.pstats.cdMult);
       case 'flysword': {
         const targets = g.enemies.nearestN(cx, cy, 240, st.count);
         if (!targets.length) return false;
@@ -243,6 +262,27 @@ export class SkillSystem {
       const { x, y, radius, dmg, el } = s;
       if (echo) g.later(0.6, () => g.explode(x, y, radius * 0.8, dmg * echo, el, 40, tint, proc));
     }
+  }
+
+  private auraRadius(st: Stats) {
+    return st.radius * this.g.pstats.area * (1 + this.mod('qing.cloud'));
+  }
+
+  /** 毒雾光环的画面：跟着本体，缓慢呼吸 */
+  private updateAura() {
+    const g = this.g;
+    const lv = g.build.skills.get('duwu');
+    if (!lv) return;
+    const p = g.player;
+    if (!this.aura) this.aura = g.add.image(0, 0, 'fx_disc').setTint(0x7ac83a);
+    const r = this.auraRadius(SKILLS.duwu.stats(lv));
+    const k = r / 31;
+    this.aura
+      .setVisible(p.alive)
+      .setPosition(p.x, p.y)
+      .setDepth(p.y - 40)
+      .setScale(k, k * AURA_FLAT)
+      .setAlpha(0.26 + 0.06 * Math.sin(g.now * 3));
   }
 
   /** 分水连弩满级：命中溅起水花，减速周围敌人 */

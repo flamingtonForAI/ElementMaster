@@ -12,6 +12,7 @@ import { ProjectileManager } from '../game/Projectiles';
 import { PickupManager } from '../game/Pickups';
 import { Fx } from '../game/Fx';
 import { SkillSystem } from '../game/Skills';
+import { PuppetManager } from '../game/Puppets';
 import { PlayerStatus } from '../game/Status';
 import { World } from '../game/World';
 import { loadSave, writeSave } from '../game/save';
@@ -32,6 +33,8 @@ export interface HitOpts {
   splash?: number;
   /** 触发本元素异常的几率（再乘五行关系） */
   proc?: number;
+  /** 傀儡打的，不吃傀儡师的本体术减伤 */
+  puppet?: boolean;
 }
 
 /** 敌人打玩家：附带的异常、暴击率（不填按元素）、暴击倍率、必定暴击（有前摇的重击） */
@@ -82,6 +85,13 @@ export class GameScene extends Phaser.Scene {
   cardLingshi = 0;
   /** 玩家身上的异常 */
   status!: PlayerStatus;
+  /** 傀儡师的傀儡 */
+  puppets!: PuppetManager;
+  /** 药师·护心：溢出回复存成的护盾 */
+  shield = 0;
+  /** 散人·周天：当前轮到的元素和下次轮转的时间 */
+  zhoutian: El | null = null;
+  private zhoutianAt = 0;
 
   private pendingLevelUps = 0;
   private iframeUntil = 0;
@@ -105,6 +115,8 @@ export class GameScene extends Phaser.Scene {
     this.pendingLevelUps = 0;
     this.iframeUntil = 0;
     this.spawnAcc = 0;
+    this.shield = 0;
+    this.zhoutian = null;
     this.tasks = [];
     this.terrainMods = Object.fromEntries(GEN_ORDER.map((e) => [e, terrainMod(e, this.levelDef.terrain)])) as Record<El, number>;
   }
@@ -127,6 +139,11 @@ export class GameScene extends Phaser.Scene {
     this.skills = new SkillSystem(this);
     this.status = new PlayerStatus(this);
     this.player = new Player(this);
+    this.puppets = new PuppetManager(this);
+    if (this.char.balanced) {
+      this.zhoutian = GEN_ORDER[Math.floor(Math.random() * 5)];
+      this.zhoutianAt = this.zhoutianPeriod();
+    }
 
     this.cameras.main.startFollow(this.player.sprite, true, 1, 1);
 
@@ -175,6 +192,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.over) this.spawnUpdate(dt);
     this.enemies.update(dt);
     if (this.player.alive) this.skills.update(dt);
+    this.puppets.update(dt);
+    if (this.zhoutian && !this.over && this.now >= this.zhoutianAt) this.rotateZhoutian();
     this.proj.update(dt);
     this.pickups.update(dt);
     this.fx.update(dt);
@@ -298,11 +317,23 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- 战斗 ----------
 
+  /** 玩家一方打这个敌人的伤害倍率：五行、地气、本命、星图、周天，以及护盾、蚀骨这类条件加成 */
+  dmgMult(e: Enemy, el: El) {
+    const ps = this.pstats;
+    const m = this.build.mods;
+    let k = REL_MULT[relation(el, e.def.el)] * this.terrainMods[el] * (this.build.benming === el ? 1.25 : 1) * ps.dmgMult * ps.elDmg[el] * ps.vsEl[e.def.el];
+    if (el === this.zhoutian) k *= 1.25 + (m['xuan.bonus'] ?? 0);
+    if (this.shield > 0 && m['qing.shieldDmg']) k *= 1 + m['qing.shieldDmg'];
+    if (m['qing.vuln'] && this.now < e.poisonUntil) k *= 1 + m['qing.vuln'];
+    return k;
+  }
+
   hitEnemy(e: Enemy, base: number, el: El, o: HitOpts = {}) {
     if (!e.alive) return 0;
     const rel = relation(el, e.def.el);
     const ps = this.pstats;
-    let m = REL_MULT[rel] * this.terrainMods[el] * (this.build.benming === el ? 1.25 : 1) * ps.dmgMult * ps.elDmg[el] * ps.vsEl[e.def.el];
+    let m = this.dmgMult(e, el);
+    if (this.char.ownDmg !== undefined && !o.puppet) m *= this.char.ownDmg;
     if (ps.meleeBonus > 0) {
       const dx = e.x - this.player.x;
       const dy = e.y - this.player.y;
@@ -405,11 +436,7 @@ export class GameScene extends Phaser.Scene {
       case 'stun':
         return this.stunEnemy(e, ON_ENEMY.stun.dur);
       case 'poison':
-        if (now >= e.poisonUntil && now >= e.burnUntil) e.dotTick = 0.5;
-        if (now >= e.poisonUntil) e.poisonDps = 0;
-        e.poisonDps = Math.max(e.poisonDps, dmg * ON_ENEMY.poison.k);
-        e.poisonUntil = now + ON_ENEMY.poison.dur;
-        return;
+        return this.poisonEnemy(e, dmg * ON_ENEMY.poison.k, ON_ENEMY.poison.dur);
       case 'burn':
         if (now >= e.poisonUntil && now >= e.burnUntil) e.dotTick = 0.5;
         if (now >= e.burnUntil) e.burnStacks = e.burnDps = 0;
@@ -423,10 +450,20 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** 中毒单层：取更强的伤害，刷新时间（不缩短）；木系敌人免疫，pierce（药师的毒雾）无视免疫 */
+  poisonEnemy(e: Enemy, dps: number, dur: number, pierce = false) {
+    if (!e.alive || (!pierce && this.immune(e, 'poison'))) return;
+    const now = this.now;
+    if (now >= e.poisonUntil && now >= e.burnUntil) e.dotTick = 0.5;
+    if (now >= e.poisonUntil) e.poisonDps = 0;
+    e.poisonDps = Math.max(e.poisonDps, dps);
+    e.poisonUntil = Math.max(e.poisonUntil, now + dur);
+  }
+
   /** 中毒、灼烧的结算：不吃护甲、不暴击；只给精英和 Boss 跳数字，免得刷屏 */
   dotEnemy(e: Enemy, v: number, kind: StatusId) {
     if (!e.alive) return;
-    const dmg = Math.max(1, Math.round(v));
+    const dmg = Math.max(1, Math.round(v * this.pstats.dotMult));
     e.hp -= dmg;
     if (e.boss || e.elite) this.fx.text(e.x + 8, e.y - e.sprite.displayHeight * 0.6, `${dmg}`, kind === 'burn' ? '#ffa060' : '#8fe06a', 0.6);
     if (e.hp <= 0) this.enemies.kill(e);
@@ -461,6 +498,11 @@ export class GameScene extends Phaser.Scene {
 
   loseHp(dmg: number) {
     const p = this.player;
+    // 护盾先挡
+    const block = Math.min(this.shield, dmg);
+    this.shield -= block;
+    dmg -= block;
+    if (dmg <= 0) return;
     p.hp -= dmg;
     if (p.hp <= 0) {
       if (this.revives > 0) return this.revive();
@@ -484,6 +526,16 @@ export class GameScene extends Phaser.Scene {
     audio.sfx('benming');
     this.cameras.main.shake(250, 0.006);
     this.hud.toast(`续命！剩余 ${this.revives} 次`, '#ffd23f');
+  }
+
+  /** 持续回复；护心：生命满了以后溢出的部分存成护盾 */
+  regenPlayer(v: number) {
+    const p = this.player;
+    const max = this.pstats.maxHp;
+    const over = p.hp + v - max;
+    p.hp = Math.min(max, p.hp + v);
+    const cap = this.build.mods['qing.shield'] ?? 0;
+    if (over > 0 && cap > 0) this.shield = Math.min(max * cap, this.shield + over);
   }
 
   healPlayer(frac: number) {
@@ -541,6 +593,27 @@ export class GameScene extends Phaser.Scene {
     audio.sfx('chest');
     this.fx.ring(this.player.x, this.player.y - 8, 60, 0xffd23f, 0.5);
     if (changed) this.later(0.05, () => this.benmingBurst());
+  }
+
+  // ---------- 散人·周天 ----------
+
+  private zhoutianPeriod() {
+    return Math.max(10, 30 + (this.build.mods['xuan.period'] ?? 0));
+  }
+
+  /** 按相生顺序轮到下一系；归元：轮转时以新的一系爆发 */
+  private rotateZhoutian() {
+    const el = GEN_ORDER[(GEN_ORDER.indexOf(this.zhoutian!) + 1) % 5];
+    this.zhoutian = el;
+    this.zhoutianAt = this.now + this.zhoutianPeriod();
+    this.build.version++;
+    const p = this.player;
+    this.fx.ring(p.x, p.y - 8, 40, EL_INFO[el].color, 0.4);
+    this.hud.toast(`周天轮转 · ${EL_INFO[el].name}系伤害提高`, hex(EL_INFO[el].color));
+    if (this.build.mods['xuan.burst']) {
+      const tmp: Enemy[] = [];
+      for (const e of this.enemies.inRadius(p.x, p.y - 8, 56, tmp)) this.hitEnemy(e, (15 + this.build.level * 2) * this.pstats.burstMult, el, { kb: 60 });
+    }
   }
 
   /** 本命变化：以新元素在身边爆发一次 */

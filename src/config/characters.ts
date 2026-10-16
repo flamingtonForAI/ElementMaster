@@ -3,7 +3,8 @@ import type { SkillId } from './skills';
 
 export interface Growth {
   every: number;
-  stat: 'crit' | 'armor' | 'area' | 'speed' | 'cd';
+  /** puppetHp / puppetDmg 傀儡生命、伤害倍率，lowLingen 给灵根最低的元素 +v */
+  stat: 'crit' | 'armor' | 'area' | 'speed' | 'cd' | 'regen' | 'puppetHp' | 'puppetDmg' | 'lowLingen';
   v: number;
   cap?: number;
 }
@@ -28,7 +29,13 @@ export interface CharacterDef {
   pickup?: number;
   /** 浪花：暴击时向周围溅射，数值是溅射伤害占原伤害的比例 */
   critSplash?: number;
-  /** 五行均衡（散人）：星图从中宫出发 */
+  /** 天生每秒回复 */
+  regen?: number;
+  /** 敌人身上的中毒、灼烧伤害加成 */
+  dotBonus?: number;
+  /** 本体的术伤害倍率（傀儡师：输出靠傀儡，本体的术只是给傀儡换外壳） */
+  ownDmg?: number;
+  /** 五行均衡（散人）：星图从中宫出发，升级选项不按元素加权，周天轮转 */
   balanced?: boolean;
   /** 未开放角色的解锁说明 */
   unlock?: string;
@@ -44,7 +51,7 @@ export interface CharacterDef {
 
 /**
  * 初始生命参照 DND 的生命骰：战士 d10、游侠/游荡者 d8、法师 d6，按 100 / 80 / 70 落地。
- * 三个初始角色都是进攻型，容错靠走位和局外成长，不靠血厚；傀儡师本体最脆，由傀儡顶在前面。
+ * 三个初始角色都是进攻型，容错靠走位和局外成长，不靠血厚；药师、散人 85；傀儡师本体最脆，由傀儡顶在前面。
  */
 export const CHARACTERS: CharacterDef[] = [
   {
@@ -71,32 +78,28 @@ export const CHARACTERS: CharacterDef[] = [
     trait: '攻速 +15%，暴击 +5%，拾取 +30%。近身弱：弩箭越远越痛。浪花：暴击溅起水花。成长：每 5 级冷却 −1%，每 10 级移速 +2%。',
     available: true,
   },
-  // 以下角色还没做，先在选角界面占位
   {
     id: 'qingdai', name: '青黛', title: '药师', el: 'wood', role: '续航，持续伤害与回复', hp: 85, speed: 72, armor: 0,
-    startSkill: 'leaf', lingen: 3, meleeBonus: 0, meleeRange: 0,
-    growth: [],
+    startSkill: 'duwu', lingen: 3, regen: 0.5, dotBonus: 0.3, meleeBonus: 0, meleeRange: 0,
+    growth: [{ every: 5, stat: 'regen', v: 0.1 }],
     bio: '悬壶济世的游医，药囊里的草木也能杀人。',
-    trait: '回春：持续回复，持续伤害更强。',
-    unlock: '通关第 3 关解锁',
-    available: false,
+    trait: '回春：每秒回复 0.5，敌人身上的中毒、灼烧伤害 +30%。成长：每 5 级回复 +0.1/s。',
+    available: true,
   },
   {
     id: 'moheng', name: '墨衡', title: '傀儡师', el: 'earth', role: '召唤，傀儡在前本体在后', hp: 65, speed: 66, armor: 1,
-    startSkill: 'stonespike', lingen: 3, meleeBonus: 0, meleeRange: 0,
-    growth: [],
-    bio: '名取《列子》里造傀儡的偃师，石傀儡替他挡在阵前。',
-    trait: '傀儡继承本体护甲和本命加成；本体脆、移速慢。',
-    unlock: '通关第 6 关解锁',
-    available: false,
+    startSkill: 'puppet', lingen: 3, ownDmg: 0.5, meleeBonus: 0, meleeRange: 0,
+    growth: [{ every: 5, stat: 'puppetHp', v: 0.05 }, { every: 10, stat: 'puppetDmg', v: 0.1 }],
+    bio: '名取《列子》偃师，石傀儡替他挡在阵前。',
+    trait: '傀儡继承护甲和本命加成；本体脆、慢，自己的术伤害 −50%。灌注：别系的术给傀儡换外壳。成长：每 5 级傀儡生命 +5%，每 10 级伤害 +10%。',
+    available: true,
   },
   {
     id: 'xuanyi', name: '玄一', title: '五行散人', el: 'earth', role: '轮转，五系兼修', hp: 85, speed: 72, armor: 1, balanced: true,
     startSkill: 'fireball', lingen: 0, meleeBonus: 0, meleeRange: 0,
-    growth: [],
-    bio: '不属任何一系的云游散人，五行在他身上轮流做主。',
-    trait: '自带周天心法；星图从中宫出发，离五系一样近。',
-    unlock: '其余 5 位角色各自通关第 10 关后解锁',
-    available: false,
+    growth: [{ every: 10, stat: 'lowLingen', v: 1 }],
+    bio: '云游散人，五行在他身上轮流做主。',
+    trait: '周天：每 30 秒按相生轮转一系，该系伤害 +25%。升级选项五系均等，星图从中宫出发。成长：每 10 级最低灵根 +1。',
+    available: true,
   },
 ];

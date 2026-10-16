@@ -124,7 +124,9 @@ export class MenuScene extends Phaser.Scene {
     }
     const tx = X0 + 104;
     const tw = W - 116;
-    L.add(label(this, tx, py + 8, `${c.title} · ${c.name}`, c.available ? '#f4eee0' : '#8a8494', 24));
+    // 名号长的（五行散人）去掉间隔里的空格，免得顶到出发按钮
+    const sep = c.title.length + c.name.length > 5 ? '·' : ' · ';
+    L.add(label(this, tx, py + 8, `${c.title}${sep}${c.name}`, c.available ? '#f4eee0' : '#8a8494', 24));
     L.add(label(this, tx, py + 38, `${c.balanced ? '五行均衡' : `${EL_INFO[c.el].name}亲和`} · ${c.role}`, hex(col)));
     if (c.available) L.add(label(this, tx, py + 56, `生命 ${c.hp}　移速 ${c.speed}　护甲 ${c.armor}`, '#6a6474'));
     const bio = label(this, tx, py + (c.available ? 76 : 58), wrap(c.bio, tw), '#8a8494', 12, false).setLineSpacing(3);

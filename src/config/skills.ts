@@ -1,6 +1,6 @@
 import type { El } from './elements';
 
-export type SkillId = 'slash' | 'talisman' | 'crossbow' | 'flysword' | 'fireball' | 'leaf' | 'waterdragon' | 'stonespike';
+export type SkillId = 'slash' | 'talisman' | 'crossbow' | 'duwu' | 'puppet' | 'flysword' | 'fireball' | 'leaf' | 'waterdragon' | 'stonespike';
 export type PassiveId = 'ruijin' | 'yanyang' | 'changsheng' | 'roushui' | 'houtu' | 'qingshen' | 'juling';
 
 export type Stats = Record<string, number>;
@@ -62,6 +62,31 @@ export const SKILLS: Record<SkillId, SkillDef> = {
       pierce: at([1, 1, 2, 2, 2, 2, 2, 2], lv),
       cd: at([1.4, 1.4, 1.4, 1.4, 1.4, 1.25, 1.25, 1.25], lv),
       splash: lv >= 8 ? 1 : 0,
+    }),
+  },
+  duwu: {
+    id: 'duwu', name: '毒雾', glyph: '雾', el: 'wood', maxLv: 8, proc: 0, exclusive: 'qingdai',
+    desc: ['脚下环绕一圈毒雾，进入的敌人中毒，离开后还会再毒一阵', '毒性增强', '毒雾扩大', '离开后毒得更久', '毒性增强', '毒雾扩大', '毒性增强', '毒雾扩大，毒性大幅增强'],
+    stats: (lv) => ({
+      dps: at([12, 15, 15, 15, 19, 19, 23, 30], lv),
+      radius: at([44, 44, 52, 52, 52, 60, 60, 68], lv),
+      /** 离开毒雾后中毒还持续的秒数 */
+      linger: at([2, 2, 2, 3, 3, 3, 3, 3], lv),
+      cd: 0.5,
+    }),
+  },
+  puppet: {
+    id: 'puppet', name: '石傀儡', glyph: '傀', el: 'earth', maxLv: 8, proc: 0.15, exclusive: 'moheng',
+    desc: ['召唤石傀儡跟随，扑向最近的敌人砸一圈，并把周围敌人的仇恨吸过去；打碎后会重新捏出来，经过的经验球会飞向你', '傀儡 +1', '生命、伤害提高', '傀儡 +1', '重塑加快', '生命、伤害提高', '生命、伤害提高', '合成一尊巨傀，攻击带震地'],
+    stats: (lv) => ({
+      count: at([1, 2, 2, 3, 3, 3, 3, 3], lv),
+      hp: at([60, 60, 70, 70, 70, 80, 95, 95], lv),
+      dmg: at([16, 16, 16, 16, 17, 19, 22, 22], lv),
+      /** 扑击落点周围一圈都挨打 */
+      cleave: 14,
+      atkCd: 0.75,
+      cd: at([4, 4, 4, 4, 3, 3, 3, 3], lv),
+      giant: lv >= 8 ? 1 : 0,
     }),
   },
   flysword: {

@@ -15,6 +15,18 @@ import type { Mods } from './startree';
  * 海贼专用加成：
  * ruan.splash 浪花伤害比例；ruan.splashArea 浪花范围；ruan.chain 浪花可暴击并再溅的层数；
  * ruan.kite 背离敌人移动时冷却加速；ruan.range 连弩射程与箭速；ruan.pierce 连弩贯穿
+ *
+ * 药师专用加成：
+ * qing.shield 生命满时回复转护盾的上限（占最大生命）；qing.shieldDmg 有护盾时伤害加成；
+ * qing.cloud 毒雾光环范围；qing.cloudDur 离开毒雾后中毒多持续的秒数；qing.spread 中毒敌人死亡时传染；qing.vuln 中毒敌人受到的伤害加成
+ *
+ * 傀儡师专用加成：
+ * mo.shellDmg 元素外壳傀儡伤害；mo.shellProc 外壳傀儡攻击必定触发该系异常；mo.shellCleave 外壳傀儡扑击范围；
+ * mo.hp 傀儡生命；mo.giantLv 提前到这一级合成巨傀；mo.quake 巨傀震地范围
+ *
+ * 散人专用加成：
+ * xuan.period 周天轮转间隔（秒，负数是缩短）；xuan.bonus 周天加成；xuan.burst 轮转时爆发；
+ * xuan.variety 每个不同元素的术给的伤害；xuan.even 五系灵根相差不超过 3 时的伤害；xuan.taiji 五系灵根都不低于 2 时全面加成
  */
 export interface LegacyNode {
   id: string;
@@ -90,6 +102,66 @@ export const LEGACIES: Record<string, LegacyBranch[]> = {
         { id: 'ruan.b1', name: '退射', glyph: '退', note: '背离最近的敌人移动时，所有术冷却加快 30%', mods: { 'ruan.kite': 0.3 } },
         { id: 'ruan.b2', name: '远扬', glyph: '远', note: '连弩射程和箭速 +30%', mods: { 'ruan.range': 0.3 } },
         { id: 'ruan.b3', name: '分水', glyph: '分', note: '连弩贯穿 +2', mods: { 'ruan.pierce': 2 } },
+      ],
+    },
+  ],
+  qingdai: [
+    {
+      name: '护心',
+      desc: '溢出回复存成护盾，越稳越能打',
+      nodes: [
+        { id: 'qing.a1', name: '回春', glyph: '春', mods: { regen: 0.4 } },
+        { id: 'qing.a2', name: '护心', glyph: '护', note: '生命满时，回复转为护盾，最多为最大生命的 20%', mods: { 'qing.shield': 0.2 } },
+        { id: 'qing.a3', name: '固元', glyph: '固', note: '护盾上限再 +15%；有护盾时伤害 +15%', mods: { 'qing.shield': 0.15, 'qing.shieldDmg': 0.15 } },
+      ],
+    },
+    {
+      name: '传染',
+      desc: '让毒在敌群里一个传一个',
+      nodes: [
+        { id: 'qing.b1', name: '药性', glyph: '药', note: '毒雾范围 +25%，离开后中毒多持续 1 秒', mods: { 'qing.cloud': 0.25, 'qing.cloudDur': 1 } },
+        { id: 'qing.b2', name: '传染', glyph: '染', note: '中毒的敌人死亡时，把毒传给周围的敌人', mods: { 'qing.spread': 1 } },
+        { id: 'qing.b3', name: '蚀骨', glyph: '蚀', note: '中毒的敌人受到的伤害 +20%', mods: { 'qing.vuln': 0.2 } },
+      ],
+    },
+  ],
+  moheng: [
+    {
+      name: '灌注',
+      desc: '多修别系术，傀儡换五行外壳',
+      nodes: [
+        { id: 'mo.a1', name: '灌注', glyph: '灌', note: '元素外壳傀儡伤害 +30%', mods: { 'mo.shellDmg': 0.3 } },
+        { id: 'mo.a2', name: '印契', glyph: '契', note: '元素外壳傀儡的攻击必定触发该系异常', mods: { 'mo.shellProc': 1 } },
+        { id: 'mo.a3', name: '五方', glyph: '方', note: '元素外壳傀儡扑击范围 +50%', mods: { 'mo.shellCleave': 0.5 } },
+      ],
+    },
+    {
+      name: '巨傀',
+      desc: '把傀儡捏得更大更硬',
+      nodes: [
+        { id: 'mo.b1', name: '坚壁', glyph: '壁', note: '傀儡生命 +30%', mods: { 'mo.hp': 0.3 } },
+        { id: 'mo.b2', name: '早成', glyph: '成', note: '石傀儡 Lv5 就合成巨傀', mods: { 'mo.giantLv': 5 } },
+        { id: 'mo.b3', name: '撼地', glyph: '撼', note: '巨傀震地范围 +50%', mods: { 'mo.quake': 0.5 } },
+      ],
+    },
+  ],
+  xuanyi: [
+    {
+      name: '周天',
+      desc: '轮转更快、加成更高',
+      nodes: [
+        { id: 'xuan.a1', name: '小周天', glyph: '小', note: '周天轮转间隔 30 → 20 秒', mods: { 'xuan.period': -10 } },
+        { id: 'xuan.a2', name: '大周天', glyph: '大', note: '周天加成再 +15%', mods: { 'xuan.bonus': 0.15 } },
+        { id: 'xuan.a3', name: '归元', glyph: '归', note: '每次轮转，以新的一系在身边爆发一次', mods: { 'xuan.burst': 1 } },
+      ],
+    },
+    {
+      name: '太极',
+      desc: '五系平均修，越均衡越强',
+      nodes: [
+        { id: 'xuan.b1', name: '两仪', glyph: '仪', note: '每有一个不同元素的术，全部伤害 +4%', mods: { 'xuan.variety': 0.04 } },
+        { id: 'xuan.b2', name: '四象', glyph: '象', note: '五系灵根最高与最低相差不超过 3 时，全部伤害 +12%', mods: { 'xuan.even': 0.12 } },
+        { id: 'xuan.b3', name: '太极', glyph: '极', note: '五系灵根都不低于 2 时，伤害 +15%、冷却 −10%、移速 +10%', mods: { 'xuan.taiji': 1 } },
       ],
     },
   ],

@@ -30,6 +30,8 @@ export class HudScene extends Phaser.Scene {
   private timeText!: Phaser.GameObjects.Text;
   private killText!: Phaser.GameObjects.Text;
   private benText!: Phaser.GameObjects.Text;
+  /** 散人：当前周天元素，显示在本命下面 */
+  private ztText!: Phaser.GameObjects.Text;
   private bossText!: Phaser.GameObjects.Text;
   private skillGlyphs: Phaser.GameObjects.Text[] = [];
   private passiveGlyphs: Phaser.GameObjects.Text[] = [];
@@ -70,6 +72,7 @@ export class HudScene extends Phaser.Scene {
     label(this, 320, 21, `第${L.id}关 · ${L.name}`, '#b8aec8').setOrigin(0.5, 0);
     this.killText = label(this, 634, 7, '').setOrigin(1, 0);
     this.benText = label(this, 598, 98, '').setOrigin(0.5, 0);
+    this.ztText = label(this, 598, 114, '').setOrigin(0.5, 0);
     this.bossText = label(this, 320, 44, '').setOrigin(0.5, 0).setVisible(false);
 
     this.skillGlyphs = [];
@@ -217,6 +220,8 @@ export class HudScene extends Phaser.Scene {
       }
       this.drawPentagon(b.lingen, b.benming);
       this.benText.setText(`本命 ${EL_INFO[b.benming].name}`).setColor(hex(EL_INFO[b.benming].color));
+      const zt = this.g.zhoutian;
+      this.ztText.setText(zt ? `周天 ${EL_INFO[zt].name}` : '').setColor(zt ? hex(EL_INFO[zt].color) : '#fff');
     }
 
     // Boss 血条

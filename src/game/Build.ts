@@ -37,6 +37,11 @@ export interface PlayerStats {
   stillArmor: number;
   meleeBonus: number;
   meleeRange: number;
+  /** 敌人身上中毒、灼烧的伤害倍率（药师） */
+  dotMult: number;
+  /** 傀儡生命、伤害倍率（傀儡师） */
+  puppetHp: number;
+  puppetDmg: number;
 }
 
 const EL0 = (v: number): Record<El, number> => ({ metal: v, wood: v, water: v, fire: v, earth: v });
@@ -105,6 +110,13 @@ export class Build {
       const el = PASSIVES[id].el;
       if (el) l[el] += lv;
     }
+    // 散人成长：每 10 级给当时灵根最低的一系 +1
+    for (const g of this.char.growth.filter((g) => g.stat === 'lowLingen')) {
+      for (let i = 0; i < Math.floor(this.level / g.every); i++) {
+        const low = GEN_ORDER.reduce((a, b) => (l[b] < l[a] ? b : a));
+        l[low] += g.v;
+      }
+    }
     this.lingen = l;
     const max = Math.max(...GEN_ORDER.map((e) => l[e]));
     const top = GEN_ORDER.filter((e) => l[e] === max);
@@ -134,18 +146,23 @@ export class Build {
       if (off) for (const o of GEN_ORDER) if (o !== e) elDmg[o] += off;
     }
     const armor = c.armor + Math.floor(p('houtu')) + u('armor') + gr('armor') + m('armor');
+    // 散人·太极：术的元素越多、五系灵根越平均越强
+    const ln = GEN_ORDER.map((e) => this.lingen[e]);
+    const even = Math.max(...ln) - Math.min(...ln) <= 3 ? m('xuan.even') : 0;
+    const taiji = m('xuan.taiji') && Math.min(...ln) >= 2 ? 1 : 0;
+    const variety = new Set([...this.skills.keys()].map((id) => SKILLS[id].el)).size * m('xuan.variety');
     return {
       maxHp: Math.round(c.hp * (1 + 0.12 * p('houtu') + u('hp') + m('hp'))),
-      speed: c.speed * (1 + 0.07 * p('qingshen') + u('speed') + gr('speed') + m('speed')),
+      speed: c.speed * (1 + 0.07 * p('qingshen') + u('speed') + gr('speed') + m('speed') + 0.1 * taiji),
       armor,
-      regen: (0.4 * p('changsheng') + u('regen') + m('regen')) * (1 + m('regenMult')),
-      dmgMult: 1 + 0.08 * p('yanyang') + m('dmg'),
+      regen: ((c.regen ?? 0) + 0.4 * p('changsheng') + u('regen') + gr('regen') + m('regen')) * (1 + m('regenMult')),
+      dmgMult: 1 + 0.08 * p('yanyang') + m('dmg') + variety + even + 0.15 * taiji,
       crit: m('noCrit') ? 0 : 0.05 + (c.crit ?? 0) + 0.06 * p('ruijin') + m('crit') + gr('crit'),
       area: 1 + (c.area ?? 0) + 0.1 * p('roushui') + m('area') + gr('area'),
       pickup: 30 * (1 + (c.pickup ?? 0) + 0.25 * p('juling') + u('pickup') + m('pickup')),
       xpMult: 1 + 0.05 * p('juling') + u('xp') + m('xp'),
       critDmg: 2 + m('critDmg'),
-      cdMult: 1 - (c.cdr ?? 0) - m('cd') - gr('cd'),
+      cdMult: 1 - (c.cdr ?? 0) - m('cd') - gr('cd') - 0.1 * taiji,
       elDmg,
       resist,
       vsEl,
@@ -155,6 +172,9 @@ export class Build {
       stillArmor: m('stillArmor'),
       meleeBonus: c.meleeBonus + m('melee') + armor * m('xiao.armorMelee'),
       meleeRange: c.meleeRange + m('meleeRange'),
+      dotMult: 1 + (c.dotBonus ?? 0) + m('qing.dot'),
+      puppetHp: 1 + gr('puppetHp') + m('mo.hp'),
+      puppetDmg: 1 + gr('puppetDmg'),
     };
   }
 

@@ -11,9 +11,10 @@ export class ArtScene extends Phaser.Scene {
   create() {
     this.add.tileSprite(0, 0, 640, 360, 'ground_1').setOrigin(0);
     const poses = ['idle', 'run', 'atk', 'atkrun'];
-    // ?art=zhu 预览符师，?art=ruan 预览海贼
+    // ?art=zhu 预览符师，?art=ruan 海贼，?art=qingdai 药师，?art=moheng 傀儡师，?art=xuanyi 散人
     const id = new URLSearchParams(location.search).get('art') || 'xiao';
-    label(this, 8, 4, `${{ zhu: '朱砂', ruan: '阮沧' }[id] ?? '萧寒锋'} 8 方向（右侧 3 列为镜像）`);
+    const names: Record<string, string> = { zhu: '朱砂', ruan: '阮沧', qingdai: '青黛', moheng: '墨衡', xuanyi: '玄一' };
+    label(this, 8, 4, `${names[id] ?? '萧寒锋'} 8 方向（右侧 3 列为镜像）`);
     const dirs: [string, boolean][] = [...HERO_DIRS.map((d): [string, boolean] => [d, false]), ['se', true], ['e', true], ['ne', true]];
     poses.forEach((pose, r) => {
       label(this, 8, 34 + r * 44, pose, '#b8aec8');
@@ -30,6 +31,10 @@ export class ArtScene extends Phaser.Scene {
     en.forEach((k, i) => this.add.sprite(60 + i * 40, 230, k, 0).play(k + '_move'));
     this.add.sprite(370, 236, 'boss_langyao', 0).play('boss_langyao_move');
     this.add.sprite(460, 226, 'boss_shuyao', 0).play('boss_shuyao_move');
+    this.add.sprite(530, 236, 'pp_golem', 0).play('pp_golem_move');
+    this.add.sprite(560, 236, 'pp_golem', 0).setTint(0x9fc0ff).play('pp_golem_move');
+    this.add.sprite(605, 230, 'pp_giant', 0).play('pp_giant_move');
+    this.add.image(530, 270, 'pp_wall');
     const fx = ['pj_sword', 'pj_bolt', 'pj_leaf', 'pj_wave', 'gem_s', 'gem_m', 'gem_l', 'chest', 'ep_leaf', 'ep_wind', 'ep_poison', 'antidote'];
     fx.forEach((k, i) => this.add.image(60 + i * 30, 300, k));
     this.add.sprite(420, 300, 'pj_water', 0).play('pj_water');

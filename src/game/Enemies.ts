@@ -133,9 +133,12 @@ export class EnemyManager {
 
     for (const e of this.list) {
       if (!e.alive) continue;
-      const dx = p.x - e.x;
-      const dy = p.y - e.y;
-      const dist = Math.hypot(dx, dy) || 1;
+      // 近战的普通怪会被傀儡吸走仇恨；Boss 和远程怪只盯本体
+      const pp = !e.boss && e.def.behavior !== 'spit' && g.puppets.list.length ? g.puppets.aggroOf(e) : null;
+      const pdist = Math.hypot(p.x - e.x, p.y - e.y) || 1;
+      const dx = (pp ? pp.x : p.x) - e.x;
+      const dy = (pp ? pp.y : p.y) - e.y;
+      const dist = pp ? Math.hypot(dx, dy) || 1 : pdist;
       const nx = dx / dist;
       const ny = dy / dist;
       const stunned = now < e.stunUntil;
@@ -191,7 +194,10 @@ export class EnemyManager {
       e.y += vy * dt;
 
       // 接触伤害
-      if (p.alive && dist < e.radius + PLAYER_RADIUS && now >= e.contactAt) {
+      if (pp && dist < e.radius + pp.radius && now >= e.contactAt) {
+        e.contactAt = now + 0.8;
+        g.puppets.hurt(pp, e.dmg, e.def.el);
+      } else if (p.alive && pdist < e.radius + PLAYER_RADIUS && now >= e.contactAt) {
         e.contactAt = now + 0.8;
         // 狼妖扑咬有前摇，冲刺中撞到必定暴击
         g.hurtPlayer(e.dmg, e.def.el, this.hurtOf(e, e.def.behavior === 'boss_wolf' && e.state === 2));
@@ -366,6 +372,11 @@ export class EnemyManager {
       e.glyph = null;
     }
     g.kills++;
+    // 药师·传染：中毒的敌人死时把毒传给周围
+    if (g.build.mods['qing.spread'] && g.now < e.poisonUntil) {
+      g.fx.ring(e.x, e.y - 6, 50, STATUS_INFO.poison.tint, 0.3);
+      for (const o of this.inRadius(e.x, e.y, 50, [])) if (o !== e) g.poisonEnemy(o, e.poisonDps, 3);
+    }
     g.fx.burst(e.x, e.y - 6, EL_INFO[e.def.el].color, e.boss ? 40 : e.elite ? 16 : 6);
     if (e.boss || e.elite) audio.sfx('killBig');
     else audio.sfx('kill');

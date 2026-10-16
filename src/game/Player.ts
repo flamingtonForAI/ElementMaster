@@ -14,6 +14,8 @@ export class Player {
   /** 血条下方一排异常色块，和震慑累积条 */
   private readonly pips: Record<StatusId, Phaser.GameObjects.Rectangle>;
   private readonly stunBar: Phaser.GameObjects.Rectangle;
+  /** 药师·护心的护盾，叠在血条上沿 */
+  private readonly shieldBar: Phaser.GameObjects.Rectangle;
   x = 0;
   y = 0;
   hp: number;
@@ -37,6 +39,7 @@ export class Player {
       PIP_ORDER.map((k) => [k, g.add.rectangle(0, 0, 3, 2, STATUS_INFO[k].tint).setOrigin(0, 0).setVisible(false)]),
     ) as Record<StatusId, Phaser.GameObjects.Rectangle>;
     this.stunBar = g.add.rectangle(0, 0, 18, 1, 0xdaa53e).setOrigin(0, 0).setVisible(false);
+    this.shieldBar = g.add.rectangle(0, 0, 18, 1, 0xe8f0ff).setOrigin(0, 0).setVisible(false);
     this.keys = g.input.keyboard!.addKeys('UP,DOWN,LEFT,RIGHT,W,A,S,D') as Record<string, Phaser.Input.Keyboard.Key>;
   }
 
@@ -85,11 +88,16 @@ export class Player {
 
     // 回血，中毒时减半
     const max = g.pstats.maxHp;
-    if (g.pstats.regen > 0) this.hp = Math.min(max, this.hp + g.pstats.regen * st.regenMult * dt);
+    if (g.pstats.regen > 0 && this.alive) g.regenPlayer(g.pstats.regen * st.regenMult * dt);
     this.hpBg.setPosition(this.x, this.y + 4).setDepth(this.y + 1);
     this.hpFill.setPosition(this.x - 9, this.y + 5).setDepth(this.y + 2);
     this.hpFill.width = Math.max(0, 18 * (this.hp / max));
     this.hpFill.fillColor = st.poisoned ? 0x7ad04a : 0xe8503f;
+    this.shieldBar.setVisible(g.shield > 0.5);
+    if (g.shield > 0.5) {
+      this.shieldBar.width = Math.max(1, Math.round(18 * Math.min(1, g.shield / max)));
+      this.shieldBar.setPosition(this.x - 9, this.y + 4).setDepth(this.y + 3);
+    }
     this.updatePips();
   }
 
@@ -135,6 +143,7 @@ export class Player {
     this.hpBg.setVisible(false);
     this.hpFill.setVisible(false);
     this.stunBar.setVisible(false);
+    this.shieldBar.setVisible(false);
     for (const k of PIP_ORDER) this.pips[k].setVisible(false);
   }
 

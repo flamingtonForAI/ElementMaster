@@ -80,6 +80,12 @@ export class PickupManager {
     return v >= 20 ? 'gem_l' : v >= 5 ? 'gem_m' : 'gem_s';
   }
 
+  /** 傀儡经过：附近的经验球飞向本体 */
+  magnetNear(x: number, y: number, r: number) {
+    const r2 = r * r;
+    for (const gm of this.gems) if (!gm.magnet && (gm.x - x) ** 2 + (gm.y - y) ** 2 < r2) gm.magnet = true;
+  }
+
   update(dt: number) {
     const g = this.g;
     const p = g.player;
