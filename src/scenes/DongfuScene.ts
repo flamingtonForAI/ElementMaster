@@ -10,6 +10,7 @@ import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
 import { isTouch } from '../ui/touch';
 import { audio } from '../audio/Audio';
+import { getVistaTextureKey } from '../art/vistaArt';
 
 const PANEL = 0x161220;
 const LINE = 0x4a3f5c;
@@ -90,8 +91,8 @@ export class DongfuScene extends Phaser.Scene {
     this.modal = null;
     this.glyphs.clear();
     this.elLabels = [];
-    this.add.tileSprite(0, 0, 640, 360, 'ground_1').setOrigin(0).setAlpha(0.35);
-    this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.6).setOrigin(0);
+    this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey()).setOrigin(0).setAlpha(0.65);
+    this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.52).setOrigin(0);
     this.layer = this.add.container(0, 0).setDepth(2);
     this.input.addPointer(1);
     this.openMap();

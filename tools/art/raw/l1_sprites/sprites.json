@@ -1,0 +1,42 @@
+[
+  {
+    "index": 0,
+    "file": "sprite_00.png",
+    "w": 24,
+    "h": 24,
+    "anchor": [
+      11,
+      18
+    ]
+  },
+  {
+    "index": 1,
+    "file": "sprite_01.png",
+    "w": 24,
+    "h": 24,
+    "anchor": [
+      12,
+      18
+    ]
+  },
+  {
+    "index": 2,
+    "file": "sprite_02.png",
+    "w": 24,
+    "h": 24,
+    "anchor": [
+      15,
+      20
+    ]
+  },
+  {
+    "index": 3,
+    "file": "sprite_03.png",
+    "w": 24,
+    "h": 24,
+    "anchor": [
+      10,
+      22
+    ]
+  }
+]

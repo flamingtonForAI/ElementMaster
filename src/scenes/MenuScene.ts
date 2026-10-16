@@ -8,6 +8,7 @@ import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
 import { isTouch } from '../ui/touch';
 import { audio } from '../audio/Audio';
+import { getTodPreset, getVistaCloudKey, getVistaFgKey, getVistaTextureKey } from '../art/vistaArt';
 
 const PANEL = 0x161220;
 const LINE = 0x4a3f5c;
@@ -17,7 +18,8 @@ export class MenuScene extends Phaser.Scene {
   private charSel = 0;
   private levelSel = 0;
   private layer!: Phaser.GameObjects.Container;
-  private bg!: Phaser.GameObjects.TileSprite;
+  private clouds!: Phaser.GameObjects.TileSprite;
+  private fg!: Phaser.GameObjects.TileSprite;
 
   constructor() {
     super('menu');
@@ -32,8 +34,10 @@ export class MenuScene extends Phaser.Scene {
   create() {
     const save = loadSave();
     this.levelSel = LEVELS.reduce((selected, lv, i) => lv.available && lv.id <= save.unlocked ? i : selected, 0);
-    this.bg = this.add.tileSprite(0, 0, 640, 360, 'ground_1').setOrigin(0).setAlpha(0.55);
-    this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.45).setOrigin(0);
+    this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey()).setOrigin(0);
+    this.clouds = this.add.tileSprite(0, 0, 640, 360, getVistaCloudKey()).setOrigin(0).setAlpha(0.28);
+    this.fg = this.add.tileSprite(0, 0, 640, 360, getVistaFgKey()).setOrigin(0).setAlpha(0.65);
+    this.add.rectangle(0, 0, 640, 360, 0x07050b, getTodPreset().veilAlpha + 0.16).setOrigin(0);
 
     // 标题：五个元素字环绕
     label(this, 320, 18, '五行师', '#f4eee0', 48).setOrigin(0.5, 0);
@@ -52,9 +56,9 @@ export class MenuScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown', (e: KeyboardEvent) => this.onKey(e));
   }
 
-  update(_t: number, dms: number) {
-    this.bg.tilePositionX += dms * 0.01;
-    this.bg.tilePositionY += dms * 0.005;
+  update(t: number, dms: number) {
+    this.clouds.tilePositionX += dms * 0.004;
+    this.fg.x = Math.round(Math.sin(t * 0.0012) * 1.5);
   }
 
   private render() {

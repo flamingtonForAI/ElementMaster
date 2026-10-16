@@ -313,137 +313,310 @@ function valueNoise(size: number, cells: number, R: () => number) {
   return out;
 }
 
-function ground(seed: number, tones: number[], speck: number[], blades: number[]): PC {
-  const N = 128;
+function ground(
+  seed: number,
+  tones: number[],
+  pebbles: number[],
+  blades: number[],
+): PC {
+  // 256×256 大尺寸贴图 + 三层噪声混合，消除 128px 周期性斑块重复感；
+  // 严格控制底色明度跨度，将高饱和/高明度色彩留给经验宝石、敌人与技能特效。
+  const N = 256;
   const R = rng(seed);
   const p = new PC(N, N);
   const n1 = valueNoise(N, 4, R);
-  const n2 = valueNoise(N, 16, R);
-  for (let y = 0; y < N; y++)
+  const n2 = valueNoise(N, 12, R);
+  const n3 = valueNoise(N, 28, R);
+
+  // 1. 低对比度跨色相底色（柔和过渡，不抢前景拾取物）
+  for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {
-      const v = n1[y * N + x] * 0.65 + n2[y * N + x] * 0.35 + (R() - 0.5) * 0.12;
+      const v = n1[y * N + x] * 0.45 + n2[y * N + x] * 0.35 + n3[y * N + x] * 0.2;
       const idx = Math.min(tones.length - 1, Math.max(0, Math.floor(v * tones.length)));
       p.set(x, y, tones[idx]);
     }
-  // 小碎点
-  for (let i = 0; i < 160; i++) p.set(Math.floor(R() * N), Math.floor(R() * N), speck[Math.floor(R() * speck.length)]);
-  // 草叶
-  for (let i = 0; i < 40; i++) {
-    const x = Math.floor(R() * N), y = Math.floor(R() * N);
-    const c = blades[Math.floor(R() * blades.length)];
+  }
+
+  // 2. 低对比碎石纹理与细微地表肌理
+  for (let i = 0; i < 140; i++) {
+    const x = Math.floor(R() * (N - 3)) + 1;
+    const y = Math.floor(R() * (N - 3)) + 1;
+    const c = pebbles[i % pebbles.length];
     p.set(x, y, c);
-    p.set(x + 1, y - 1, c);
-    p.set(x - 1, y - 1, c);
+    if (i % 3 === 0) p.set(x + 1, y, c);
+  }
+
+  // 3. 稀疏低对比小草束（密度适中、明度克制，绝不与绿宝石 gem_m 或掉落物混淆）
+  for (let i = 0; i < 90; i++) {
+    const x = Math.floor(R() * (N - 4)) + 2;
+    const y = Math.floor(R() * (N - 4)) + 2;
+    const c = blades[i % blades.length];
+    p.set(x, y + 1, tones[0]);
+    p.set(x, y, c);
+    p.set(x, y - 1, c);
+    if (i % 2 === 0) p.set(x - 1, y, c);
+    else p.set(x + 1, y, c);
+  }
+
+  return p;
+}
+
+function drawRockBase(p: PC, ox = 0, oy = 0) {
+  // 5 阶跨色相岩石：冷蓝灰暗部 -> 暖米灰受光顶沿
+  const D = 0x363d4f, S = 0x525c70, M = 0x788291, H = 0xa6adba, RIM = 0xdcd6c4;
+  p.ellipse(8 + ox, 7 + oy, 6.5, 4.5, S);
+  p.span(10 + oy, 3 + ox, 12 + ox, D);
+  p.ellipse(7.2 + ox, 6.2 + oy, 5.2, 3.4, M);
+  p.ellipse(6.2 + ox, 5.2 + oy, 3.4, 2.1, H);
+  p.span(3 + oy, 5 + ox, 8 + ox, RIM);
+  p.set(4 + ox, 4 + oy, RIM);
+  p.span(10 + oy, 4 + ox, 7 + ox, 0x385e3c);
+  p.set(5 + ox, 9 + oy, 0x5a8642);
+}
+
+/** dc_rock（3 种变体）：0 乱石堆、1 断桥石墩、2 马车残轮与碎石 */
+function rock(variant = 0): PC {
+  const p = new PC(20, 16);
+  const D = 0x363d4f, S = 0x525c70, M = 0x788291, H = 0xa6adba, RIM = 0xdcd6c4;
+  if (variant === 0) {
+    drawRockBase(p, 1, 3);
+    // 右侧伴生小石块
+    p.ellipse(14, 11, 3.2, 2.4, S);
+    p.ellipse(13.5, 10.5, 2.2, 1.5, M);
+    p.set(13, 9, H);
+  } else if (variant === 1) {
+    // 断桥残石墩（阶梯方石 + 凹槽雕纹）
+    p.rect(4, 9, 12, 4, S);
+    p.span(12, 4, 15, D);
+    p.rect(5, 4, 10, 6, M);
+    p.rect(5, 4, 3, 6, H);
+    p.span(4, 5, 12, RIM);
+    p.rect(12, 5, 3, 5, S);
+    p.span(7, 6, 13, D);
+    p.span(12, 5, 8, 0x4a5838);
+  } else {
+    // 半掩泥土的破损木车轮残骸 + 拦路石
+    const WD = 0x634838, WDS = 0x45302e, WDH = 0x997454;
+    p.ellipse(10, 9, 6, 5, WDS);
+    p.ellipse(10, 9, 4, 3.2, 0x564b38);
+    // 轮辐与断裂上半圈
+    p.line(5, 9, 15, 9, WD);
+    p.line(10, 4, 10, 12, WD);
+    p.line(6, 6, 14, 12, WDS);
+    p.span(4, 8, 12, WDH);
+    p.rect(9, 8, 3, 3, D);
+    // 前方压轮碎石
+    p.ellipse(6, 11, 3.2, 2.2, M);
+    p.span(10, 5, 7, H);
+    p.span(12, 8, 14, 0x4a5838);
+  }
+  p.selectiveOutline(0x363d4f, 0x1e2230);
+  p.under(10.5, 13.5, 8, 1.8, 0x12222b, 85);
+  return p;
+}
+
+/** dc_tuft（3 种变体）：0 荒原枯草束、1 矮荆棘丛、2 碎石荒草 */
+function tuft(variant = 0): PC {
+  const p = new PC(14, 12);
+  if (variant === 0) {
+    const ao = 0x1b3432, dark = 0x2a503e, mid = 0x48783e, hi = 0x749c48;
+    p.span(10, 4, 9, ao);
+    p.strand([[5, 10], [3, 6], [2, 5]], dark, 1);
+    p.strand([[9, 10], [11, 6], [11, 5]], dark, 1);
+    p.strand([[6, 10], [4, 5], [3, 4]], mid, 1);
+    p.strand([[8, 10], [10, 5], [10, 4]], mid, 1);
+    p.strand([[7, 10], [7, 3]], hi, 2);
+  } else if (variant === 1) {
+    // 矮荆棘丛（交错枯刺枝）
+    const B0 = 0x2c1e26, B1 = 0x4a342e, B2 = 0x6e523e, L = 0x586e3e;
+    p.span(10, 3, 10, B0);
+    p.strand([[4, 10], [2, 6], [5, 4]], B1, 1);
+    p.strand([[9, 10], [11, 6], [8, 4]], B1, 1);
+    p.strand([[6, 10], [9, 5], [11, 4]], B2, 1);
+    p.strand([[8, 10], [5, 5], [3, 4]], B2, 1);
+    p.set(4, 6, L);
+    p.set(8, 6, L);
+    p.set(6, 4, L);
+  } else {
+    // 碎石伴荒草
+    const ao = 0x222a30, mid = 0x587240, hi = 0x7c924c;
+    p.span(10, 3, 10, ao);
+    p.ellipse(5, 9, 2.5, 1.8, 0x68707e);
+    p.set(4, 8, 0x9ca4b0);
+    p.strand([[8, 10], [7, 5]], mid, 1);
+    p.strand([[9, 10], [11, 6]], mid, 1);
+    p.strand([[8, 9], [9, 4]], hi, 1);
   }
   return p;
 }
 
-function rock(): PC {
-  const p = new PC(16, 12);
-  p.ellipse(8, 7, 6.5, 4.5, 0x7d7468);
-  p.ellipse(7, 6, 4.5, 3, 0x9c9384);
-  p.ellipse(6, 5, 2, 1.2, 0xbab2a2);
-  p.span(10, 4, 12, 0x5d564d);
-  p.outline(OUTLINE);
-  p.under(8, 10.5, 7, 1.6, 0x000000, 60);
+/** dc_tablet（3 种变体）：0 风化古石碑、1 古道木路标、2 斜插古战场残旗 */
+function tablet(variant = 0): PC {
+  const p = new PC(22, 28);
+  const D = 0x363d4f, S = 0x565e70, M = 0x7e8694, H = 0xb0b8c2, RIM = 0xded9c8;
+  if (variant === 0) {
+    p.rect(7, 6, 8, 17, M);
+    p.rect(7, 6, 2, 17, H);
+    p.span(5, 8, 12, RIM);
+    p.rect(13, 6, 2, 17, S);
+    p.ellipse(11, 6, 4, 2.2, M);
+    p.span(4, 9, 12, RIM);
+    p.rect(5, 22, 12, 3, S);
+    p.span(24, 5, 16, D);
+    for (const y of [10, 13, 16]) p.span(y, 10, 12, D);
+    p.set(11, 18, D);
+    p.strand([[7, 13], [9, 16], [8, 21]], 0x3a683c, 2);
+    p.set(8, 14, 0x689448);
+    p.set(9, 17, 0x689448);
+  } else if (variant === 1) {
+    // 古道木路标（立柱 + 指路横木牌 + 压脚石）
+    const WD0 = 0x362420, WD1 = 0x5c3e30, WD2 = 0x846046, WDH = 0xb08a62;
+    p.rect(9, 5, 3, 20, WD1);
+    p.line(9, 5, 9, 24, WD2);
+    p.line(11, 5, 11, 24, WD0);
+    p.set(10, 4, WDH);
+    // 横向指路木牌（左窄右尖）
+    p.rect(4, 8, 13, 5, WD2);
+    p.span(8, 4, 16, WDH);
+    p.span(12, 4, 16, WD0);
+    p.line(17, 9, 19, 10, WD2, 2);
+    p.span(10, 6, 13, WD0);
+    // 柱脚护石
+    p.ellipse(8, 23, 3, 2, S);
+    p.set(7, 22, H);
+  } else {
+    // 古战场残旗（斜插断枪杆 + 破损暗绛战旗，避开红宝石亮色）
+    const WD0 = 0x362420, WD1 = 0x684836;
+    const FL0 = 0x421c24, FL1 = 0x68282c, FL2 = 0x8c3c38, GD = 0xb88a44;
+    p.line(7, 24, 12, 3, WD0, 2);
+    p.line(7, 24, 12, 3, WD1, 1);
+    p.set(12, 2, GD);
+    // 破损三角残旗面
+    for (let dy = 0; dy < 11; dy++) {
+      const y = 5 + dy;
+      const x0 = 11 - Math.floor(dy * 0.2);
+      const w = Math.max(2, 8 - Math.floor(dy * 0.55) - (dy % 3 === 2 ? 2 : 0));
+      p.span(y, x0, x0 + w, dy < 3 ? FL2 : dy < 8 ? FL1 : FL0);
+    }
+    p.span(5, 11, 18, GD);
+    p.ellipse(7, 24, 3.5, 1.8, S);
+  }
+  p.selectiveOutline(0x363d4f, 0x1c202e);
+  p.under(11, 25, 8, 1.8, 0x12222b, 85);
   return p;
 }
 
-function tuft(): PC {
-  const p = new PC(10, 9);
-  const c = [0x9a9450, 0xb8ae62, 0x77763e];
-  p.strand([[5, 8], [5, 2]], c[0], 1);
-  p.strand([[4, 8], [2, 3]], c[1], 1);
-  p.strand([[6, 8], [8, 3]], c[2], 1);
-  p.strand([[3, 8], [1, 5]], c[2], 1);
-  p.strand([[7, 8], [9, 5]], c[1], 1);
-  return p;
-}
-
-function tablet(): PC {
-  const p = new PC(16, 24);
-  p.rect(4, 4, 8, 16, 0x8c8a86);
-  p.rect(4, 4, 2, 16, 0xaaa8a2);
-  p.rect(10, 4, 2, 16, 0x6c6a66);
-  p.ellipse(8, 4, 4, 2.2, 0x8c8a86);
-  p.rect(2, 19, 12, 3, 0x6c6a66);
-  for (const y of [8, 11, 14]) p.span(y, 7, 9, 0x4a4844);
-  p.set(8, 16, 0x4a4844);
-  p.strand([[5, 12], [6, 14], [5, 17]], 0x4a5a3a, 1);
-  p.outline(OUTLINE);
-  p.under(8, 22, 8, 1.6, 0x000000, 60);
-  return p;
-}
-
-function deadTree(): PC {
+/** dc_deadtree（2 种变体）：0 虬曲苍凉枯木、1 古道断干枯柳 */
+function deadTree(variant = 0): PC {
   const p = new PC(32, 40);
-  const T = 0x5a4434, S = 0x3e2e24, H = 0x7a6250;
-  p.strand([[16, 38], [16, 20], [15, 12]], T, 4);
-  p.strand([[16, 24], [10, 16], [6, 12], [4, 8]], T, 2);
-  p.strand([[16, 20], [22, 13], [26, 10], [28, 6]], T, 2);
-  p.strand([[15, 14], [13, 6], [14, 2]], T, 2);
-  p.strand([[10, 16], [9, 10]], S, 1);
-  p.strand([[22, 13], [24, 16]], S, 1);
-  p.line(18, 22, 18, 37, S);
-  p.line(14, 22, 14, 37, H);
-  p.outline(OUTLINE);
-  p.under(16, 38, 9, 2, 0x000000, 60);
+  const D = 0x2c1e26, S = 0x45302e, T = 0x634838, H = 0x87654d, RIM = 0xa88464;
+  if (variant === 0) {
+    p.strand([[16, 38], [16, 20], [15, 12]], T, 4);
+    p.strand([[14, 38], [11, 39]], S, 2);
+    p.strand([[18, 38], [21, 39]], D, 2);
+    p.strand([[16, 24], [10, 16], [6, 12], [4, 8]], T, 2);
+    p.strand([[16, 20], [22, 13], [26, 10], [28, 6]], T, 2);
+    p.strand([[15, 14], [13, 6], [14, 2]], T, 2);
+    p.strand([[10, 16], [9, 10]], S, 1);
+    p.strand([[22, 13], [24, 16]], D, 1);
+    p.line(18, 20, 18, 37, D);
+    p.line(17, 20, 17, 37, S);
+    p.line(14, 20, 14, 37, H);
+    p.line(14, 21, 14, 29, RIM);
+    p.span(37, 13, 16, 0x4a5838);
+  } else {
+    // 歪斜断干枯柳（粗壮树洞老干 + 垂挂枯枝）
+    p.strand([[15, 38], [13, 25], [16, 14]], T, 5);
+    p.strand([[12, 38], [9, 39]], S, 2);
+    p.strand([[18, 38], [22, 39]], D, 2);
+    p.line(11, 20, 12, 36, H);
+    p.line(11, 22, 11, 30, RIM);
+    p.line(17, 16, 17, 37, D);
+    // 树干空洞
+    p.ellipse(15, 27, 1.8, 3, D);
+    // 两侧拱起又垂下的枯柳枝
+    p.strand([[15, 15], [9, 10], [5, 14], [4, 22]], S, 2);
+    p.strand([[16, 14], [22, 9], [26, 13], [27, 21]], S, 2);
+    p.strand([[16, 12], [18, 5], [22, 7]], T, 2);
+    p.line(8, 12, 7, 20, D);
+    p.line(23, 11, 24, 19, D);
+    p.span(37, 12, 17, 0x4a5838);
+  }
+  p.selectiveOutline(0x38262e, 0x1c1424);
+  p.under(17, 38, 10, 2.2, 0x12222b, 85);
   return p;
 }
 
 function bamboo(seed: number): PC {
-  const p = new PC(22, 60);
+  const p = new PC(24, 60);
   const R = rng(seed);
-  const G = 0x5aa64a, GS = 0x3a7a34, GH = 0x9ad87a, J = 0x2f5e2a, L = 0x4f9a42, LH = 0x86c86a;
-  const stalks = [5, 11, 16];
+  // 跨色相苍翠苦竹：深冷黛青 -> 墨竹青 -> 苍青灰绿（避开经验宝石 gem_m 的高饱和翠绿色域）
+  const AO = 0x142a2a, GS = 0x1e3f38, G = 0x2e5946, GH = 0x457554, RIM = 0x6c9668;
+  const stalks = [6, 12, 17];
   for (const [i, x] of stalks.entries()) {
-    const top = 4 + Math.floor(R() * 10) + i * 2;
+    const top = 5 + Math.floor(R() * 9) + i * 2;
     for (let y = top; y < 58; y++) {
       p.set(x, y, GH);
       p.set(x + 1, y, G);
       p.set(x + 2, y, GS);
+      if (y < top + 14) p.set(x, y, RIM);
     }
-    for (let y = top + 6; y < 56; y += 9 + Math.floor(R() * 3)) p.span(y, x, x + 2, J);
-    // 竹叶
+    for (let y = top + 6; y < 56; y += 9 + Math.floor(R() * 3)) {
+      p.span(y, x - 1, x + 3, AO);
+      p.span(y - 1, x, x + 2, RIM);
+    }
+    // 团块层叠竹叶冠
     for (let k = 0; k < 3; k++) {
       const ly = top + 2 + k * 8;
       const dir = (k + i) % 2 === 0 ? 1 : -1;
-      p.strand([[x + 1, ly], [x + 1 + dir * 3, ly - 1], [x + 1 + dir * 6, ly + 1]], k % 2 ? L : LH, 2);
+      p.strand([[x + 1, ly + 1], [x + 1 + dir * 3, ly], [x + 1 + dir * 6, ly + 2]], GS, 2);
+      p.strand([[x + 1, ly], [x + 1 + dir * 3, ly - 1], [x + 1 + dir * 5, ly + 1]], k % 2 ? G : GH, 2);
+      p.set(x + 1 + dir * 2, ly - 2, RIM);
     }
   }
-  p.outline(0x142a14);
-  p.under(11, 58, 10, 2, 0x000000, 60);
+  p.selectiveOutline(0x1b3830, 0x10201c);
+  p.under(13, 58, 10.5, 2.2, 0x12222b, 85);
   return p;
 }
 
 function shoot(): PC {
-  const p = new PC(9, 12);
+  const p = new PC(10, 12);
   for (let i = 0; i < 9; i++) {
+    const y = 10 - i;
     const hw = Math.round((1 - i / 9) * 3);
-    p.span(10 - i, 4 - hw, 4 + hw, i % 3 === 0 ? 0x8a7a3a : 0xb0a04a);
+    p.span(y, 5 - hw, 5 + hw, i % 3 === 0 ? 0x6e4e32 : 0xa67e46);
+    p.set(5 - hw, y, 0xd4b462);
+    p.set(5 + hw, y, 0x4a3222);
   }
-  p.set(4, 1, 0x7ab84a);
-  p.outline(OUTLINE);
-  p.under(4.5, 10.5, 4, 1.2, 0x000000, 60);
+  p.set(5, 1, 0x5c8248);
+  p.selectiveOutline(0x3d2e24, 0x1c1424);
+  p.under(5.5, 10.5, 4.2, 1.3, 0x12222b, 80);
   return p;
 }
 
 function mossRock(): PC {
-  const p = rock();
-  for (let x = 2; x < 14; x++) for (let y = 2; y < 6; y++) if (p.get(x, y) === 0x9c9384 || p.get(x, y) === 0xbab2a2) p.set(x, y, 0x5f9a4a);
+  const p = new PC(16, 12);
+  drawRockBase(p);
+  // 先在岩石受光顶部叠深苍苔，再统一执行 selectiveOutline 描边，避免青苔溢出无描边或与绿宝石撞色
+  p.ellipse(7, 4.8, 4.5, 2, 0x22463a);
+  p.ellipse(6.5, 4.3, 3.6, 1.5, 0x356248);
+  p.ellipse(6, 4, 2.2, 1, 0x4c7c54);
+  p.span(3, 5, 7, 0x6e9866);
+  p.selectiveOutline(0x284238, 0x1e2230);
+  p.under(9, 10.5, 7.2, 1.8, 0x12222b, 85);
   return p;
 }
 
 function fern(): PC {
-  const p = new PC(14, 10);
-  const c = [0x3f8a3f, 0x5fb35a, 0x2c6a2c];
-  p.strand([[7, 9], [2, 3]], c[0], 1);
-  p.strand([[7, 9], [12, 3]], c[1], 1);
-  p.strand([[7, 9], [7, 1]], c[2], 1);
-  for (let i = 0; i < 4; i++) {
-    p.set(3 + i, 4 + i, c[1]);
-    p.set(11 - i, 4 + i, c[0]);
-  }
+  const p = new PC(14, 11);
+  const ao = 0x17302e, dark = 0x244c38, mid = 0x3e703e, hi = 0x689846;
+  p.ellipse(7, 9, 4, 1.5, ao);
+  p.strand([[7, 9], [2, 4]], dark, 2);
+  p.strand([[7, 9], [12, 4]], dark, 2);
+  p.strand([[7, 9], [7, 2]], mid, 2);
+  p.strand([[7, 8], [3, 3]], hi, 1);
+  p.strand([[7, 8], [11, 3]], mid, 1);
+  p.strand([[7, 8], [7, 2]], hi, 1);
   return p;
 }
 
@@ -484,12 +657,32 @@ export function buildFx(scene: Phaser.Scene) {
   single(scene, 'ep_poison', ePoison());
   single(scene, 'antidote', antidote());
 
-  single(scene, 'ground_1', ground(11, [0x5e5338, 0x665b3d, 0x6e6443, 0x76693f], [0x857a52, 0x4f4630, 0x8a8a6a], [0x8a8a4a, 0x9a9450]));
-  single(scene, 'ground_2', ground(23, [0x2c4430, 0x314c34, 0x365237, 0x3c5a3a], [0x4f6e3e, 0x223424, 0x6a8a4a], [0x4f8a42, 0x6aa04a, 0x9db35a]));
-  single(scene, 'dc_rock', rock());
-  single(scene, 'dc_tuft', tuft());
-  single(scene, 'dc_tablet', tablet());
-  single(scene, 'dc_deadtree', deadTree());
+  // 第 1 关·荒郊古道：保持苍凉低对比度的黄褐荒原基调（微冷褐暗部 -> 暖黄褐，无鲜花干扰拾取物）
+  single(
+    scene,
+    'ground_1',
+    ground(
+      11,
+      [0x564b38, 0x5e533b, 0x665b3f, 0x6e6343, 0x756946],
+      [0x4c4230, 0x7e7350, 0x867c5a],
+      [0x7d7a46, 0x8c864e],
+    ),
+  );
+  // 第 2 关·幽篁竹林：深邃低明度林间冷苔地（冷黛绿 -> 深苔绿，留出高亮绿给宝石 gem_m 与藤怪/竹蛇）
+  single(
+    scene,
+    'ground_2',
+    ground(
+      23,
+      [0x263d2e, 0x2b4532, 0x314d35, 0x375538, 0x3d5c3b],
+      [0x1f3326, 0x45643c, 0x4f6e42],
+      [0x436e3e, 0x527d44, 0x628c4a],
+    ),
+  );
+  addSheet(scene, 'dc_rock', [0, 1, 2].map(rock));
+  addSheet(scene, 'dc_tuft', [0, 1, 2].map(tuft));
+  addSheet(scene, 'dc_tablet', [0, 1, 2].map(tablet));
+  addSheet(scene, 'dc_deadtree', [0, 1].map(deadTree));
   addSheet(scene, 'dc_bamboo', [1, 2, 3].map(bamboo));
   single(scene, 'dc_shoot', shoot());
   single(scene, 'dc_mossrock', mossRock());

@@ -30,6 +30,17 @@ export interface TrackDef {
   layers: LayerDef[];
 }
 
+/**
+ * 音频文件版 BGM（public/audio/bgm_<曲名>.mp3，ACE-Step 生成后切成循环段）。
+ * 循环点单位为秒；文件首尾各留了余量，避开 MP3 编码延迟对接缝的影响。
+ */
+export const BGM_FILES: Record<string, { loopStart: number; loopEnd: number }> = {
+  menu: { loopStart: 0.25, loopEnd: 55.101 },
+  level1: { loopStart: 0.25, loopEnd: 41.981 },
+  level2: { loopStart: 0.25, loopEnd: 71.336 },
+  boss: { loopStart: 0.25, loopEnd: 76.7 },
+};
+
 const GONG = [0, 2, 4, 7, 9]; // 宫
 const SHANG = [0, 2, 5, 7, 10]; // 商
 const YU = [0, 3, 5, 7, 10]; // 羽

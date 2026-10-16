@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 import { bell, block, buf, cymbal, dizi, drone, midiHz, pluck, setSampleRate, suona, taiko } from './synth';
 import { SFX, type SfxName } from './sfx';
-import { TRACKS, type Inst, type LayerDef, type TrackDef } from './tracks';
+import { BGM_FILES, TRACKS, type Inst, type LayerDef, type TrackDef } from './tracks';
 import type { Rel } from '../config/elements';
 import { loadSettings, writeSettings } from '../game/save';
 
 // 音频总管：音效、BGM、静音设置。复用 Phaser 的 AudioContext（解锁、失焦挂起都由 Phaser 处理）。
-// 外部音频文件可覆盖程序化版本：缓存里有 `sfx_<名字>` / `bgm_<曲名>` 就优先用文件。
+// 外部音频文件可覆盖程序化版本：缓存里有 `sfx_<名字>` / `bgm_<曲名>` 就优先用文件；
+// tracks.ts 的 BGM_FILES 里列出的曲子会在启动后从 public/audio 后台加载。
 
 const LOOKAHEAD = 0.15;
 const PENTA = [0, 2, 4, 7, 9];
@@ -102,6 +103,11 @@ class FilePlayer implements Player {
     this.src = ctx.createBufferSource();
     this.src.buffer = buffer;
     this.src.loop = true;
+    const lp = BGM_FILES[key];
+    if (lp) {
+      this.src.loopStart = lp.loopStart;
+      this.src.loopEnd = lp.loopEnd;
+    }
     this.src.connect(bus);
     this.src.start(start);
   }
@@ -127,6 +133,7 @@ class AudioManager {
   private lastPlay = new Map<SfxName, number>();
   private voices = new Map<SfxName, number[]>();
   private notes = new Map<string, AudioBuffer>();
+  private bgmBufs = new Map<string, AudioBuffer>();
   private player: Player | null = null;
   private fading: { p: Player; until: number }[] = [];
   private intensity = 0;
@@ -179,6 +186,22 @@ class AudioManager {
     };
     warm();
     setInterval(() => this.update(), 25);
+    for (const k of Object.keys(BGM_FILES)) void this.loadBgm(k);
+  }
+
+  /** 后台拉取 BGM 文件；加载完时正在播同名的程序化版本就淡过去 */
+  private async loadBgm(key: string) {
+    try {
+      const res = await fetch(`audio/bgm_${key}.mp3`);
+      if (!res.ok) return;
+      this.bgmBufs.set(key, await this.ctx!.decodeAudioData(await res.arrayBuffer()));
+    } catch {
+      return;
+    }
+    if (this.player instanceof SynthPlayer && this.player.key === key) {
+      this.stopMusic(1.5);
+      this.music(key, 1.5);
+    }
   }
 
   private toBuffer(data: Float32Array) {
@@ -195,7 +218,8 @@ class AudioManager {
 
   private fileBuf(key: string): AudioBuffer | null {
     const c = this.cache;
-    return c?.exists(key) ? (c.get(key) as AudioBuffer) : null;
+    if (c?.exists(key)) return c.get(key) as AudioBuffer;
+    return key.startsWith('bgm_') ? (this.bgmBufs.get(key.slice(4)) ?? null) : null;
   }
 
   // ---------- 音效 ----------

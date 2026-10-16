@@ -1,0 +1,6 @@
+Chinese Xianxia pixel art scene and environment asset style, inspired by Eastward and Stardew Valley hand-placed pixel art.
+Strict uniform pixel grid where each art pixel is a crisp block of ART_PX by ART_PX pixels.
+No anti-aliasing, no blur, no smooth airbrush gradients (use crisp pixel clusters and structured Bayer dithering only).
+Warm dark brown/plum outlines (#2c2238 / #1c1424), never pure #000000 black.
+Curated ~32-color warm-cool hue-shifted palette: slate-cyan roof tiles, cinnabar red accents, moss and pine-teal greens, warm cream stone highlights, weathered ochre-umber earth, and cool indigo-violet shadows.
+Top-down 3/4 orthogonal game projection without perspective distortion; consistent directional sunlight from top-left.

@@ -18,6 +18,22 @@ export class PC {
     y = Math.round(y + this.oy);
     if (x < 0 || y < 0 || x >= this.w || y >= this.h) return;
     const i = y * this.w + x;
+    if (alpha < 255 && this.c[i] !== -1) {
+      const bg = this.c[i];
+      const dstA = this.a[i] / 255;
+      const srcA = alpha / 255;
+      const outA = srcA + dstA * (1 - srcA);
+      if (outA > 0) {
+        const wSrc = srcA / outA;
+        const wDst = 1 - wSrc;
+        const r = Math.round(((col >> 16) & 255) * wSrc + ((bg >> 16) & 255) * wDst);
+        const g = Math.round(((col >> 8) & 255) * wSrc + ((bg >> 8) & 255) * wDst);
+        const b = Math.round((col & 255) * wSrc + (bg & 255) * wDst);
+        this.c[i] = (r << 16) | (g << 8) | b;
+        this.a[i] = this.a[i] === 255 ? 255 : Math.min(254, Math.round(outA * 255));
+      }
+      return;
+    }
     this.c[i] = col;
     this.a[i] = alpha;
   }
@@ -27,12 +43,12 @@ export class PC {
     return this.c[y * this.w + x];
   }
 
-  rect(x: number, y: number, w: number, h: number, col: number) {
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.set(x + i, y + j, col);
+  rect(x: number, y: number, w: number, h: number, col: number, alpha = 255) {
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.set(x + i, y + j, col, alpha);
   }
 
-  span(y: number, x0: number, x1: number, col: number) {
-    for (let x = x0; x <= x1; x++) this.set(x, y, col);
+  span(y: number, x0: number, x1: number, col: number, alpha = 255) {
+    for (let x = Math.round(x0); x <= Math.round(x1); x++) this.set(x, y, col, alpha);
   }
 
   ellipse(cx: number, cy: number, rx: number, ry: number, col: number) {
@@ -49,13 +65,13 @@ export class PC {
     this.ellipse(cx, cy, r, r, col);
   }
 
-  line(x0: number, y0: number, x1: number, y1: number, col: number, width = 1) {
+  line(x0: number, y0: number, x1: number, y1: number, col: number, width = 1, alpha = 255) {
     const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
     for (let i = 0; i <= n; i++) {
       const x = x0 + ((x1 - x0) * i) / n;
       const y = y0 + ((y1 - y0) * i) / n;
-      if (width <= 1) this.set(x, y, col);
-      else this.rect(Math.round(x - (width - 1) / 2), Math.round(y - (width - 1) / 2), width, width, col);
+      if (width <= 1) this.set(x, y, col, alpha);
+      else this.rect(Math.round(x - (width - 1) / 2), Math.round(y - (width - 1) / 2), width, width, col, alpha);
     }
   }
 
@@ -87,6 +103,28 @@ export class PC {
     }
     for (const i of add) {
       c[i] = col;
+      a[i] = 255;
+    }
+  }
+
+  /** 受光面选色外描边：上半受光区用较柔和深色，下半阴影区用深色描边 */
+  selectiveOutline(colTop: number, colBot: number) {
+    const { w, h, c, a } = this;
+    const add: [number, number][] = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (c[i] !== -1) continue;
+        const n =
+          (x > 0 && c[i - 1] !== -1 && a[i - 1] === 255) ||
+          (x < w - 1 && c[i + 1] !== -1 && a[i + 1] === 255) ||
+          (y > 0 && c[i - w] !== -1 && a[i - w] === 255) ||
+          (y < h - 1 && c[i + w] !== -1 && a[i + w] === 255);
+        if (n) add.push([i, y]);
+      }
+    }
+    for (const [i, y] of add) {
+      c[i] = y < h * 0.42 ? colTop : colBot;
       a[i] = 255;
     }
   }
@@ -170,3 +208,4 @@ export function rng(seed: number) {
 }
 
 export const OUTLINE = 0x1c1424;
+export const OUTLINE_LIT = 0x2c2238;

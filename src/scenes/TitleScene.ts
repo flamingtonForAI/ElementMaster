@@ -7,6 +7,7 @@ import { isTouch } from '../ui/touch';
 import { audio } from '../audio/Audio';
 import { canFullscreen, isFullscreen, isIOS, isStandalone, toggleFullscreen, IOS_TIP } from '../ui/fullscreen';
 import { wrap } from '../ui/wrap';
+import { TOD_LIST, getTod, getTodPreset, getVistaCloudKey, getVistaFgKey, getVistaTextureKey, isVistaPainted, setTod } from '../art/vistaArt';
 
 const PANEL = 0x161220;
 const LINE = 0x4a3f5c;
@@ -40,6 +41,9 @@ export class TitleScene extends Phaser.Scene {
   private slots: (Save | null)[] = [];
   private layer!: Phaser.GameObjects.Container;
   private bg!: Phaser.GameObjects.TileSprite;
+  private clouds!: Phaser.GameObjects.TileSprite;
+  private fg!: Phaser.GameObjects.TileSprite;
+  private veil!: Phaser.GameObjects.Rectangle;
   private toast: Phaser.GameObjects.Text | null = null;
 
   constructor() {
@@ -53,17 +57,21 @@ export class TitleScene extends Phaser.Scene {
     this.slots = listSlots();
     this.slotSel = activeSlot() - 1;
     this.sel = 0;
-    this.bg = this.add.tileSprite(0, 0, 640, 360, 'ground_1').setOrigin(0).setAlpha(0.55);
-    this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.5).setOrigin(0);
+    this.bg = this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey()).setOrigin(0);
+    this.clouds = this.add.tileSprite(0, 0, 640, 360, getVistaCloudKey()).setOrigin(0).setAlpha(0.32);
+    this.fg = this.add.tileSprite(0, 0, 640, 360, getVistaFgKey()).setOrigin(0).setAlpha(0.75);
+    this.veil = this.add.rectangle(0, 0, 640, 360, 0x07050b, getTodPreset().veilAlpha).setOrigin(0);
+    this.syncVistaLayers();
     this.layer = this.add.container(0, 0);
     audio.music('menu');
     this.render();
     this.input.keyboard!.on('keydown', (e: KeyboardEvent) => this.onKey(e));
   }
 
-  update(_t: number, dms: number) {
-    this.bg.tilePositionX += dms * 0.01;
-    this.bg.tilePositionY += dms * 0.005;
+  update(t: number, dms: number) {
+    // 远景云层极慢速横移，前景松竹随风微摆
+    this.clouds.tilePositionX += dms * 0.004;
+    this.fg.x = Math.round(Math.sin(t * 0.0012) * 1.5);
   }
 
   private current() {
@@ -121,7 +129,7 @@ export class TitleScene extends Phaser.Scene {
       const y = 158 + i * 34;
       const on = i === this.sel;
       if (on) L.add(this.add.rectangle(40, y + 4, 3, 16, 0xffd23f).setOrigin(0));
-      const t = label(this, 50, y, it.name, on ? GOLD : MUTED, 24);
+      const t = label(this, 50, y, it.name, on ? GOLD : '#e8e0f0', 24);
       L.add(this.hit(t, () => {
         this.sel = i;
         this.pick();
@@ -130,12 +138,49 @@ export class TitleScene extends Phaser.Scene {
 
     this.renderCard(this.current(), activeSlot(), 340, 158);
 
+    // 右下角：时辰切换栏（清晨 | 白天 | 傍晚 | 夜里）
+    this.renderTodBar();
+
     // 手机上提供全屏；iPhone 网页不支持，点了显示“添加到主屏幕”的说明
     if (isTouch() && !isStandalone() && (canFullscreen() || isIOS())) {
       L.add(this.hit(label(this, 634, 6, '⛶ 全屏', MUTED).setOrigin(1, 0), () => (canFullscreen() ? toggleFullscreen() : this.showTip(IOS_TIP))));
     }
     L.add(label(this, 634, 344, 'Demo M1', '#6a6474').setOrigin(1, 0));
     if (!isTouch()) this.hint('↑ ↓ 选择　Enter 确认');
+  }
+
+  private syncVistaLayers() {
+    const painted = isVistaPainted();
+    this.clouds.setVisible(!painted);
+    this.fg.setVisible(!painted);
+  }
+
+  private renderTodBar() {
+    const L = this.layer;
+    const bx = 348;
+    const by = 304;
+    L.add(this.add.rectangle(bx - 8, by - 3, 260, 20, PANEL, 0.82).setOrigin(0).setStrokeStyle(1, LINE));
+    L.add(label(this, bx, by, '换个时辰：', '#b8aec8'));
+    const cur = getTod();
+    TOD_LIST.forEach((t, i) => {
+      const ox = bx + 64 + i * 48;
+      if (i > 0) L.add(label(this, ox - 8, by, '|', '#5a5464'));
+      const on = t.id === cur;
+      const btn = label(this, ox, by, t.name, on ? GOLD : '#d8d0e4');
+      L.add(
+        this.hit(btn, () => {
+          if (getTod() === t.id) return;
+          setTod(t.id);
+          audio.sfx('tick');
+          this.bg.setTexture(getVistaTextureKey(t.id));
+          this.clouds.setTexture(getVistaCloudKey(t.id));
+          this.fg.setTexture(getVistaFgKey(t.id));
+          this.syncVistaLayers();
+          this.veil.setFillStyle(0x07050b, getTodPreset(t.id).veilAlpha);
+          this.render();
+        }, 4, 3),
+      );
+    });
   }
 
   /** 存档卡片：最近用的角色 + 进度摘要 */

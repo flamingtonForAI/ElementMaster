@@ -1,0 +1,3 @@
+Sprite sheet layout on a solid flat pure magenta #FF00FF (RGB 255, 0, 255) background.
+Arrange items in a clean grid with generous padding between cells; no object may touch the cell border or overlap adjacent items.
+Do not use magenta or neon pink inside the objects themselves; no cast shadows onto the magenta background; no text, labels, or watermarks.

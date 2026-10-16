@@ -8,6 +8,7 @@ import { buildHeroXuanyi } from '../art/heroXuanyi';
 import { buildPuppetArt } from '../art/puppetArt';
 import { buildEnemies } from '../art/enemyArt';
 import { buildFx } from '../art/fxArt';
+import { TOD_LIST, buildVista, getVistaTextureKey } from '../art/vistaArt';
 import { audio } from '../audio/Audio';
 
 export class BootScene extends Phaser.Scene {
@@ -15,9 +16,17 @@ export class BootScene extends Phaser.Scene {
     super('boot');
   }
 
+  preload() {
+    for (const t of TOD_LIST) {
+      const key = getVistaTextureKey(t.id);
+      this.load.image(key, `assets/vista/${key}.png`);
+    }
+  }
+
   create() {
     audio.init(this.game);
     buildFx(this);
+    buildVista(this);
     buildHeroXiao(this);
     buildHeroZhu(this);
     buildHeroRuan(this);

@@ -128,7 +128,7 @@ export class Player {
     this.flip = d.flip;
     this.animKey = `${this.g.char.id}_${this.dir}_${this.moving ? 'atkrun' : 'atk'}`;
     this.sprite.play(this.animKey);
-    this.atkUntil = this.g.now + 0.22;
+    this.atkUntil = this.g.now + 0.25;
   }
 
   hurt() {

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PC, addSheet, addAnim, OUTLINE } from './painter';
+import { PC, addSheet, addAnim, OUTLINE, OUTLINE_LIT } from './painter';
 
 // 傀儡师的召唤物：只画朝右，朝左翻转。
 // 和敌人石俑（矮方块身体、方头、发光黄眼）拉开剪影：细腰人偶，金色球形关节，脸上一张白色傩面，
@@ -9,11 +9,11 @@ import { PC, addSheet, addAnim, OUTLINE } from './painter';
 // 原点：pp_golem 20×26，脚底在 y=23，setOrigin(0.5, 0.9)；
 //       pp_giant 38×46，脚底在 y=42，setOrigin(0.5, 0.92)。
 
-const B = 0xd8d4cc, S = 0xa8a49c, H = 0xf2eee6, D = 0x7a766e;
-const J = 0xe0b04a, JS = 0xa87a2a;
-const MASK = 0xf8f4ec, BROW = 0x1c1424, CHEEK = 0xe0605a;
-const HAIR = 0x2a2633, CL = 0x9a3028, CLS = 0x6e1f1a;
-const PAPER = 0xf2d36b, INK = 0xc8372d;
+const B = 0xdad6ce, S = 0xa4a2ae, H = 0xf8f3ea, D = 0x727082;
+const J = 0xecb84a, JS = 0xa87628;
+const MASK = 0xfaf6ee, BROW = 0x1c1424, CHEEK = 0xe86258;
+const HAIR = 0x282234, CL = 0xa83228, CLS = 0x6e1c22;
+const PAPER = 0xf8dc70, INK = 0xc8372d;
 const STR = 0xf4e8c8;
 
 interface GPose {
@@ -110,18 +110,18 @@ function puppet(p: PC, s: number, ox: number, oy: number, pose: GPose) {
 function golemFrame(pose: GPose): PC {
   const p = new PC(20, 26);
   puppet(p, 1, 0, 1, pose);
-  p.outline(OUTLINE);
-  p.under(10, 23.5, 5.5, 1.6, 0x000000, 80);
-  p.underRing(10, 23.5, 7, 2.2, J, 170);
+  p.selectiveOutline(OUTLINE_LIT, OUTLINE);
+  p.under(10.6, 23.5, 5.8, 1.7, 0x12222b, 85);
+  p.underRing(10, 23.5, 7, 2.2, J, 175);
   return p;
 }
 
 function giantFrame(pose: GPose): PC {
   const p = new PC(38, 46);
   puppet(p, 1.8, 1, 1, pose);
-  p.outline(OUTLINE);
-  p.under(19, 42.5, 10, 2.4, 0x000000, 90);
-  p.underRing(19, 42.5, 13, 3.4, J, 170);
+  p.selectiveOutline(OUTLINE_LIT, OUTLINE);
+  p.under(20, 42.5, 10.5, 2.5, 0x12222b, 92);
+  p.underRing(19, 42.5, 13, 3.4, J, 175);
   return p;
 }
 
