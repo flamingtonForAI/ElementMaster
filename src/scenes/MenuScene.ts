@@ -72,7 +72,8 @@ export class MenuScene extends Phaser.Scene {
   private renderChars() {
     const L = this.layer;
     const n = CHARACTERS.length;
-    const TW = 58;
+    // 格子 64：小人按 2 倍整数放大正好放下；非整数缩放会让呼吸起伏时五官的像素宽窄跳动
+    const TW = 64;
     const GAP = 6;
     const W = n * TW + (n - 1) * GAP;
     const X0 = 320 - W / 2;
@@ -92,7 +93,7 @@ export class MenuScene extends Phaser.Scene {
       });
       L.add(bg);
       if (c.available) {
-        const sp = this.add.sprite(x + TW / 2, 110 + TW / 2 + 2, `hero_${c.id}`, 0).setScale(1.5);
+        const sp = this.add.sprite(x + TW / 2, 110 + TW / 2, `hero_${c.id}`, 0).setScale(2);
         sp.play(`${c.id}_s_idle`);
         L.add(sp);
       } else {
@@ -103,8 +104,8 @@ export class MenuScene extends Phaser.Scene {
     // 详情
     const c = CHARACTERS[this.charSel];
     const save = loadSave();
-    const py = 174;
-    const ph = 146;
+    const py = 178;
+    const ph = 142;
     L.add(this.add.rectangle(X0, py, W, ph, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, LINE));
     const col = c.balanced ? 0xd8d0e4 : EL_INFO[c.el].color;
     if (c.available) {
