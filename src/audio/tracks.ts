@@ -34,8 +34,9 @@ export interface TrackDef {
  * 音频文件版 BGM（public/audio/bgm_<曲名>.mp3，ACE-Step 生成后切成循环段）。
  * 循环点单位为秒；文件首尾各留了余量，避开 MP3 编码延迟对接缝的影响。
  */
-export const BGM_FILES: Record<string, { loopStart: number; loopEnd: number }> = {
-  menu: { loopStart: 0.25, loopEnd: 55.101 },
+export const BGM_FILES: Record<string, { loopStart: number; loopEnd: number; calm?: true }> = {
+  // calm：不跟局势强度开合（菜单里没有局势）
+  menu: { loopStart: 0.25, loopEnd: 55.101, calm: true },
   // 以下由 tools/audio/loop_intro.py 切出：循环起点之前是只播一次的前奏
   level1: { loopStart: 8.08, loopEnd: 152.08 },
   level1_danger: { loopStart: 4.08, loopEnd: 160.08 },
@@ -114,9 +115,9 @@ export const TRACKS: Record<string, TrackDef> = {
       { inst: 'drone', at: 0, vol: 0.2, oct: -24, bars: ['0 - - - - - - -', '0 - - - - - - -', '-2 - - - - - - -', '-1 - - - - - - -'] },
       { inst: 'qin', at: 0, vol: 0.5, oct: -12, bars: ['0 0 2 . 3 2 0 .', '0 0 2 . 4 3 2 .', '-2 -2 0 . 1 0 -2 .', '-1 -1 1 . 2 1 0 -1'] },
       { inst: 'block', at: 0, vol: 0.24, res: 16, bars: ['X . . x . . x . X . . x . x x .'] },
-      { inst: 'taiko', at: 0.2, vol: 0.52, bars: ['X . . X . . X .', 'X . X . X . X X'] },
+      { inst: 'taiko', at: 0.12, vol: 0.52, bars: ['X . . X . . X .', 'X . X . X . X X'] },
       { inst: 'suona', at: 0.35, vol: 0.26, bars: ['5 - 7 5 4 - 2 -', '4 - 5 4 2 - 0 -', '5 - 7 - 8 7 5 -', '7 - - - . . 5 4', '2 - 4 2 0 - -1 0', '2 - 4 5 4 - 2 -', '0 - 2 4 5 4 2 0', '0 - - - - - . .'] },
-      { inst: 'taiko', at: 0.6, vol: 0.4, res: 16, bars: ['X . x . X . x x X . x . X x X x'] },
+      { inst: 'taiko', at: 0.45, vol: 0.4, res: 16, bars: ['X . x . X . x x X . x . X x X x'] },
       { inst: 'bell', at: 0.7, vol: 0.18, oct: 12, bars: ['0 . . . . . . .', '. . . . . . . .', '-2 . . . . . . .', '. . . . -1 . . .'] },
       { inst: 'cymbal', at: 0.82, vol: 0.22, bars: ['X . . . X . . .', '. . . . . . . .'] },
     ],
@@ -132,7 +133,7 @@ export const TRACKS: Record<string, TrackDef> = {
       { inst: 'qin', at: 0.15, vol: 0.46, oct: -12, bars: ['0 . 2 . 3 . 2 .', '0 . 2 . 4 . 3 2', '-1 . 1 . 2 . 1 .', '-2 . 0 . 1 . 0 -1'] },
       { inst: 'cymbal', at: 0.3, vol: 0.2, bars: ['X . . . . . . .', '. . . . . . . .', '. . . . . . . .', '. . . . x . . .'] },
       { inst: 'dizi', at: 0.5, vol: 0.3, bars: ['5 - - 4 2 - 0 -', '2 - 4 - 5 - - -', '7 - 5 - 4 - 5 -', '4 - - - . . . .', '2 - 4 - 5 - 7 -', '5 - 4 - 2 - - -', '0 - 2 - 4 2 0 -1', '0 - - - - - . .'] },
-      { inst: 'taiko', at: 0.68, vol: 0.42, res: 16, bars: ['X . . x X . . . X . x . X . x x'] },
+      { inst: 'taiko', at: 0.5, vol: 0.42, res: 16, bars: ['X . . x X . . . X . x . X . x x'] },
       { inst: 'block', at: 0.8, vol: 0.22, bars: ['. . x . . . x .'] },
     ],
   },

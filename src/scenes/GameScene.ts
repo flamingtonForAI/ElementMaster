@@ -81,6 +81,7 @@ export class GameScene extends Phaser.Scene {
   elapsed = 0;
   kills = 0;
   boss: Enemy | null = null;
+  private musicTmp: Enemy[] = [];
   over = false;
   terrainMods!: Record<El, number>;
   dbg = { god: false, timeScale: 1, spawnMult: 1 };
@@ -236,10 +237,7 @@ export class GameScene extends Phaser.Scene {
     this.hazards.update();
     this.runTasks();
 
-    if (!this.over && !this.boss) {
-      const L = this.levelDef;
-      audio.setIntensity(0.1 + (0.6 * this.elapsed) / Math.max(60, L.duration - 60) + (0.4 * this.enemies.count) / 200);
-    }
+    if (!this.over) audio.setIntensity(this.musicIntensity());
 
     if (this.boss && !this.over && !this.rageMusic && this.boss.hp < this.boss.maxHp * 0.5) {
       this.rageMusic = true;
@@ -302,6 +300,19 @@ export class GameScene extends Phaser.Scene {
   /** 敌人伤害随时间上升 */
   dmgScale() {
     return 1 + (this.elapsed / 60) * DIFF.dmgLin;
+  }
+
+  /**
+   * BGM 局势强度 0~1：时间只占小头，主要看同屏数量和贴身的怪；Boss 战从 0.6 起按掉血往上抬
+   */
+  private musicIntensity() {
+    const p = this.player;
+    const progress = Math.min(1, this.elapsed / Math.max(60, this.levelDef.duration - 60));
+    const crowd = Math.min(1, this.enemies.count / 120);
+    const near = Math.min(1, this.enemies.inRadius(p.x, p.y, 120, this.musicTmp).length / 12);
+    const I = 0.1 + 0.25 * progress + 0.3 * crowd + 0.35 * near;
+    const b = this.boss;
+    return b ? Math.max(I, 0.6 + 0.4 * (1 - b.hp / b.maxHp)) : I;
   }
 
   /** 当前同屏敌人上限 */

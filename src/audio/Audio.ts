@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { bell, block, buf, cymbal, dizi, drone, midiHz, pluck, setSampleRate, suona, taiko } from './synth';
+import { bell, block, buf, cymbal, dizi, drone, midiHz, noise, pluck, setSampleRate, suona, taiko } from './synth';
 import { SFX, type SfxName } from './sfx';
 import { BGM_FILES, TRACKS, type Inst, type LayerDef, type TrackDef } from './tracks';
 import type { Rel } from '../config/elements';
@@ -77,7 +77,7 @@ class SynthPlayer implements Player {
       // 进出各有阈值，避免在临界点来回切换
       if (!L.on && I >= L.def.at) {
         L.on = true;
-        L.gain.gain.setTargetAtTime(L.def.vol, t, 0.6);
+        L.gain.gain.setTargetAtTime(L.def.vol, t, 0.25);
       } else if (L.on && L.def.at > 0 && I < L.def.at - 0.08) {
         L.on = false;
         L.offAt = t;
@@ -100,10 +100,18 @@ class SynthPlayer implements Player {
   }
 }
 
+/** 文件曲没法叠层，改成跟局势开合：强度低时低通压暗、音量略收，紧起来全开并推高约 1.7dB */
+const FILE_CUT_LO = 4500;
+const FILE_CUT_HI = 20000;
+const FILE_GAIN_LO = 0.82;
+
 class FilePlayer implements Player {
   private src: AudioBufferSourceNode;
+  private filter: BiquadFilterNode | null = null;
+  private gain: GainNode | null = null;
+  private last = -1;
 
-  constructor(ctx: AudioContext, readonly key: string, buffer: AudioBuffer, readonly bus: GainNode, start: number) {
+  constructor(ctx: AudioContext, readonly key: string, buffer: AudioBuffer, readonly bus: GainNode, start: number, intensity: number) {
     this.src = ctx.createBufferSource();
     this.src.buffer = buffer;
     this.src.loop = true;
@@ -112,11 +120,35 @@ class FilePlayer implements Player {
       this.src.loopStart = lp.loopStart;
       this.src.loopEnd = lp.loopEnd;
     }
-    this.src.connect(bus);
+    if (lp?.calm) {
+      this.src.connect(bus);
+    } else {
+      this.filter = ctx.createBiquadFilter();
+      this.filter.type = 'lowpass';
+      this.gain = ctx.createGain();
+      this.src.connect(this.filter).connect(this.gain).connect(bus);
+      this.apply(intensity, 0);
+    }
     this.src.start(start);
   }
 
-  update() {}
+  update(now: number, intensity: number) {
+    if (this.filter && Math.abs(intensity - this.last) > 0.01) this.apply(intensity, now);
+  }
+
+  private apply(I: number, now: number) {
+    this.last = I;
+    const open = Math.min(1, I / 0.7);
+    const cut = FILE_CUT_LO * Math.pow(FILE_CUT_HI / FILE_CUT_LO, open);
+    const g = FILE_GAIN_LO + (1 - FILE_GAIN_LO) * Math.min(1, I);
+    if (now <= 0) {
+      this.filter!.frequency.value = cut;
+      this.gain!.gain.value = g;
+    } else {
+      this.filter!.frequency.setTargetAtTime(cut, now, 0.15);
+      this.gain!.gain.setTargetAtTime(g, now, 0.15);
+    }
+  }
 
   dispose() {
     this.src.stop();
@@ -379,6 +411,8 @@ class AudioManager {
       case 'taiko': {
         const b = buf(0.5);
         taiko(b, 0, 0.9);
+        // 曲里的鼓加一道皮面敲击声，起音更脆（音效里的鼓不加）
+        noise(b, { dur: 0.015, at: 0, type: 'bp', f: 1800, q: 1.2, d: 0.004, vol: 0.3 });
         return b;
       }
       case 'block': {
@@ -409,14 +443,16 @@ class AudioManager {
       if (this.bgmRaw.has(key)) void this.decodeBgm(key);
       return;
     }
+    const fresh = !this.player;
     this.stopMusic(fade);
     const now = ctx.currentTime;
     const bus = ctx.createGain();
     bus.gain.setValueAtTime(0, now);
     bus.gain.linearRampToValueAtTime(1, now + Math.max(0.05, fade));
     bus.connect(this.duckGain);
-    this.intensity = this.smooth = 0;
-    this.player = file ? new FilePlayer(ctx, key, file, bus, now + 0.05) : new SynthPlayer(this, key, def, bus, now + 0.05);
+    // 局内切曲（半场、Boss、狂暴）沿用当前强度，免得新曲从最暗开起；从无到有才清零
+    if (fresh) this.intensity = this.smooth = 0;
+    this.player = file ? new FilePlayer(ctx, key, file, bus, now + 0.05, this.smooth) : new SynthPlayer(this, key, def, bus, now + 0.05);
   }
 
   stopMusic(fade = 0.8) {

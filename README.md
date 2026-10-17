@@ -55,4 +55,4 @@ src/scenes/   启动、菜单、游戏、HUD、美术预览
 - BGM：`this.load.audio('bgm_level1', 'music/level1.mp3')`，曲名见 `src/audio/tracks.ts`（`menu`、`level1`–`level5`、`boss`）
 - 音效：`this.load.audio('sfx_slash', 'sfx/slash.mp3')`，名字见 `src/audio/sfx.ts`
 
-文件版 BGM 整首循环播放，不会随局势叠层。
+文件版 BGM 整首循环播放，不能叠层，改为随局势开合：强度低时低通压暗（4.5kHz）、音量略收，紧起来全开并推高约 1.7dB；`BGM_FILES` 里标 `calm` 的（菜单曲）不受影响。局势强度主要看同屏数量和贴身的怪，Boss 战从 0.6 起按掉血往上抬。
