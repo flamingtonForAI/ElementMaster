@@ -304,6 +304,11 @@ export class GameScene extends Phaser.Scene {
     return 1 + (this.elapsed / 60) * DIFF.dmgLin;
   }
 
+  /** 当前同屏敌人上限 */
+  spawnCap() {
+    return this.spawnCurve()[1];
+  }
+
   private spawnCurve(): [number, number] {
     const s = this.levelDef.spawn;
     const t = this.elapsed;
@@ -328,17 +333,20 @@ export class GameScene extends Phaser.Scene {
     return list[0].id;
   }
 
-  /** 玩家周围 r 处的随机点；贴着地图边缘时换个方向，实在不行夹回地图内 */
+  /** 玩家周围 r 处的随机点；贴着地图边缘或落在岩壁上时换个方向，实在不行夹回地图内 */
   ringPos(r: number): [number, number] {
     let x = 0;
     let y = 0;
-    for (let i = 0; i < 8; i++) {
+    let fallback: [number, number] | null = null;
+    for (let i = 0; i < 12; i++) {
       const a = Math.random() * Math.PI * 2;
       x = this.player.x + Math.cos(a) * r;
       y = this.player.y + Math.sin(a) * r;
-      if (this.world.inside(x, y, 20)) return [x, y];
+      if (!this.world.inside(x, y, 20)) continue;
+      if (!this.world.blocked(x, y)) return [x, y];
+      fallback ??= [x, y];
     }
-    return this.world.clampPt(x, y, 20);
+    return fallback ?? this.world.clampPt(x, y, 20);
   }
 
   private spawnUpdate(dt: number) {
@@ -357,7 +365,8 @@ export class GameScene extends Phaser.Scene {
     const n = 28;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2;
-      const [x, y] = this.world.clampPt(this.player.x + Math.cos(a) * 230, this.player.y + Math.sin(a) * 150, 20);
+      let [x, y] = this.world.clampPt(this.player.x + Math.cos(a) * 230, this.player.y + Math.sin(a) * 150, 20);
+      if (this.world.blocked(x, y)) [x, y] = this.ringPos(230);
       this.enemies.spawn(id, x, y, { hpMult: this.hpScale() });
     }
     audio.sfx('warn');

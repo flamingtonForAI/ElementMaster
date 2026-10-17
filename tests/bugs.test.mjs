@@ -437,7 +437,7 @@ function killScene() {
   const noop = new Proxy({}, { get: () => () => {} });
   const g = {
     now: 0, over: false, kills: 0, bossKilled: 0, build: { mods: {} }, fx: noop, pickups: noop, hud: noop, proj: noop,
-    add: { image: () => chain }, tweens: { add() {} }, later: (_t, fn) => tasks.push(fn), hpScale: () => 1,
+    add: { image: () => chain }, tweens: { add() {} }, later: (_t, fn) => tasks.push(fn), hpScale: () => 1, cap: 999, spawnCap() { return this.cap; },
     onBossKilled() { this.bossKilled++; },
   };
   const mgr = new EnemyManager(g);
@@ -458,6 +458,50 @@ test('残兵：非火系击杀 5 秒后原地复活且不再掉经验；火系�
   mgr.kill(mob('canbing', { lastEl: 'earth', elite: true }));
   run();
   assert.equal(spawned.length, 1);
+});
+
+test('复活的残兵再被打死不计击杀（不能刷灵石），同屏满了就晚点再起', () => {
+  const { g, mgr, spawned, run } = killScene();
+  mgr.kill(mob('canbing', { lastEl: 'metal' }));
+  assert.equal(g.kills, 1);
+  g.cap = 0;
+  run();
+  assert.equal(spawned.length, 0);
+  run();
+  assert.equal(spawned.length, 0);
+  g.cap = 999;
+  run();
+  assert.equal(spawned.length, 1);
+  assert.equal(spawned[0].o.noKill, true);
+  mgr.kill(mob('canbing', { lastEl: 'metal', noKill: true }));
+  assert.equal(g.kills, 1);
+});
+
+const { NavGrid: Nav } = await import('../src/game/nav.ts');
+
+test('寻路只算玩家附近：窗口内和全图结果一致，窗口外当作没走到', () => {
+  const full = new Nav(3000, 1e9);
+  const near = new Nav(3000);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 3000;
+  for (let i = 0; i < 800; i++) {
+    const [x, y] = [rnd(), rnd()];
+    full.addSolid(x, y, 9);
+    near.addSolid(x, y, 9);
+  }
+  // 换两次源点，确认只清上次走到的格子也不会留下脏数据
+  for (const [px, py] of [[-400, 300], [100, -50]]) {
+    full.update(px, py);
+    near.update(px, py);
+  }
+  for (let i = 0; i < 300; i++) {
+    const [x, y] = [100 + rnd() / 3, -50 + rnd() / 4];
+    const hx = 100 - x;
+    const hy = -50 - y;
+    const l = Math.hypot(hx, hy) || 1;
+    assert.deepEqual(near.steer(x, y, hx / l, hy / l, true), full.steer(x, y, hx / l, hy / l, true), `(${x.toFixed(0)}, ${y.toFixed(0)})`);
+  }
+  assert.equal(near.steer(1400, 1400, -1, -1, true), null);
 });
 
 test('灼烧烧死算火系击杀，中毒毒死不算', () => {

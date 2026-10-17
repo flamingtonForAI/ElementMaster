@@ -17,7 +17,7 @@ export class SkillSystem {
   private slashCount = 0;
   /** 符师：累计抛出的符数（五雷用）、贴在敌人身上还没爆的符 */
   private fuCount = 0;
-  private sticks: { e: Enemy; mark: Phaser.GameObjects.Sprite; x: number; y: number; t: number; dmg: number; el: El; radius: number }[] = [];
+  private sticks: { e: Enemy; id: number; mark: Phaser.GameObjects.Sprite; x: number; y: number; t: number; dmg: number; el: El; radius: number }[] = [];
   /** 药师：脚下的毒雾光环 */
   private aura: Phaser.GameObjects.Image | null = null;
 
@@ -114,11 +114,12 @@ export class SkillSystem {
         const pierce = st.pierce + this.mod('ruan.pierce');
         const onHit = st.splash ? (e: Enemy) => this.boltSplash(e) : undefined;
         // 远射：贴脸不打折，拉开到 180px 以上 ×1.2，奖励边退边打
+        const tid = t.id;
         const dmgAt = (e: Enemy) => 1 + 0.2 * Phaser.Math.Clamp((Math.hypot(e.x - p.x, e.y - p.y) - 60) / 120, 0, 1);
         for (let i = 0; i < st.shots; i++) {
           g.later(i * 0.07, () => {
             // 目标死了就沿上一箭的方向继续射
-            const tgt = t.alive ? t : g.enemies.nearest(p.x, p.y - 8, range);
+            const tgt = t.alive && t.id === tid ? t : g.enemies.nearest(p.x, p.y - 8, range);
             const ax = tgt ? tgt.x : p.x + p.facing.x;
             const ay = tgt ? tgt.y - 6 : p.y - 8 + p.facing.y;
             const a = Math.atan2(ay - (p.y - 8), ax - p.x) + (Math.random() - 0.5) * 0.06;
@@ -238,14 +239,15 @@ export class SkillSystem {
   private stickFu(e: Enemy, dmg: number, el: El, radius: number) {
     const mark = this.g.add.sprite(e.x, e.y - 10, `pj_fu_${el}`, 0).setDepth(e.y + 1);
     this.g.tweens.add({ targets: mark, alpha: 0.35, duration: 80, yoyo: true, repeat: 2 });
-    this.sticks.push({ e, mark, x: e.x, y: e.y, t: 0.5, dmg, el, radius });
+    this.sticks.push({ e, id: e.id, mark, x: e.x, y: e.y, t: 0.5, dmg, el, radius });
   }
 
   private updateSticks(dt: number) {
     const g = this.g;
     for (let i = this.sticks.length - 1; i >= 0; i--) {
       const s = this.sticks[i];
-      if (s.e.alive) {
+      // 敌人对象死后会被对象池复用，id 变了就是别的怪
+      if (s.e.alive && s.e.id === s.id) {
         s.x = s.e.x;
         s.y = s.e.y;
       }

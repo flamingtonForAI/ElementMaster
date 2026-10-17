@@ -24,6 +24,8 @@ export class Puppet {
   /** 刚撞过岩壁，这之前都顺着距离场绕回本体 */
   navUntil = 0;
   target: Enemy | null = null;
+  /** 锁定时的敌人 id：敌人对象会被对象池复用，对不上就是别的怪了 */
+  targetId = 0;
   constructor(
     readonly sprite: Phaser.GameObjects.Sprite,
     readonly hpBg: Phaser.GameObjects.Rectangle,
@@ -215,10 +217,13 @@ export class PuppetManager {
       // 隔着岩壁的敌人不追，免得贴在墙上走不过去
       const nav = g.world.nav;
       const reachable = nav ? (e: Enemy) => nav.clear(p.x, p.y, e.x, e.y) : undefined;
-      if (!t?.alive || claimed.has(t.id) || Math.hypot(t.x - pl.x, t.y - pl.y) > 180 || (reachable && !reachable(t))) {
+      if (!t?.alive || t.id !== p.targetId || claimed.has(t.id) || Math.hypot(t.x - pl.x, t.y - pl.y) > 180 || (reachable && !reachable(t))) {
         p.target = g.enemies.nearest(p.x, p.y, 130, claimed, reachable) ?? g.enemies.nearest(p.x, p.y, 130, undefined, reachable);
       }
-      if (p.target) claimed.add(p.target.id);
+      if (p.target) {
+        p.targetId = p.target.id;
+        claimed.add(p.target.id);
+      }
       // 互相推开
       for (const o of this.list) {
         if (o === p) continue;

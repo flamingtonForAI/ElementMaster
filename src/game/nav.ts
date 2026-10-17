@@ -1,6 +1,6 @@
 /**
  * 绕墙寻路：把岩壁的碰撞圆标到格子上，从玩家所在格往外做 8 邻 BFS 得到距离场，
- * 被岩壁挡住的敌人、傀儡顺着距离下降的方向走，绕到缺口再过去。纯数据，不依赖 Phaser。
+ * 被岩壁挡住的敌人、傀儡顺着距离下降的方向走，绕到缺口再过去。只算源点附近 RANGE 以内。纯数据，不依赖 Phaser。
  */
 
 /** 格子边长（世界像素），要小于山道缺口宽度 */
@@ -10,6 +10,11 @@ const AGENT_R = 7;
 const UNSEEN = 0xffff;
 /** 直奔前先看身前这么远有没有墙 */
 const LOOK = 40;
+/**
+ * 距离场只算源点周围这么远（世界像素）。离玩家超过 520×380 的怪会被拉回，
+ * 留出的余量给绕墙；窗口外的格子当作没走到，怪照原样直奔
+ */
+const RANGE = 900;
 
 const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
@@ -22,8 +27,12 @@ export class NavGrid {
   /** 当前距离场的源点格 */
   private sx = -1;
   private sy = -1;
+  /** 上一次走到的格子数（queue 前这么多个），下次只清这些 */
+  private seen = 0;
+  private range: number;
 
-  constructor(size: number) {
+  constructor(size: number, range = RANGE) {
+    this.range = Math.ceil(range / NAV_CELL);
     this.half = size / 2;
     this.n = Math.ceil(size / NAV_CELL);
     this.wall = new Uint8Array(this.n * this.n);
@@ -68,7 +77,12 @@ export class NavGrid {
     const dist = this.dist;
     const wall = this.wall;
     const q = this.queue;
-    dist.fill(UNSEEN);
+    for (let i = 0; i < this.seen; i++) dist[q[i]] = UNSEEN;
+    const r = this.range;
+    const xa = Math.max(0, sx - r);
+    const xb = Math.min(n - 1, sx + r);
+    const ya = Math.max(0, sy - r);
+    const yb = Math.min(n - 1, sy + r);
     let head = 0;
     let tail = 0;
     const s = sy * n + sx;
@@ -82,7 +96,7 @@ export class NavGrid {
       for (const [dx, dy] of DIRS) {
         const nx = x0 + dx;
         const ny = y0 + dy;
-        if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue;
+        if (nx < xa || ny < ya || nx > xb || ny > yb) continue;
         const k = ny * n + nx;
         if (dist[k] !== UNSEEN || wall[k]) continue;
         // 斜走不切墙角
@@ -91,6 +105,7 @@ export class NavGrid {
         q[tail++] = k;
       }
     }
+    this.seen = tail;
   }
 
   /**

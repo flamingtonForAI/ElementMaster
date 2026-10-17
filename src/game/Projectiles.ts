@@ -24,6 +24,8 @@ export class Proj {
   proc = 0;
   kb = 0;
   target: Enemy | null = null;
+  /** 敌人对象会被对象池复用，id 对不上就重新找 */
+  targetId = 0;
   hit = new Set<number>();
   // 抛物线
   sx = 0;
@@ -102,6 +104,7 @@ export class ProjectileManager {
     p.proc = o.proc ?? 0;
     p.kb = o.kb ?? 20;
     p.target = o.target ?? null;
+    p.targetId = p.target?.id ?? 0;
     p.onHit = o.onHit ?? null;
     p.dmgAt = o.dmgAt ?? null;
     p.stick = !!o.stick;
@@ -172,7 +175,10 @@ export class ProjectileManager {
 
       // 带目标的弹道会追踪（飞剑、贴符）
       if (p.target) {
-        if (!p.target.alive) p.target = g.enemies.nearest(p.x, p.y, 200, p.hit);
+        if (!p.target.alive || p.target.id !== p.targetId) {
+          p.target = g.enemies.nearest(p.x, p.y, 200, p.hit);
+          p.targetId = p.target?.id ?? 0;
+        }
         if (p.target) {
           const want = Math.atan2(p.target.y - 6 - p.y, p.target.x - p.x);
           const cur = Math.atan2(p.vy, p.vx);

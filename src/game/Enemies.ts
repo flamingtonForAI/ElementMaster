@@ -71,6 +71,7 @@ export class Enemy {
   invulnUntil = 0;
   /** 已经复起过（刑天） */
   rose = false;
+  noKill = false;
   /** 冲刺留火的里程（赤狐、毕方） */
   trailAcc = 0;
   glyph: Phaser.GameObjects.Text | null = null;
@@ -92,6 +93,8 @@ export interface SpawnOpts {
   chest?: ChestKind;
   /** 不掉经验（Boss 召唤的小怪） */
   noXp?: boolean;
+  /** 不计击杀（复活的残兵：同一只兵反复打不能刷灵石） */
+  noKill?: boolean;
 }
 
 export class EnemyManager {
@@ -128,6 +131,7 @@ export class EnemyManager {
     e.lastEl = null;
     e.invulnUntil = 0;
     e.rose = false;
+    e.noKill = !!o.noKill;
     e.trailAcc = 0;
     e.alive = true;
     e.kbx = e.kby = 0;
@@ -685,17 +689,24 @@ export class EnemyManager {
     g.later(t - 0.8, () => {
       if (img.active) g.tweens.add({ targets: img, x: x + 1, duration: 60, yoyo: true, repeat: 5 });
     });
-    g.later(t, () => {
+    const revive = () => {
+      if (g.over) {
+        this.corpses--;
+        img.destroy();
+        return;
+      }
+      // 同屏满了就再躺一会儿，不越过刷怪上限
+      if (this.count >= g.spawnCap()) return g.later(1, revive);
       this.corpses--;
       img.destroy();
-      if (g.over) return;
-      this.spawn(def.id, x, y, { hpMult: g.hpScale(), noXp: true });
+      this.spawn(def.id, x, y, { hpMult: g.hpScale(), noXp: true, noKill: true });
       g.fx.burst(x, y - 6, 0x9aa4b8, 8);
       if (!this.reviveHinted) {
         this.reviveHinted = true;
         g.hud.toast(`${def.name}又爬起来了！用火系击杀（灼烧也算）才不会复活`, '#ffa060');
       }
-    });
+    };
+    g.later(t, revive);
   }
 
   /**
@@ -814,7 +825,7 @@ export class EnemyManager {
       e.glyph.destroy();
       e.glyph = null;
     }
-    g.kills++;
+    if (!e.noKill) g.kills++;
     // 药师·传染：中毒的敌人死时把毒传给周围
     if (g.build.mods['qing.spread'] && g.now < e.poisonUntil) {
       g.fx.ring(e.x, e.y - 6, 50, STATUS_INFO.poison.tint, 0.3);
