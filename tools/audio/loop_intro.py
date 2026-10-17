@@ -86,6 +86,9 @@ def main():
     af = f"volume={lufs - float(meas['input_i']):.2f}dB,alimiter=limit=0.84:attack=5:release=50:level=false"
     subprocess.run(inp + ['-af', af, '-ar', str(SR), '-c:a', 'libmp3lame', '-b:a', '128k', dst],
                    input=pcm, capture_output=True, check=True)
+    # 游戏优先加载的 Opus 版（同名 .webm），MP3 留作不支持 Opus 的浏览器兜底
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', dst, '-c:a', 'libopus', '-b:a', '64k', '-vbr', 'on',
+                    '-application', 'audio', dst.rsplit('.', 1)[0] + '.webm'], check=True)
 
     # 接缝检查：成品里 loopEnd 之后与 loopStart 之后的 0.2 秒应当几乎一致
     y = decode(dst)

@@ -7,9 +7,12 @@ import { loadSettings, writeSettings } from '../game/save';
 
 // 音频总管：音效、BGM、静音设置。复用 Phaser 的 AudioContext（解锁、失焦挂起都由 Phaser 处理）。
 // 外部音频文件可覆盖程序化版本：缓存里有 `sfx_<名字>` / `bgm_<曲名>` 就优先用文件；
-// tracks.ts 的 BGM_FILES 里列出的曲子会在启动后从 public/audio 后台加载。
+// tracks.ts 的 BGM_FILES 里列出的曲子会在启动后从 public/audio 后台加载（.webm 优先，.mp3 兜底）。
 
 const LOOKAHEAD = 0.15;
+// BGM 用 Opus（WebM 封装，体积约为 MP3 的一半）；不支持的浏览器退回 MP3
+const BGM_EXT =
+  typeof document !== 'undefined' && document.createElement('audio').canPlayType('audio/webm; codecs="opus"') ? 'webm' : 'mp3';
 const PENTA = [0, 2, 4, 7, 9];
 
 interface Note {
@@ -135,6 +138,8 @@ class AudioManager {
   private notes = new Map<string, AudioBuffer>();
   private bgmBufs = new Map<string, AudioBuffer>();
   private player: Player | null = null;
+  /** 想切但文件还没到的变奏版，加载完再切 */
+  private wanted: string | null = null;
   private fading: { p: Player; until: number }[] = [];
   private intensity = 0;
   private smooth = 0;
@@ -186,19 +191,30 @@ class AudioManager {
     };
     warm();
     setInterval(() => this.update(), 25);
-    for (const k of Object.keys(BGM_FILES)) void this.loadBgm(k);
+    // 菜单曲先单独拉，其余随后并行，免得首屏音乐被一起抢带宽
+    void this.loadBgm('menu').then(() => {
+      for (const k of Object.keys(BGM_FILES)) if (k !== 'menu') void this.loadBgm(k);
+    });
   }
 
-  /** 后台拉取 BGM 文件；加载完时正在播同名的程序化版本就淡过去 */
+  /** 后台拉取 BGM 文件（WebM 拉不到或解不开就换 MP3）；加载完时正在播同名的程序化版本、或在等这首变奏，就淡过去 */
   private async loadBgm(key: string) {
-    try {
-      const res = await fetch(`audio/bgm_${key}.mp3`);
-      if (!res.ok) return;
-      this.bgmBufs.set(key, await this.ctx!.decodeAudioData(await res.arrayBuffer()));
-    } catch {
-      return;
+    let buf: AudioBuffer | null = null;
+    for (const ext of BGM_EXT === 'webm' ? ['webm', 'mp3'] : ['mp3']) {
+      try {
+        const res = await fetch(`audio/bgm_${key}.${ext}`);
+        if (!res.ok) continue;
+        buf = await this.ctx!.decodeAudioData(await res.arrayBuffer());
+        break;
+      } catch {
+        continue;
+      }
     }
-    if (this.player instanceof SynthPlayer && this.player.key === key) {
+    if (!buf) return;
+    this.bgmBufs.set(key, buf);
+    if (this.wanted === key) {
+      this.music(key, 1.5);
+    } else if (this.player instanceof SynthPlayer && this.player.key === key) {
       this.stopMusic(1.5);
       this.music(key, 1.5);
     }
@@ -333,11 +349,16 @@ class AudioManager {
   /** 切换 BGM（同一首在播则不动），旧曲淡出 */
   music(key: string, fade = 1) {
     const ctx = this.ctx;
-    if (!ctx || this.player?.key === key) return;
+    if (!ctx) return;
+    this.wanted = null;
+    if (this.player?.key === key) return;
     const def = TRACKS[key];
     const file = this.fileBuf(`bgm_${key}`);
-    // 变奏版（紧张、狂暴）没有程序化版本，文件还没加载完就先不换
-    if (!def && !file) return;
+    // 变奏版（紧张、狂暴）没有程序化版本，文件还没加载完就先记下，到了再换
+    if (!def && !file) {
+      this.wanted = key;
+      return;
+    }
     this.stopMusic(fade);
     const now = ctx.currentTime;
     const bus = ctx.createGain();
@@ -349,6 +370,7 @@ class AudioManager {
   }
 
   stopMusic(fade = 0.8) {
+    this.wanted = null;
     const p = this.player;
     if (!p || !this.ctx) return;
     const now = this.ctx.currentTime;

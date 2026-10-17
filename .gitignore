@@ -3,5 +3,4 @@ dist
 .DS_Store
 tools/art/reports
 __pycache__
-tools/art/raw/portraits
-tools/art/raw/portraits-v2
+tools/art/raw

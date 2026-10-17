@@ -55,7 +55,7 @@ export const LEVELS: LevelDef[] = [
     decorPerChunk: 7,
     size: 3600, edge: 'dc_rock', elites: { first: 60, every: [55, 30] },
     // 新手关：一道稀疏的乱石带，大半是缺口
-    ridges: { tex: 'dc_rock', radius: 8, bands: [0.5], scale: 620, gap: 0.5 },
+    ridges: { tex: 'dc_rock', radius: 8, bands: [0.5], scale: 620, gap: 0.56 },
     lesson: '新手关：留意黄色的“克”字',
     available: true,
   },
@@ -70,7 +70,7 @@ export const LEVELS: LevelDef[] = [
     decorPerChunk: 7,
     size: 3900, edge: 'dc_bamboo', elites: { first: 60, every: [60, 32] },
     // 一道密竹墙，缺口较多
-    ridges: { tex: 'dc_bamboo', radius: 8, bands: [0.5], scale: 540, gap: 0.42 },
+    ridges: { tex: 'dc_bamboo', radius: 8, bands: [0.5], scale: 540, gap: 0.5 },
     lesson: '金克木，火借势烧木',
     available: true,
   },
@@ -85,7 +85,7 @@ export const LEVELS: LevelDef[] = [
     decorPerChunk: 7,
     size: 4200, edge: 'dc_cliff', elites: { first: 60, every: [60, 32] },
     // 两道岩壁，比竹林密，但山道缺口宽、隔得不远
-    ridges: { tex: 'dc_cliff', radius: 11, bands: [0.4, 0.6], scale: 560, gap: 0.48 },
+    ridges: { tex: 'dc_cliff', radius: 11, bands: [0.4, 0.6], scale: 560, gap: 0.56 },
     rockfall: { start: 20, every: [7, 3.5], count: [1, 3], radius: 20, warn: 1.1, dmg: 12 },
     lesson: '顺地气：土生金，金很舒服；山道窄，留意头顶落石',
     available: true,
