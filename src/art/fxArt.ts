@@ -706,10 +706,15 @@ function fern(): PC {
   return p;
 }
 
-/** dc_cliff（3 种变体，第 3 关岩壁，有碰撞）：0 圆顶巨石、1 尖棱崖石、2 叠石；冷紫灰岩体 + 顶上一层暗苔 */
-function cliff(variant = 0): PC {
+/** 岩壁调色：暗部、阴影、中间、受光、顶沿，再加顶上一层苔（或焦壳） */
+const CLIFF_PAL = [0x2e2a3a, 0x4a4656, 0x686474, 0x8c8894, 0xb8b2ae, 0x2e4a3a, 0x426048];
+/** 第 4 关玄武岩：赭黑岩体，顶上是烧焦的暗红壳 */
+const BASALT_PAL = [0x241a1c, 0x3a2a2a, 0x523a36, 0x6e5048, 0x9a7262, 0x3a2420, 0x5a2e24];
+
+/** dc_cliff（3 种变体，第 3 关岩壁，有碰撞）：0 圆顶巨石、1 尖棱崖石、2 叠石；冷紫灰岩体 + 顶上一层暗苔。换调色即第 4 关的 dc_basalt */
+function cliff(variant = 0, pal = CLIFF_PAL): PC {
   const p = new PC(30, 28);
-  const D = 0x2e2a3a, S = 0x4a4656, M = 0x686474, H = 0x8c8894, RIM = 0xb8b2ae, MO = 0x2e4a3a, MOH = 0x426048;
+  const [D, S, M, H, RIM, MO, MOH] = pal;
   if (variant === 0) {
     p.ellipse(15, 17, 13, 9.5, S);
     p.ellipse(17, 21, 10, 5.5, D);
@@ -742,6 +747,197 @@ function cliff(variant = 0): PC {
     p.span(16, 7, 22, D);
     p.ellipse(15, 6, 4, 1.5, MO);
     p.set(13, 5, MOH);
+  }
+  p.selectiveOutline(0x2c2238, 0x1c1424);
+  p.under(15, 26, 13, 2.2, 0x12222b, 90);
+  return p;
+}
+
+/** 火精、毕方吐的火球 */
+function eFire(): PC {
+  const p = new PC(9, 9);
+  p.circle(4.5, 4.5, 3.6, 0xff7a2a);
+  p.circle(4, 4, 2.2, 0xffd05a);
+  p.set(3, 3, 0xfff6c8);
+  p.outline(0x5a1a12);
+  return p;
+}
+
+/** 飞镰、刑天甩出的月牙飞刃 */
+function eBlade(): PC {
+  const p = new PC(11, 11);
+  for (let y = 0; y < 11; y++)
+    for (let x = 0; x < 11; x++) {
+      const r = Math.hypot(x + 0.5 - 5.5, y + 0.5 - 5.5);
+      const r2 = Math.hypot(x + 0.5 - 7.2, y + 0.5 - 4);
+      if (r <= 4.4 && r2 > 3.4) p.set(x, y, r < 3.2 ? 0x9aa6b8 : 0xe4ecf4);
+    }
+  p.outline(0x2c2238);
+  return p;
+}
+
+/** 余火、熔岩喷发前冒的火苗（3 帧循环） */
+function flame(f: number): PC {
+  const p = new PC(10, 14);
+  const w = [0, 1, -1][f];
+  p.ellipse(5, 10, 3.6, 3.2, 0xd83c28);
+  p.strand([[5, 9], [5 + w, 5], [5 - w, 1]], 0xd83c28, 3);
+  p.ellipse(5, 10.5, 2.4, 2.2, 0xff8a30);
+  p.strand([[5, 10], [5 + w, 6]], 0xff8a30, 2);
+  p.ellipse(5, 11, 1.2, 1.2, 0xffe45c);
+  return p;
+}
+
+/** dc_lava（2 种变体，第 4 关熔岩口，贴地）：焦黑岩壳围着一汪熔岩，裂缝透出火光 */
+function lavaVent(v: number): PC {
+  const p = new PC(40, 26);
+  const K0 = 0x221614, K1 = 0x3a2420, K2 = 0x4e3028, M0 = 0x8a2a1a, M1 = 0xd0542a, M2 = 0xf09040, M3 = 0xffd070;
+  p.ellipse(20, 13, 19, 12, K1);
+  p.ellipse(21, 15, 16, 9, K0);
+  p.ellipse(19, 11, 15, 8, K2);
+  p.ellipse(20, 13, 9, 5.5, M0);
+  p.ellipse(20, 13, 7, 4, M1);
+  p.ellipse(19, 12.5, 4, 2.2, M2);
+  p.span(12, 18, 20, M3);
+  const cracks: [number, number][][] = v === 0
+    ? [[[11, 13], [5, 10], [2, 12]], [[29, 13], [35, 9]], [[20, 18], [22, 23]]]
+    : [[[12, 10], [6, 6]], [[28, 15], [34, 18], [38, 16]], [[17, 17], [13, 22]]];
+  for (const c of cracks) p.strand(c, M1, 1);
+  return p;
+}
+
+/** fx_zone（第 5 关煞气剑阵的地面）：半径 60 的暗红阵纹，边缘一圈深色，中间一圈断续符纹 */
+function zone(): PC {
+  const p = new PC(120, 120);
+  for (let y = 0; y < 120; y++)
+    for (let x = 0; x < 120; x++) {
+      const d = Math.hypot(x + 0.5 - 60, y + 0.5 - 60) / 60;
+      if (d > 1) continue;
+      if (d > 0.93) p.set(x, y, 0x8a2a26, 150);
+      else p.set(x, y, 0x5a1418, Math.round(36 + 50 * d * d));
+    }
+  for (let a = 0; a < 60; a++) {
+    if (a % 4 === 3) continue;
+    const t = (a / 60) * Math.PI * 2;
+    p.set(60 + Math.cos(t) * 44, 60 + Math.sin(t) * 44, 0xa83a30, 150);
+    p.set(60 + Math.cos(t) * 45, 60 + Math.sin(t) * 45, 0xa83a30, 110);
+  }
+  return p;
+}
+
+/** dc_sword（3 种变体）：插在地上的残剑、长戟、断枪挂破布 */
+function swordStuck(v: number): PC {
+  const p = new PC(12, 24);
+  const BL = 0xb8c2ce, BS = 0x6c7484, BH = 0xe4eaf0, RU = 0x8a5a3a, WD = 0x5a3e2c, GD = 0xb08a3a, RB = 0x8a2a26;
+  if (v === 0) {
+    p.line(5, 8, 5, 21, BL, 2);
+    p.line(6, 9, 6, 21, BS);
+    p.span(7, 2, 9, GD);
+    p.line(5, 2, 5, 6, WD, 2);
+    p.set(5, 1, GD);
+    p.set(4, 14, RU);
+    p.set(5, 17, RU);
+  } else if (v === 1) {
+    p.line(5, 2, 5, 21, WD, 2);
+    p.strand([[5, 4], [9, 3], [10, 6]], BL, 2);
+    p.line(5, 0, 5, 3, BH, 2);
+    p.strand([[5, 7], [1, 8]], BS, 2);
+  } else {
+    p.line(4, 9, 6, 21, WD, 2);
+    p.strand([[4, 9], [3, 5]], BL, 2);
+    p.strand([[5, 11], [9, 13], [10, 17]], RB, 2);
+  }
+  p.ellipse(6, 21.5, 3.5, 1.4, 0x3a3228);
+  p.selectiveOutline(0x2c2238, 0x1c1424);
+  p.under(6, 22, 4, 1, 0x12222b, 80);
+  return p;
+}
+
+/** dc_bones（2 种变体）：骷髅和散骨 */
+function bones(v: number): PC {
+  const p = new PC(16, 12);
+  const BO = 0xd6cfbc, BS = 0x9a9282, D = 0x3a3430;
+  if (v === 0) {
+    p.ellipse(6, 6, 3.2, 2.8, BO);
+    p.ellipse(7, 7.5, 2.5, 1.5, BS);
+    p.set(5, 6, D);
+    p.set(7, 6, D);
+    p.strand([[9, 9], [14, 7]], BO, 1);
+    p.set(14, 6, BO);
+    p.set(15, 8, BO);
+  } else {
+    p.strand([[2, 8], [8, 6]], BO, 2);
+    p.strand([[6, 9], [13, 8]], BS, 2);
+    p.set(2, 7, BO);
+    p.set(13, 7, BO);
+    p.ellipse(11, 5, 2, 1.5, BO);
+  }
+  p.selectiveOutline(0x2c2238, 0x1c1424);
+  p.under(8, 10, 6, 1, 0x12222b, 70);
+  return p;
+}
+
+/** dc_scorch（2 种变体）：烧焦的枯树，根部还有余烬 */
+function scorch(v: number): PC {
+  const p = new PC(26, 40);
+  const T = 0x2e2220, TS = 0x1e1618, TH = 0x4a3a34, E = 0xd0542a, E2 = 0xf0a040;
+  p.strand([[13, 38], [13, 22], [v ? 16 : 11, 12], [v ? 18 : 9, 4]], T, 4);
+  p.strand([[13, 26], [7, 18], [4, 14]], T, 2);
+  p.strand([[13, 22], [19, 16], [22, 10]], TS, 2);
+  if (v) p.strand([[16, 12], [12, 6]], TS, 2);
+  else p.strand([[11, 12], [15, 7]], TS, 2);
+  p.line(12, 24, 12, 37, TH);
+  p.set(14, 33, E);
+  p.set(14, 34, E2);
+  p.set(12, 30, E);
+  p.span(38, 9, 17, TS);
+  p.selectiveOutline(0x2c2238, 0x1c1424);
+  p.under(13, 38, 7, 1.6, 0x12222b, 85);
+  return p;
+}
+
+/** dc_cinder（2 种变体）：一小堆火山渣，夹着几点余烬 */
+function cinder(v: number): PC {
+  const p = new PC(14, 10);
+  const K = 0x2e2422, K2 = 0x4a3a34, E = 0xe07a2a;
+  p.ellipse(7, 6, 5.5, 3, K);
+  p.ellipse(6, 5, 3.5, 2, K2);
+  if (v) p.ellipse(11, 7, 2.5, 1.8, K);
+  p.set(5, 7, E);
+  p.set(9, 6, E);
+  p.set(6, 4, 0x6a564c);
+  p.selectiveOutline(0x2c2238, 0x1c1424);
+  p.under(7, 8.5, 5, 1, 0x12222b, 70);
+  return p;
+}
+
+/** dc_barricade（3 种变体，第 5 关残垒，有碰撞）：0 交叉拒马、1 一排削尖木桩、2 叠起的破盾 */
+function barricade(v: number): PC {
+  const p = new PC(30, 28);
+  const W = 0x6a4a30, WS = 0x4a3222, WH = 0x8e6a48, TIP = 0xb8b0a0, RO = 0x8a7a5a;
+  if (v === 0) {
+    p.strand([[5, 24], [25, 6]], W, 3);
+    p.strand([[5, 6], [25, 24]], WS, 3);
+    p.line(3, 17, 27, 17, WH, 2);
+    p.set(25, 5, TIP);
+    p.set(26, 4, TIP);
+    p.set(5, 5, TIP);
+    p.set(4, 4, TIP);
+  } else if (v === 1) {
+    for (const [x, h] of [[6, 14], [11, 18], [16, 16], [21, 19], [25, 13]]) {
+      p.line(x, 26 - h, x, 26, W, 3);
+      p.line(x + 1, 26 - h, x + 1, 26, WS);
+      p.set(x, 25 - h, TIP);
+    }
+    p.line(3, 20, 27, 18, RO);
+  } else {
+    p.ellipse(10, 19, 7, 6, 0x6a5a3a);
+    p.ellipse(10, 19, 5, 4.4, 0x8a6a34);
+    p.circle(10, 19, 1.5, 0xb08a3a);
+    p.ellipse(20, 17, 7, 7, 0x5a4a32);
+    p.ellipse(20, 17, 5, 5, 0x7a5e30);
+    p.circle(20, 17, 1.5, 0xb08a3a);
+    p.strand([[3, 25], [27, 25]], WS, 2);
   }
   p.selectiveOutline(0x2c2238, 0x1c1424);
   p.under(15, 26, 13, 2.2, 0x12222b, 90);
@@ -815,6 +1011,11 @@ export function buildFx(scene: Phaser.Scene) {
   single(scene, 'ep_rock', eRock());
   single(scene, 'ep_boulder', eBoulder());
   single(scene, 'fx_boulder', fallingBoulder());
+  single(scene, 'ep_fire', eFire());
+  single(scene, 'ep_blade', eBlade());
+  addSheet(scene, 'fx_flame', [0, 1, 2].map(flame));
+  addAnim(scene, 'fx_flame', 'fx_flame', [0, 1, 2], 10);
+  single(scene, 'fx_zone', zone());
   single(scene, 'antidote', antidote());
 
   // 第 1 关·荒郊古道：保持苍凉低对比度的黄褐荒原基调（微冷褐暗部 -> 暖黄褐，无鲜花干扰拾取物）
@@ -850,6 +1051,28 @@ export function buildFx(scene: Phaser.Scene) {
       [0x4a573a, 0x566442],
     ),
   );
+  // 第 4 关·赤焰谷：赭黑的火山灰土，偏暖但压低明度，熔岩口和火系敌人才是亮色
+  single(
+    scene,
+    'ground_4',
+    ground(
+      41,
+      [0x3d2b26, 0x422f29, 0x47322b, 0x4c362d, 0x513930],
+      [0x33231f, 0x5a4034, 0x63473a],
+      [0x5a3428, 0x64402e],
+    ),
+  );
+  // 第 5 关·兵冢古战场：灰黄的尘土地，金系敌人的银灰比地面亮一档
+  single(
+    scene,
+    'ground_5',
+    ground(
+      53,
+      [0x45423a, 0x4a463d, 0x4f4a40, 0x544e43, 0x595246],
+      [0x3c3932, 0x655f54, 0x6d665a],
+      [0x5c5840, 0x666046],
+    ),
+  );
   addSheet(scene, 'dc_rock', [0, 1, 2].map(rock));
   addSheet(scene, 'dc_tuft', [0, 1, 2].map(tuft));
   addSheet(scene, 'dc_tablet', [0, 1, 2].map(tablet));
@@ -858,6 +1081,13 @@ export function buildFx(scene: Phaser.Scene) {
   single(scene, 'dc_shoot', shoot());
   single(scene, 'dc_mossrock', mossRock());
   single(scene, 'dc_fern', fern());
-  addSheet(scene, 'dc_cliff', [0, 1, 2].map(cliff));
+  addSheet(scene, 'dc_cliff', [0, 1, 2].map((v) => cliff(v)));
+  addSheet(scene, 'dc_basalt', [0, 1, 2].map((v) => cliff(v, BASALT_PAL)));
   addSheet(scene, 'dc_pine', [0, 1].map(pine));
+  addSheet(scene, 'dc_lava', [0, 1].map(lavaVent));
+  addSheet(scene, 'dc_sword', [0, 1, 2].map(swordStuck));
+  addSheet(scene, 'dc_bones', [0, 1].map(bones));
+  addSheet(scene, 'dc_scorch', [0, 1].map(scorch));
+  addSheet(scene, 'dc_cinder', [0, 1].map(cinder));
+  addSheet(scene, 'dc_barricade', [0, 1, 2].map(barricade));
 }

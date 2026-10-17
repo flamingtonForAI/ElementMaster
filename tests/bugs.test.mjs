@@ -198,11 +198,12 @@ test('玄一星图从中宫开场，其他角色保留向本系外侧聚焦', ()
 
 test('默认选关取最高已解锁且开放的关卡，不再写死第二关', () => {
   reset();
-  const available = LEVELS[2].available;
-  LEVELS[2].available = true;
+  const available = LEVELS[4].available;
+  LEVELS[4].available = true;
   try {
     const save = loadSave();
-    save.unlocked = 4;
+    // 第 6 关尚未开放，应落在第 5 关
+    save.unlocked = 6;
     writeSave(save);
     const scene = new MenuScene();
     const chain = new Proxy({}, { get: () => () => chain });
@@ -210,9 +211,9 @@ test('默认选关取最高已解锁且开放的关卡，不再写死第二关',
     scene.input = { keyboard: { on() {} } };
     scene.render = () => {};
     scene.create();
-    assert.equal(LEVELS[scene.levelSel].id, 3);
+    assert.equal(LEVELS[scene.levelSel].id, 5);
   } finally {
-    LEVELS[2].available = available;
+    LEVELS[4].available = available;
   }
 });
 
@@ -254,7 +255,7 @@ test('升级预览给出选后的灵根与本命，且不改动当前构筑', ()
 
 const { isRidge, woodland } = await import('../src/game/terrain.ts');
 
-test('三关山脊从出生点基本全图连通，第 1 关最稀、第 3 关最密', () => {
+test('各关山脊从出生点基本全图连通，第 1 关最稀、第 3 关最密', () => {
   const ratio = {};
   for (const level of LEVELS.filter((l) => l.available)) {
     const def = level.ridges;
@@ -424,4 +425,117 @@ test('相克奇穴：伐木斩杀残血木系敌人，Boss 和别系不受影响
   } finally {
     Math.random = random;
   }
+});
+
+const { EnemyManager } = await import('../src/game/Enemies.ts');
+const { ENEMIES } = await import('../src/config/enemies.ts');
+
+/** 只够跑 EnemyManager.kill 的场景桩；later 的回调攒起来手动执行 */
+function killScene() {
+  const tasks = [];
+  const chain = new Proxy({}, { get: (_t, k) => (k === 'active' ? true : () => chain) });
+  const noop = new Proxy({}, { get: () => () => {} });
+  const g = {
+    now: 0, over: false, kills: 0, bossKilled: 0, build: { mods: {} }, fx: noop, pickups: noop, hud: noop, proj: noop,
+    add: { image: () => chain }, tweens: { add() {} }, later: (_t, fn) => tasks.push(fn), hpScale: () => 1,
+    onBossKilled() { this.bossKilled++; },
+  };
+  const mgr = new EnemyManager(g);
+  const spawned = [];
+  mgr.spawn = (id, x, y, o) => spawned.push({ id, x, y, o });
+  return { g, mgr, spawned, run: () => tasks.splice(0).forEach((fn) => fn()) };
+}
+const sprite = () => ({ flipX: false, setVisible() { return this; }, setActive() { return this; }, setScale() { return this; }, anims: { stop() {} } });
+const mob = (id, o = {}) => ({ alive: true, def: ENEMIES[id], x: 10, y: 20, hp: 0, maxHp: 100, xp: 2, elite: false, boss: !!ENEMIES[id].boss, lastEl: null, rose: false, sprite: sprite(), glyph: null, ...o });
+
+test('残兵：非火系击杀 5 秒后原地复活且不再掉经验；火系击杀、精英不复活', () => {
+  const { mgr, spawned, run } = killScene();
+  mgr.kill(mob('canbing', { lastEl: 'metal' }));
+  assert.equal(spawned.length, 0);
+  run();
+  assert.deepEqual(spawned.map((s) => [s.id, s.x, s.y, s.o.noXp]), [['canbing', 10, 20, true]]);
+  mgr.kill(mob('canbing', { lastEl: 'fire' }));
+  mgr.kill(mob('canbing', { lastEl: 'earth', elite: true }));
+  run();
+  assert.equal(spawned.length, 1);
+});
+
+test('灼烧烧死算火系击杀，中毒毒死不算', () => {
+  const scene = comboScene({});
+  const a = enemy('metal', { hp: 1 });
+  scene.dotEnemy(a, 5, 'burn');
+  assert.equal(a.lastEl, 'fire');
+  assert.equal(a.alive, false);
+  const b = enemy('metal', { hp: 1 });
+  scene.dotEnemy(b, 5, 'poison');
+  assert.equal(b.lastEl, 'wood');
+});
+
+test('刑天：第一次非火系击杀带 35% 生命复起并短暂无敌，第二次才倒；火系一击即终结', () => {
+  const { g, mgr } = killScene();
+  const boss = mob('xingtian', { lastEl: 'metal', maxHp: 1000 });
+  mgr.kill(boss);
+  assert.equal(boss.alive, true);
+  assert.equal(boss.hp, 350);
+  assert.ok(boss.rose && boss.invulnUntil > g.now);
+  assert.equal(g.bossKilled, 0);
+  boss.hp = 0;
+  mgr.kill(boss);
+  assert.equal(boss.alive, false);
+  assert.equal(g.bossKilled, 1);
+  const burnt = mob('xingtian', { lastEl: 'fire', maxHp: 1000 });
+  mgr.kill(burnt);
+  assert.equal(burnt.alive, false);
+  assert.equal(g.bossKilled, 2);
+  // 无敌期间不吃伤害
+  const scene = comboScene({});
+  const e = enemy('metal', { invulnUntil: scene.now + 1 });
+  assert.equal(scene.hitEnemy(e, 50, 'fire'), 0);
+  assert.equal(e.hp, 100);
+});
+
+const { spotAt, ridgeDist, RIDGE_HALF } = await import('../src/game/terrain.ts');
+const { World } = await import('../src/game/World.ts');
+
+test('熔岩口、剑阵点位固定：离出生点够远、在地图内、不挨山脊，数量够用', () => {
+  for (const [id, key, salt] of [[4, 'lava', 1], [5, 'swordZones', 2]]) {
+    const level = LEVELS.find((l) => l.id === id);
+    const def = level[key];
+    const half = level.size / 2;
+    const n = Math.ceil(half / def.cell);
+    let count = 0;
+    for (let iy = -n; iy < n; iy++)
+      for (let ix = -n; ix < n; ix++) {
+        const p = spotAt(ix, iy, level.id, salt, def, half, level.ridges);
+        assert.deepEqual(p, spotAt(ix, iy, level.id, salt, def, half, level.ridges));
+        if (!p) continue;
+        count++;
+        assert.ok(Math.hypot(p[0], p[1]) >= 200 + def.radius);
+        assert.ok(Math.abs(p[0]) <= half - def.radius && Math.abs(p[1]) <= half - def.radius);
+        assert.ok(ridgeDist(p[0], p[1], level.id, level.ridges) >= RIDGE_HALF + def.radius);
+      }
+    assert.ok(count >= 25, `第 ${id} 关 ${key} 只有 ${count} 个`);
+  }
+});
+
+test('煞气剑阵里的敌人护甲 +3，出阵恢复', () => {
+  const level = LEVELS.find((l) => l.id === 5);
+  const world = Object.assign(Object.create(World.prototype), { level, half: level.size / 2, spotCache: new Map() });
+  let spot = null;
+  for (let i = 1; i < 20 && !spot; i++) spot = world.spotsIn('zone', -i * 420, -i * 420, i * 420, i * 420)[0];
+  assert.ok(spot);
+  const [x, y] = spot;
+  const r = level.swordZones.radius;
+  assert.equal(world.zoneArmor(x, y), 3);
+  assert.equal(world.zoneArmor(x + r - 4, y), 3);
+  assert.equal(world.zoneArmor(x + r + 4, y), 0);
+  const scene = comboScene({});
+  scene.dmgMult = () => 1;
+  scene.world = world;
+  const inside = enemy('metal', { x, y });
+  scene.hitEnemy(inside, 10, 'fire');
+  const outside = enemy('metal', { x: x + r + 40, y });
+  scene.hitEnemy(outside, 10, 'fire');
+  assert.equal(inside.hp, 93);
+  assert.equal(outside.hp, 90);
 });

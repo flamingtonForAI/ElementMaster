@@ -4,7 +4,7 @@ import { getTodPreset } from '../art/vistaArt';
 import type { LevelDef } from '../config/levels';
 import { POI_CLEAR_R } from '../config/map';
 import { VIEW_W, VIEW_H } from '../config/view';
-import { woodland, isRidge } from './terrain';
+import { woodland, isRidge, spotAt, type SpotDef } from './terrain';
 import { NavGrid } from './nav';
 
 const CHUNK = 256;
@@ -19,12 +19,19 @@ interface Solid {
 const SOLID_MAX = 16;
 
 function isLargeDecor(tex: string): boolean {
-  return tex === 'dc_deadtree' || tex === 'dc_bamboo' || tex === 'dc_tablet' || tex === 'dc_pine';
+  return tex === 'dc_deadtree' || tex === 'dc_bamboo' || tex === 'dc_tablet' || tex === 'dc_pine' || tex === 'dc_scorch';
 }
 
 function isSmallDecor(tex: string): boolean {
-  return tex === 'dc_tuft' || tex === 'dc_shoot' || tex === 'dc_fern';
+  return tex === 'dc_tuft' || tex === 'dc_shoot' || tex === 'dc_fern' || tex === 'dc_cinder' || tex === 'dc_bones' || tex === 'dc_sword';
 }
+
+/** 地图上的固定点位种类：熔岩口、煞气剑阵 */
+export type SpotKind = 'lava' | 'zone';
+const SPOT_SALT: Record<SpotKind, number> = { lava: 1, zone: 2 };
+
+/** 剑阵是贴地的椭圆，纵向压扁到这个比例 */
+export const ZONE_SQUASH = 0.72;
 
 /** 地图缩略贴图每个像素对应的世界像素 */
 export const MAP_TEXEL = 12;
@@ -65,6 +72,8 @@ export class World {
   /** 绕岩壁的距离场，没有山脊的关卡为 null */
   readonly nav: NavGrid | null;
   private navAcc = Infinity;
+  /** 点位按格子缓存，键为 kind:ix,iy */
+  private spotCache = new Map<string, [number, number] | null>();
 
   /** reserved：兴趣点位置，周围不放装饰和岩壁 */
   constructor(private scene: Phaser.Scene, private level: LevelDef, private reserved: { x: number; y: number }[] = []) {
@@ -86,6 +95,58 @@ export class World {
   /** 点是否在地图内（留 m 的边距） */
   inside(x: number, y: number, m = 0): boolean {
     return Math.abs(x) <= this.half - m && Math.abs(y) <= this.half - m;
+  }
+
+  private spotDef(kind: SpotKind): SpotDef | undefined {
+    return kind === 'lava' ? this.level.lava : this.level.swordZones;
+  }
+
+  private spot(kind: SpotKind, ix: number, iy: number): [number, number] | null {
+    const k = `${kind}:${ix},${iy}`;
+    let v = this.spotCache.get(k);
+    if (v === undefined) {
+      v = spotAt(ix, iy, this.level.id, SPOT_SALT[kind], this.spotDef(kind)!, this.half, this.level.ridges);
+      this.spotCache.set(k, v);
+    }
+    return v;
+  }
+
+  /** 矩形范围内的点位 */
+  spotsIn(kind: SpotKind, x0: number, y0: number, x1: number, y1: number): [number, number][] {
+    const def = this.spotDef(kind);
+    if (!def) return [];
+    const out: [number, number][] = [];
+    for (let iy = Math.floor(y0 / def.cell); iy <= Math.floor(y1 / def.cell); iy++)
+      for (let ix = Math.floor(x0 / def.cell); ix <= Math.floor(x1 / def.cell); ix++) {
+        const p = this.spot(kind, ix, iy);
+        if (p && p[0] >= x0 && p[0] < x1 && p[1] >= y0 && p[1] < y1) out.push(p);
+      }
+    return out;
+  }
+
+  /** 这里在不在煞气剑阵里：在就返回阵给敌人加的护甲 */
+  zoneArmor(x: number, y: number): number {
+    const def = this.level.swordZones;
+    if (!def) return 0;
+    const ix = Math.floor(x / def.cell);
+    const iy = Math.floor(y / def.cell);
+    for (let j = iy - 1; j <= iy + 1; j++)
+      for (let i = ix - 1; i <= ix + 1; i++) {
+        const p = this.spot('zone', i, j);
+        if (p && Math.hypot(x - p[0], (y - p[1]) / ZONE_SQUASH) < def.radius) return def.armor;
+      }
+    return 0;
+  }
+
+  /** 离熔岩口、剑阵太近，不放装饰 */
+  private nearSpot(x: number, y: number): boolean {
+    for (const kind of ['lava', 'zone'] as const) {
+      const def = this.spotDef(kind);
+      if (!def) continue;
+      const r = def.radius + 10;
+      if (this.spotsIn(kind, x - r, y - r, x + r, y + r).some(([px, py]) => Math.hypot(px - x, py - y) < r)) return true;
+    }
+    return false;
   }
 
   /** 把点夹回地图内 */
@@ -142,6 +203,20 @@ export class World {
         img.data[i + 2] = b;
         img.data[i + 3] = 255;
       }
+    // 熔岩口画成橘红点，剑阵画成暗红圈
+    const dot = (wx: number, wy: number, col: [number, number, number]) => {
+      const tx = Math.floor((wx + this.half) / MAP_TEXEL);
+      const ty = Math.floor((wy + this.half) / MAP_TEXEL);
+      if (tx < 0 || ty < 0 || tx >= n || ty >= n) return;
+      const i = (ty * n + tx) * 4;
+      [img.data[i], img.data[i + 1], img.data[i + 2]] = col;
+    };
+    const h = this.half;
+    for (const [x, y] of this.spotsIn('lava', -h, -h, h, h))
+      for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) dot(x + dx * MAP_TEXEL, y + dy * MAP_TEXEL, [226, 104, 48]);
+    const zr = this.level.swordZones?.radius ?? 0;
+    for (const [x, y] of this.spotsIn('zone', -h, -h, h, h))
+      for (let a = 0; a < 24; a++) dot(x + Math.cos((a / 24) * Math.PI * 2) * zr, y + Math.sin((a / 24) * Math.PI * 2) * zr * ZONE_SQUASH, [170, 60, 56]);
     ctx.putImageData(img, 0, 0);
     tm.addCanvas(key, canvas);
     return key;
@@ -235,7 +310,7 @@ export class World {
     const dist = Math.hypot(px, py);
     // 大件装饰远离玩家出生点，小件装饰保持基础安全距离
     if (dist < (isLargeDecor(texKey) ? 115 : 55)) return;
-    if (!this.inside(px, py, 8) || this.nearReserved(px, py, 6)) return;
+    if (!this.inside(px, py, 8) || this.nearReserved(px, py, 6) || this.nearSpot(px, py)) return;
     const tex = this.scene.textures.get(texKey);
     const frameCount = Math.max(1, tex.frameTotal - 1);
     const frame = Math.floor(R() * frameCount);
@@ -278,8 +353,36 @@ export class World {
     }
 
     if (this.level.ridges) this.buildRidges(x, y, R, list);
+    this.buildSpots(x, y, R, list);
     this.buildEdge(x, y, R, list);
     this.chunks.set(k, list);
+  }
+
+  /** 区块里的熔岩口（贴地的熔岩壳）和煞气剑阵（暗红阵纹 + 一圈插地的残剑） */
+  private buildSpots(x: number, y: number, R: () => number, list: Phaser.GameObjects.Image[]) {
+    const x0 = x * CHUNK;
+    const y0 = y * CHUNK;
+    const add = (img: Phaser.GameObjects.Image) => {
+      if (this.tint !== 0xffffff) img.setTint?.(this.tint);
+      list.push(img);
+    };
+    for (const [px, py] of this.spotsIn('lava', x0, y0, x0 + CHUNK, y0 + CHUNK)) {
+      const r = this.level.lava!.radius;
+      add(this.scene.add.image(Math.round(px), Math.round(py), 'dc_lava', Math.floor(R() * 2)).setScale(r / 20).setDepth(-1e5).setFlipX(R() < 0.5));
+    }
+    const def = this.level.swordZones;
+    for (const [px, py] of this.spotsIn('zone', x0, y0, x0 + CHUNK, y0 + CHUNK)) {
+      const r = def!.radius;
+      add(this.scene.add.image(Math.round(px), Math.round(py), 'fx_zone').setScale(r / 60, (r / 60) * ZONE_SQUASH).setDepth(-1e5));
+      const n = 9;
+      const off = R() * Math.PI;
+      for (let i = 0; i < n; i++) {
+        const a = off + (i / n) * Math.PI * 2;
+        const sx = px + Math.cos(a) * (r - 4);
+        const sy = py + Math.sin(a) * (r - 4) * ZONE_SQUASH;
+        add(this.scene.add.image(Math.round(sx), Math.round(sy), 'dc_sword', Math.floor(R() * 3)).setOrigin(0.5, 0.92).setDepth(sy).setFlipX(R() < 0.5));
+      }
+    }
   }
 
   /** 地图外侧一圈密排的边缘墙（只是贴图，碰撞靠 clamp） */

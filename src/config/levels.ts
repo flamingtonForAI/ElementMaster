@@ -1,5 +1,5 @@
 import type { El, Terrain } from './elements';
-import type { RidgeDef } from '../game/terrain';
+import type { RidgeDef, SpotDef } from '../game/terrain';
 
 export interface LevelDef {
   id: number;
@@ -30,6 +30,13 @@ export interface LevelDef {
   ridges?: RidgeDef;
   /** 落石：start 秒后开始，间隔和每次的块数从开局到结束线性插值 */
   rockfall?: { start: number; every: [number, number]; count: [number, number]; radius: number; warn: number; dmg: number };
+  /**
+   * 熔岩口：按格子稀疏摆在地图上，start 秒后周期喷发，每次挑玩家附近的 count 个；
+   * radius 是喷发范围，warn 秒预警，喷完原地留 burn 秒余火。间隔和个数从开局到结束线性插值
+   */
+  lava?: SpotDef & { start: number; every: [number, number]; count: [number, number]; warn: number; dmg: number; burn: number };
+  /** 煞气剑阵：按格子稀疏摆放，站在阵里的敌人护甲 +armor */
+  swordZones?: SpotDef & { armor: number };
   lesson: string;
   available: boolean;
 }
@@ -90,10 +97,42 @@ export const LEVELS: LevelDef[] = [
     lesson: '顺地气：土生金，金很舒服；山道窄，留意头顶落石',
     available: true,
   },
-  // 以下关卡在后续阶段开放，先占位用于选关界面。先轮完单元素（土、火、金、水），第 7 关起混合
+  {
+    id: 4, name: '赤焰谷', duration: 600,
+    terrain: T({ fire: 0.6, earth: 0.3, metal: 0.1 }),
+    // 火 70%、土 30%
+    enemies: [{ id: 'huoya', w: 3 }, { id: 'chihu', w: 2 }, { id: 'huojing', w: 2 }, { id: 'shiyong', w: 2 }, { id: 'zhangchan', w: 1 }],
+    spawn: [[0, 1.2, 50], [90, 2.3, 120], [200, 3.6, 190], [340, 5.0, 270], [480, 6.4, 350], [540, 3.8, 350]],
+    hpMult: 2.0, boss: 'bifang', bossName: '毕方', bgm: 'level4',
+    ground: 'ground_4',
+    decor: [{ tex: 'dc_scorch', w: 3 }, { tex: 'dc_cinder', w: 5 }, { tex: 'dc_rock', w: 2 }, { tex: 'dc_tuft', w: 2 }],
+    decorPerChunk: 6,
+    size: 4400, edge: 'dc_basalt', elites: { first: 60, every: [60, 30] },
+    // 两道玄武岩壁夹出谷道，缺口比山林多一点：熔岩已经够逼走位
+    ridges: { tex: 'dc_basalt', radius: 11, bands: [0.4, 0.6], scale: 600, gap: 0.6 },
+    lava: { cell: 340, chance: 0.55, radius: 30, start: 20, every: [8, 4], count: [1, 3], warn: 1.3, dmg: 14, burn: 3 },
+    lesson: '逆风关：火克金，剑客要补水或土；熔岩口发亮就快走',
+    available: true,
+  },
+  {
+    id: 5, name: '兵冢古战场', duration: 600,
+    terrain: T({ metal: 0.6, earth: 0.25, fire: 0.15 }),
+    // 金 75%、土 25%
+    enemies: [{ id: 'canbing', w: 4 }, { id: 'tiejia', w: 2 }, { id: 'feilian', w: 1.5 }, { id: 'shiyong', w: 1.5 }, { id: 'chuanshan', w: 1 }],
+    spawn: [[0, 1.2, 50], [90, 2.4, 125], [200, 3.7, 200], [340, 5.1, 280], [480, 6.5, 360], [540, 3.9, 360]],
+    hpMult: 2.4, boss: 'xingtian', bossName: '刑天', bgm: 'level5',
+    ground: 'ground_5',
+    decor: [{ tex: 'dc_sword', w: 4 }, { tex: 'dc_bones', w: 3 }, { tex: 'dc_tablet', w: 2 }, { tex: 'dc_deadtree', w: 2 }, { tex: 'dc_tuft', w: 3 }],
+    decorPerChunk: 6,
+    size: 4600, edge: 'dc_barricade', elites: { first: 60, every: [60, 30] },
+    // 一道拒马残垒
+    ridges: { tex: 'dc_barricade', radius: 9, bands: [0.5], scale: 560, gap: 0.55 },
+    swordZones: { cell: 420, chance: 0.5, radius: 64, armor: 3 },
+    lesson: '用火终结复活的残兵；煞气剑阵里的敌人护甲 +3，引出来打',
+    available: true,
+  },
+  // 以下关卡在后续阶段开放，先占位用于选关界面。第 7 关起混合元素
   ...([
-    [4, '赤焰谷', 600, T({ fire: 0.6, earth: 0.3, metal: 0.1 }), '毕方', '剑客被火克，需要补水或土'],
-    [5, '兵冢古战场', 600, T({ metal: 0.6, earth: 0.25, fire: 0.15 }), '刑天', '用火终结复活'],
     [6, '云梦泽', 600, T({ water: 0.7, earth: 0.2, wood: 0.1 }), '相柳', '三个角色都打不顺'],
     [7, '寒江', 720, T({ water: 0.55, metal: 0.35, earth: 0.1 }), '玄冥', '冰面滑行'],
     [8, '大漠', 720, T({ earth: 0.6, metal: 0.3, fire: 0.1 }), '旱魃', '双修：一种元素顾不过来'],

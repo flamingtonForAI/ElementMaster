@@ -47,6 +47,7 @@ export const BGM_FILES: Record<string, { loopStart: number; loopEnd: number }> =
 
 const GONG = [0, 2, 4, 7, 9]; // 宫
 const SHANG = [0, 2, 5, 7, 10]; // 商
+const ZHI = [0, 2, 5, 7, 9]; // 徵
 const YU = [0, 3, 5, 7, 10]; // 羽
 
 export const TRACKS: Record<string, TrackDef> = {
@@ -103,6 +104,36 @@ export const TRACKS: Record<string, TrackDef> = {
       { inst: 'taiko', at: 0.6, vol: 0.42, res: 16, bars: ['X . . x . . x . X . x . . x x .'] },
       { inst: 'bell', at: 0.7, vol: 0.2, oct: 12, bars: ['0 . . . . . . .', '. . . . . . . .', '-2 . . . . . . .', '. . . . 2 . . .'] },
       { inst: 'cymbal', at: 0.85, vol: 0.2, bars: ['X . . . . . . .', '. . . . . . . .'] },
+    ],
+  },
+
+  /** 第 4 关 赤焰谷：G 徵调，火对应唢呐；琴压低音、梆子催节奏，唢呐过三成局势就进 */
+  level4: {
+    bpm: 116, root: 67, mode: ZHI,
+    layers: [
+      { inst: 'drone', at: 0, vol: 0.2, oct: -24, bars: ['0 - - - - - - -', '0 - - - - - - -', '-2 - - - - - - -', '-1 - - - - - - -'] },
+      { inst: 'qin', at: 0, vol: 0.5, oct: -12, bars: ['0 0 2 . 3 2 0 .', '0 0 2 . 4 3 2 .', '-2 -2 0 . 1 0 -2 .', '-1 -1 1 . 2 1 0 -1'] },
+      { inst: 'block', at: 0, vol: 0.24, res: 16, bars: ['X . . x . . x . X . . x . x x .'] },
+      { inst: 'taiko', at: 0.2, vol: 0.52, bars: ['X . . X . . X .', 'X . X . X . X X'] },
+      { inst: 'suona', at: 0.35, vol: 0.26, bars: ['5 - 7 5 4 - 2 -', '4 - 5 4 2 - 0 -', '5 - 7 - 8 7 5 -', '7 - - - . . 5 4', '2 - 4 2 0 - -1 0', '2 - 4 5 4 - 2 -', '0 - 2 4 5 4 2 0', '0 - - - - - . .'] },
+      { inst: 'taiko', at: 0.6, vol: 0.4, res: 16, bars: ['X . x . X . x x X . x . X x X x'] },
+      { inst: 'bell', at: 0.7, vol: 0.18, oct: 12, bars: ['0 . . . . . . .', '. . . . . . . .', '-2 . . . . . . .', '. . . . -1 . . .'] },
+      { inst: 'cymbal', at: 0.82, vol: 0.22, bars: ['X . . . X . . .', '. . . . . . . .'] },
+    ],
+  },
+
+  /** 第 5 关 兵冢古战场：D 商调，金对应编钟；慢而沉的战鼓，钟声领旋律，笛子后入 */
+  level5: {
+    bpm: 88, root: 62, mode: SHANG,
+    layers: [
+      { inst: 'drone', at: 0, vol: 0.22, oct: -24, bars: ['0 - - - - - - -', '0 - - - - - - -', '-1 - - - - - - -', '-2 - - - - - - -'] },
+      { inst: 'taiko', at: 0, vol: 0.55, bars: ['X . . . . . X .', 'X . . . X . . .'] },
+      { inst: 'bell', at: 0, vol: 0.32, bars: ['5 . . . 4 . . .', '2 . . . 0 . . .', '5 . . . 7 . 5 .', '4 . . . . . . .', '2 . . . 4 . . .', '0 . . . -1 . . .', '0 . 2 . 4 . 2 .', '0 . . . . . . .'] },
+      { inst: 'qin', at: 0.15, vol: 0.46, oct: -12, bars: ['0 . 2 . 3 . 2 .', '0 . 2 . 4 . 3 2', '-1 . 1 . 2 . 1 .', '-2 . 0 . 1 . 0 -1'] },
+      { inst: 'cymbal', at: 0.3, vol: 0.2, bars: ['X . . . . . . .', '. . . . . . . .', '. . . . . . . .', '. . . . x . . .'] },
+      { inst: 'dizi', at: 0.5, vol: 0.3, bars: ['5 - - 4 2 - 0 -', '2 - 4 - 5 - - -', '7 - 5 - 4 - 5 -', '4 - - - . . . .', '2 - 4 - 5 - 7 -', '5 - 4 - 2 - - -', '0 - 2 - 4 2 0 -1', '0 - - - - - . .'] },
+      { inst: 'taiko', at: 0.68, vol: 0.42, res: 16, bars: ['X . . x X . . . X . x . X . x x'] },
+      { inst: 'block', at: 0.8, vol: 0.22, bars: ['. . x . . . x .'] },
     ],
   },
 

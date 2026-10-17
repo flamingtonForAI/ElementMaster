@@ -303,6 +303,143 @@ function shanxiao(f: number): PC {
   return p;
 }
 
+// 赤狐（火）：大尾巴尖上烧着火的狐狸（暖橙高光 → 朱橙 → 绛红暗部），白胸口
+function chihu(f: number): PC {
+  const p = new PC(24, 24);
+  const B = 0xe06a2e, S = 0xa8402a, D = 0x6a2426, H = 0xffac58, W = 0xf4e6cc, O = 0xff9e38, Y = 0xffe45c, EY = 0xfff07a, M = 0x2a1418;
+  const t = f === 1 ? 1 : 0;
+  // 尾巴：蓬起，尾尖是火
+  p.strand([[6, 15], [3, 12 - t], [3, 8 - t]], S, 3);
+  p.strand([[6, 14], [4, 11 - t]], B, 2);
+  p.circle(3, 6 - t, 2, O);
+  p.set(3, 4 - t, Y);
+  p.set(2, 5 - t, Y);
+  // 四条细腿，交替迈步
+  p.strand([[8, 17], [7 - t, 21]], D, 2);
+  p.strand([[10, 17], [11 + t, 21]], S, 2);
+  p.strand([[14, 17], [13 + t, 21]], D, 2);
+  p.strand([[16, 17], [17 - t, 21]], S, 2);
+  // 身体
+  p.ellipse(12, 15, 6.5, 3.5, B);
+  p.ellipse(12.5, 17, 5, 1.6, S);
+  p.span(12, 8, 15, H);
+  // 头、尖吻、白胸
+  p.ellipse(18, 12, 3.5, 3, B);
+  p.strand([[20, 13], [23, 14]], B, 2);
+  p.set(23, 14, M);
+  p.span(15, 17, 21, W);
+  p.ellipse(16, 15, 1.5, 1.5, W);
+  p.span(10, 17, 19, H);
+  // 耳朵
+  p.strand([[16, 10], [16, 6]], B, 2);
+  p.set(16, 6, D);
+  p.strand([[19, 10], [20, 6]], S, 2);
+  p.set(19, 11, EY);
+  finish(p, 'fire', 12, 22, 7, 2);
+  return p;
+}
+
+// 火精（火）：飘着的一团火，焰心发白，两只黑眼（朱红外焰 → 橙 → 金黄 → 白焰心）
+function huojing(f: number): PC {
+  const p = new PC(24, 24);
+  const R = 0xd83c28, O = 0xff8a30, Y = 0xffd850, W = 0xfff6c8, D = 0x8a2222, EY = 0x3a1018;
+  const w = f === 1 ? 1 : -1;
+  p.oy = f === 1 ? -1 : 0;
+  // 外焰和窜起的火舌
+  p.ellipse(12, 14, 6, 6, R);
+  p.strand([[8, 11], [7 + w, 6], [9, 3]], R, 3);
+  p.strand([[12, 9], [12 - w, 4], [13, 1]], O, 3);
+  p.strand([[16, 11], [17 + w, 6], [16, 4]], R, 2);
+  // 内焰
+  p.ellipse(12, 14, 4.2, 4.5, O);
+  p.ellipse(12, 15, 2.8, 3, Y);
+  p.ellipse(11.5, 15.5, 1.4, 1.6, W);
+  // 下摆
+  p.strand([[9, 19], [10, 21]], D, 2);
+  p.strand([[15, 19], [14, 21]], D, 2);
+  p.set(10, 12, EY);
+  p.set(14, 12, EY);
+  p.set(10, 11, EY);
+  p.set(14, 11, EY);
+  p.oy = 0;
+  finish(p, 'fire', 12, 22, 5, 1.6);
+  return p;
+}
+
+// 残兵（金）：披破甲的骷髅兵，握断剑，眼窝里一点青火；帧 2 是倒地的尸骸（碎骨、头盔、断剑）
+function canbing(f: number): PC {
+  const p = new PC(24, 24);
+  const BO = 0xe2dac4, BS = 0xa49c88, A = 0x8e96a4, AH = 0xc4cad4, AS = 0x5c6272, AD = 0x3a3c4c, RU = 0xa0643c, EY = 0x8ff0ff, BL = 0xd8e0ea, WD = 0x6a4a30;
+  if (f === 2) {
+    p.ellipse(12, 20, 7, 2.2, BS);
+    p.strand([[5, 20], [10, 19]], BO, 2);
+    p.strand([[13, 21], [19, 19]], BO, 2);
+    p.set(8, 18, BO);
+    p.set(17, 18, BS);
+    p.line(14, 17, 21, 14, BL);
+    p.set(13, 17, WD);
+    p.ellipse(10, 17, 3.5, 2.5, A);
+    p.span(15, 8, 11, AH);
+    p.span(19, 7, 13, AD);
+    finish(p, 'metal', 12, 22, 7, 2);
+    return p;
+  }
+  const t = f === 1 ? 1 : 0;
+  // 骨腿
+  p.rect(9 - t, 17, 2, 5, BS);
+  p.rect(13 + t, 17, 2, 5, BO);
+  // 破甲：锈迹，破口露出肋骨
+  p.rect(7, 10, 10, 8, A);
+  p.span(10, 7, 16, AH);
+  for (const y of [13, 16]) p.span(y, 8, 15, AS);
+  p.rect(15, 10, 2, 8, AS);
+  p.set(9, 14, RU);
+  p.set(10, 15, RU);
+  p.set(14, 12, RU);
+  p.span(12, 10, 12, AD);
+  p.set(11, 13, BO);
+  // 骨手和断剑
+  p.rect(5, 11 + t, 2, 5, BO);
+  p.rect(17, 11 - t, 2, 4, BS);
+  p.line(19, 13 - t, 22, 6 - t, BL);
+  p.set(18, 14 - t, WD);
+  // 骷髅头 + 破盔
+  p.rect(8, 4, 7, 6, BO);
+  p.rect(8, 2, 8, 3, A);
+  p.span(2, 9, 14, AH);
+  p.set(16, 4, AS);
+  p.rect(9, 6, 2, 2, AD);
+  p.rect(12, 6, 2, 2, AD);
+  p.set(10, 6, EY);
+  p.set(13, 6, EY);
+  p.span(9, 9, 13, BS);
+  finish(p, 'metal', 12, 22, 6, 2);
+  return p;
+}
+
+// 飞镰（金）：裹着破布的游魂提一把长镰，上下飘（冷灰布 → 深灰 → 亮钢刃）
+function feilian(f: number): PC {
+  const p = new PC(24, 24);
+  const C = 0x6c7080, CS = 0x464a5a, CH = 0x9aa0b0, BL = 0xe4ecf4, BS = 0x9aa6b8, WD = 0x6a4a30, EY = 0xffe254;
+  p.oy = f === 1 ? -1 : 0;
+  // 破布身子，下摆碎成条
+  p.ellipse(11, 11, 5, 5, C);
+  p.ellipse(12.5, 12.5, 3, 3.5, CS);
+  p.ellipse(9.5, 9, 2.4, 1.8, CH);
+  for (const [x, l] of [[7, 5], [10, 7], [13, 6], [15, 4]]) p.line(x, 14, x + f, 14 + l, x % 2 ? CS : C, 2);
+  // 兜帽下的眼
+  p.span(10, 10, 13, 0x1c1424);
+  p.set(11, 10, EY);
+  p.set(13, 10, EY);
+  // 长柄弯镰
+  p.line(15, 18, 19, 4, WD, 2);
+  p.strand([[19, 4], [16, 2], [11, 2], [8, 4]], BL, 2);
+  p.strand([[18, 5], [13, 4], [9, 5]], BS, 1);
+  p.oy = 0;
+  finish(p, 'metal', 12, 22, 5, 1.6);
+  return p;
+}
+
 // 狼妖（金，Boss）：银白巨狼，四足奔跑（暖银白高光 → 冷蓝银灰 → 靛灰暗部）
 function langyao(f: number): PC {
   const p = new PC(56, 48);
@@ -426,6 +563,100 @@ function shanxiaoBoss(f: number): PC {
   return p;
 }
 
+// 毕方（火，Boss）：独脚的青鹤，身上赤纹、白喙，双翼和尾羽烧着火（青身 → 深青 → 赤纹，火翼橙黄）
+function bifang(f: number): PC {
+  const p = new PC(56, 48);
+  const B = 0x3a8a8a, BS = 0x22585e, BH = 0x6ac0b4, RD = 0xd83c28, O = 0xff9e38, Y = 0xffe45c, BK = 0xf0ead8, EY = 0xffe254, LEG = 0xc8372d;
+  const s = Math.sin((f / 4) * Math.PI * 2);
+  const flap = Math.round(s * 5);
+  // 独脚
+  p.strand([[26, 32], [27, 39], [26, 44]], LEG, 2);
+  p.strand([[26, 44], [22, 45]], LEG, 1);
+  p.strand([[26, 44], [30, 45]], LEG, 1);
+  p.oy = -Math.round(Math.abs(s));
+  // 远侧火翼
+  p.strand([[24, 22], [16, 14 - flap], [8, 10 - Math.round(flap * 1.4)]], RD, 5);
+  p.strand([[16, 14 - flap], [6, 15 - flap]], O, 3);
+  // 尾羽火
+  p.strand([[16, 28], [8, 30], [3, 27]], RD, 4);
+  p.strand([[14, 28], [6, 26]], O, 2);
+  p.set(3, 27, Y);
+  p.set(4, 25, Y);
+  // 身体
+  p.ellipse(26, 26, 11, 7, B);
+  p.ellipse(27, 29, 9, 3.5, BS);
+  p.ellipse(23, 23, 6, 3, BH);
+  for (const [x, y] of [[21, 27], [27, 25], [31, 28], [25, 30]]) p.span(y, x, x + 1, RD);
+  // 长颈、头、红冠、白喙
+  p.strand([[34, 22], [38, 15], [39, 10]], B, 4);
+  p.strand([[35, 22], [39, 15]], BS, 2);
+  p.ellipse(40, 9, 4, 3.5, B);
+  p.span(7, 38, 41, BH);
+  p.strand([[39, 6], [37, 2], [40, 3]], RD, 2);
+  p.strand([[43, 9], [50, 11]], BK, 2);
+  p.set(51, 11, BK);
+  p.set(41, 8, EY);
+  // 近侧火翼
+  p.strand([[28, 23], [36, 16 - flap], [44, 13 - Math.round(flap * 1.4)]], O, 5);
+  p.strand([[30, 22], [38, 17 - flap]], Y, 2);
+  p.strand([[36, 16 - flap], [46, 18 - flap]], RD, 3);
+  p.oy = 0;
+  finish(p, 'fire', 27, 44, 16, 3.5);
+  return p;
+}
+
+// 刑天（金，Boss）：断首的巨人，以乳为目、以脐为口，左手持干（盾）、右手举戚（斧）（铜褐皮 → 褐 → 深褐，钢灰战裙）
+function xingtian(f: number): PC {
+  const p = new PC(56, 56);
+  const SK = 0xb7875a, SS = 0x8a603e, SD = 0x5a3c2c, SH = 0xdcae7c;
+  const A = 0x8e96a4, AH = 0xc4cad4, AS = 0x5c6272, BL = 0xe0e8f0, BLS = 0x9aa6b8, WD = 0x6a4a30, GD = 0xd8b04a;
+  const WH = 0xf6f0e0, PU = 0x1c1424, M = 0x2a1418, NECK = 0xa83228, NECKD = 0x6e1c22;
+  const s = Math.sin((f / 4) * Math.PI * 2);
+  const st = Math.round(2 * s);
+  // 腿
+  p.strand([[22, 38], [21 - st, 46], [20 - st, 52]], SS, 6);
+  p.strand([[32, 38], [33 + st, 46], [34 + st, 52]], SD, 6);
+  p.span(52, 16 - st, 23 - st, SD);
+  p.span(52, 31 + st, 38 + st, SD);
+  p.oy = Math.round(Math.abs(s));
+  // 远侧手臂举戚
+  p.strand([[36, 20], [42, 14], [44, 8]], SS, 5);
+  p.line(44, 4, 46, 40, WD, 2);
+  p.ellipse(49, 9, 5, 7, BL);
+  p.ellipse(50.5, 10, 3, 5, BLS);
+  p.span(3, 47, 50, 0xf8fcff);
+  // 无头的躯干
+  p.ellipse(28, 26, 12, 13, SK);
+  p.ellipse(31, 29, 8, 9, SS);
+  p.ellipse(24, 20, 6, 5, SH);
+  // 断颈
+  p.ellipse(28, 13, 5, 2, NECK);
+  p.span(13, 26, 30, NECKD);
+  // 乳目、脐口
+  p.ellipse(24, 23, 2.2, 1.6, WH);
+  p.ellipse(32, 23, 2.2, 1.6, WH);
+  p.set(24, 23, PU);
+  p.set(32, 23, PU);
+  p.span(21, 22, 26, SD);
+  p.span(21, 30, 34, SD);
+  p.ellipse(28, 31, 4, 2, M);
+  for (const x of [26, 28, 30]) p.set(x, 30, WH);
+  // 战裙
+  p.rect(17, 36, 22, 5, A);
+  p.span(36, 17, 38, AH);
+  p.span(40, 17, 38, AS);
+  for (const x of [20, 25, 30, 35]) p.line(x, 37, x, 40, AS);
+  // 近侧手臂持干
+  p.strand([[18, 22], [14, 28], [14, 32]], SK, 5);
+  p.ellipse(11, 30, 7.5, 10.5, GD);
+  p.ellipse(11, 30, 6.2, 9.2, 0x8a6a34);
+  p.ellipse(12, 31, 4.5, 7.5, 0x6a4e28);
+  p.circle(11, 30, 2, GD);
+  p.oy = 0;
+  finish(p, 'metal', 28, 52, 18, 3.5);
+  return p;
+}
+
 export function buildEnemies(scene: Phaser.Scene) {
   const two = (key: string, fn: (f: number) => PC, rate: number) => {
     addSheet(scene, key, [fn(0), fn(1)]);
@@ -448,4 +679,14 @@ export function buildEnemies(scene: Phaser.Scene) {
   two('boss_shuyao', shuyao, 2);
   addSheet(scene, 'boss_shanxiao', [0, 1, 2, 3].map(shanxiaoBoss));
   addAnim(scene, 'boss_shanxiao_move', 'boss_shanxiao', [0, 1, 2, 3], 6);
+  two('en_chihu', chihu, 9);
+  two('en_huojing', huojing, 6);
+  two('en_feilian', feilian, 4);
+  // 残兵：0、1 走路，2 是倒地的尸骸
+  addSheet(scene, 'en_canbing', [0, 1, 2].map(canbing));
+  addAnim(scene, 'en_canbing_move', 'en_canbing', [0, 1], 4);
+  addSheet(scene, 'boss_bifang', [0, 1, 2, 3].map(bifang));
+  addAnim(scene, 'boss_bifang_move', 'boss_bifang', [0, 1, 2, 3], 8);
+  addSheet(scene, 'boss_xingtian', [0, 1, 2, 3].map(xingtian));
+  addAnim(scene, 'boss_xingtian_move', 'boss_xingtian', [0, 1, 2, 3], 5);
 }

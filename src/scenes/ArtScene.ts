@@ -41,5 +41,16 @@ export class ArtScene extends Phaser.Scene {
     ['fire', 'metal', 'wood', 'water', 'earth'].forEach((el, i) => this.add.sprite(490 + i * 14, 300, `pj_fu_${el}`, 0).play(`pj_fu_${el}`));
     const decor = ['dc_rock', 'dc_tuft', 'dc_tablet', 'dc_deadtree', 'dc_bamboo', 'dc_shoot', 'dc_mossrock', 'dc_fern'];
     decor.forEach((k, i) => this.add.image(470 + (i % 4) * 40, 120 + Math.floor(i / 4) * 70, k).setOrigin(0.5, 1));
+    // 第 4、5 关
+    const en45 = ['en_chihu', 'en_huojing', 'en_canbing', 'en_feilian'];
+    en45.forEach((k, i) => this.add.sprite(60 + i * 40, 270, k, 0).play(k + '_move'));
+    this.add.image(220, 272, 'en_canbing', 2);
+    this.add.sprite(290, 276, 'boss_bifang', 0).play('boss_bifang_move');
+    this.add.sprite(350, 280, 'boss_xingtian', 0).play('boss_xingtian_move');
+    ['ep_fire', 'ep_blade'].forEach((k, i) => this.add.image(400 + i * 16, 262, k));
+    this.add.sprite(436, 266, 'fx_flame', 0).play('fx_flame');
+    this.add.image(480, 262, 'dc_lava', 0);
+    const decor45 = ['dc_basalt', 'dc_scorch', 'dc_cinder', 'dc_barricade', 'dc_sword', 'dc_bones'];
+    decor45.forEach((k, i) => this.add.image(520 + (i % 3) * 36, 250 + Math.floor(i / 3) * 34, k).setOrigin(0.5, 1));
   }
 }

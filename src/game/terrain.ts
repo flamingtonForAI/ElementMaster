@@ -76,3 +76,28 @@ export function ridgeGap(wx: number, wy: number, seed: number, def: RidgeDef): b
 export function isRidge(wx: number, wy: number, seed: number, def: RidgeDef, pad = 0): boolean {
   return ridgeDist(wx, wy, seed, def) < RIDGE_HALF + pad && !ridgeGap(wx, wy, seed, def);
 }
+
+/** 稀疏的固定点位（熔岩口、煞气剑阵）：每 cell 见方一格，按哈希决定这格有没有、落在格内哪里 */
+export interface SpotDef {
+  cell: number;
+  /** 一格里有点位的几率 */
+  chance: number;
+  radius: number;
+}
+
+/**
+ * 第 (ix, iy) 格的点位，没有返回 null。离出生点、地图边缘太近，或者挨着山脊的格子不放。
+ * salt 区分同一关里的不同点位种类
+ */
+export function spotAt(ix: number, iy: number, seed: number, salt: number, def: SpotDef, half: number, ridge?: RidgeDef): [number, number] | null {
+  const s = seed * 97 + salt;
+  if (hash(ix, iy, s) >= def.chance) return null;
+  const x = (ix + 0.2 + hash(ix, iy, s + 1) * 0.6) * def.cell;
+  const y = (iy + 0.2 + hash(ix, iy, s + 2) * 0.6) * def.cell;
+  if (Math.hypot(x, y) < 200 + def.radius) return null;
+  const m = def.radius + 40;
+  if (Math.abs(x) > half - m || Math.abs(y) > half - m) return null;
+  // 缺口处也不放，免得点位边缘贴着缺口两侧的石头
+  if (ridge && ridgeDist(x, y, seed, ridge) < RIDGE_HALF + def.radius) return null;
+  return [x, y];
+}

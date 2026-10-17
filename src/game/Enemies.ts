@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ENEMIES, type EnemyDef } from '../config/enemies';
 import { STATUS_INFO, type Inflict } from '../config/status';
-import { EL_INFO } from '../config/elements';
+import { EL_INFO, type El } from '../config/elements';
 import { SpatialGrid } from './SpatialGrid';
 import { PLAYER_RADIUS } from './Player';
 import { label, hex } from '../ui/text';
@@ -65,6 +65,14 @@ export class Enemy {
   atkDps = 0;
   /** Boss 已按每 20% 血量掉过几瓶解毒药 */
   dropStage = 0;
+  /** 最后一次受伤的元素，判定残兵复活、刑天复起 */
+  lastEl: El | null = null;
+  /** 这之前不受伤（刑天复起） */
+  invulnUntil = 0;
+  /** 已经复起过（刑天） */
+  rose = false;
+  /** 冲刺留火的里程（赤狐、毕方） */
+  trailAcc = 0;
   glyph: Phaser.GameObjects.Text | null = null;
   constructor(readonly sprite: Phaser.GameObjects.Sprite) {}
 }
@@ -92,6 +100,9 @@ export class EnemyManager {
   readonly grid = new SpatialGrid<Enemy>(32);
   private nextId = 1;
   private tmp: Enemy[] = [];
+  /** 地上等着复活的残兵尸骸数，超过上限就不再复活 */
+  private corpses = 0;
+  private reviveHinted = false;
 
   constructor(private g: GameScene) {}
 
@@ -114,6 +125,10 @@ export class EnemyManager {
     e.xp = o.noXp ? 0 : e.elite ? 20 : def.xp;
     e.atkDps = (def.inflict?.dps ?? 0) * (e.elite ? 1.5 : 1) * (e.boss ? 1 : this.g.dmgScale());
     e.dropStage = 0;
+    e.lastEl = null;
+    e.invulnUntil = 0;
+    e.rose = false;
+    e.trailAcc = 0;
     e.alive = true;
     e.kbx = e.kby = 0;
     e.slowUntil = e.stunUntil = e.stunImmuneUntil = e.flashUntil = e.contactAt = 0;
@@ -239,8 +254,7 @@ export class EnemyManager {
         g.puppets.hurt(pp, e.dmg, e.def.el);
       } else if (p.alive && pdist < e.radius + PLAYER_RADIUS && now >= e.contactAt) {
         e.contactAt = now + 0.8;
-        // 狼妖扑咬有前摇，冲刺中撞到必定暴击
-        g.hurtPlayer(e.dmg, e.def.el, this.hurtOf(e, e.def.behavior === 'boss_wolf' && e.state === 2));
+        g.hurtPlayer(e.dmg, e.def.el, this.hurtOf(e, this.dashing(e)));
       }
 
       const s = e.sprite;
@@ -251,7 +265,7 @@ export class EnemyManager {
       const tint =
         now < e.flashUntil ? 1
         : stunned ? 2
-        : (e.state === 1 && (e.def.behavior === 'charge' || e.boss)) || (e.state === 2 && e.def.behavior === 'burrow') ? 4
+        : (e.state === 1 && (e.def.behavior === 'charge' || e.boss)) || (e.state === 4 && e.def.behavior === 'boss_xingtian') || (e.state === 2 && e.def.behavior === 'burrow') ? 4
         : burning ? 5
         : poisoned ? 6
         : slow < 1 ? 3
@@ -309,6 +323,8 @@ export class EnemyManager {
           e.state = 0;
           e.timer = 3.5;
         }
+        // 赤狐：冲过的地方留一溜火
+        if (e.def.trail) this.trail(e, 170 * slow * dt, 18, 9, 1.8, 3);
         return [e.dashX * 170 * slow, e.dashY * 170 * slow];
       }
       case 'spit': {
@@ -356,6 +372,10 @@ export class EnemyManager {
       }
       case 'boss_ape':
         return this.ape(e, dt, nx, ny, sp);
+      case 'boss_bird':
+        return this.bird(e, dt, nx, ny, sp, dist);
+      case 'boss_xingtian':
+        return this.xingtian(e, dt, nx, ny, sp, dist);
       case 'boss_wolf': {
         e.timer -= dt;
         if (e.state === 0) {
@@ -436,6 +456,246 @@ export class EnemyManager {
   /** 钻在地下：不吃岩壁、不碰人 */
   private underground(e: Enemy) {
     return e.def.behavior === 'burrow' && (e.state === 1 || e.state === 2);
+  }
+
+  /** 有前摇的冲撞，撞到必定暴击：狼妖扑咬、毕方俯冲、刑天盾冲 */
+  private dashing(e: Enemy) {
+    const b = e.def.behavior;
+    return (b === 'boss_wolf' && e.state === 2) || (b === 'boss_bird' && e.state === 2) || (b === 'boss_xingtian' && e.state === 5);
+  }
+
+  /** 每走 step 像素在脚下留一片余火 */
+  private trail(e: Enemy, moved: number, step: number, r: number, dur: number, dmg: number) {
+    e.trailAcc += moved;
+    if (e.trailAcc < step) return;
+    e.trailAcc = 0;
+    this.g.hazards.patch(e.x, e.y, r, dur, dmg);
+  }
+
+  /**
+   * 毕方：绕着玩家飞，定时朝玩家扇出一把火球；蓄力后贴地俯冲，冲过的地方留下一道余火；
+   * 半血后火球更密、俯冲更勤，并且每 6.5 秒在玩家周围降下四道火柱。
+   */
+  private bird(e: Enemy, dt: number, nx: number, ny: number, sp: number, dist: number): [number, number] {
+    const g = this.g;
+    const half = e.hp < e.maxHp * 0.5;
+    e.timer -= dt;
+    if (half) {
+      e.timer3 -= dt;
+      if (e.timer3 <= 0) {
+        e.timer3 = 6.5;
+        const p = g.player;
+        g.hazards.blast(p.x, p.y, 30, 1.1, 14, 2.5);
+        const off = Math.random() * Math.PI;
+        for (let i = 0; i < 3; i++) {
+          const a = off + (i / 3) * Math.PI * 2;
+          g.hazards.blast(p.x + Math.cos(a) * 80, p.y + Math.sin(a) * 55, 30, 1.1, 14, 2.5);
+        }
+      }
+    }
+    if (e.state === 0) {
+      // 飞着的时候身子离地一点
+      e.lift = Math.max(0, e.lift - dt * 40);
+      e.timer2 -= dt;
+      if (e.timer2 <= 0) {
+        e.timer2 = half ? 2.4 : 3.2;
+        const n = half ? 7 : 5;
+        const a = Math.atan2(ny, nx);
+        audio.sfx('bossShot', { rate: 1.1 });
+        for (let i = 0; i < n; i++) {
+          const k = (i - (n - 1) / 2) * 0.2;
+          g.proj.enemyShot('ep_fire', e.x, e.y - 20, Math.cos(a + k) * 120, Math.sin(a + k) * 120, 10, 'fire', this.hurtOf(e));
+        }
+      }
+      if (e.timer <= 0 && dist < 260) {
+        e.state = 1;
+        e.timer = 0.75;
+        e.dashX = nx;
+        e.dashY = ny;
+        g.fx.line(e.x, e.y - 6, Math.atan2(ny, nx), 260, 0xff5a4a, 0.75, 12);
+        audio.sfx('bossCharge');
+      }
+      // 远了就飞过来，近了绕着玩家打转
+      if (dist > 120) return [nx * sp, ny * sp];
+      return [-ny * sp * 0.7 + nx * sp * 0.15, nx * sp * 0.7 + ny * sp * 0.15];
+    }
+    if (e.state === 1) {
+      // 蓄力：抬高身子
+      e.lift = Math.min(14, e.lift + dt * 30);
+      if (e.timer <= 0) {
+        e.state = 2;
+        e.timer = 0.75;
+        e.lift = 0;
+        e.trailAcc = 0;
+      }
+      return [0, 0];
+    }
+    if (e.state === 2) {
+      this.trail(e, 300 * dt, 22, 14, 3, 5);
+      if (e.timer <= 0) {
+        e.state = 3;
+        e.timer = 0.6;
+      }
+      return [e.dashX * 300, e.dashY * 300];
+    }
+    if (e.timer <= 0) {
+      e.state = 0;
+      e.timer = half ? 3.2 : 4.5;
+    }
+    return [0, 0];
+  }
+
+  /**
+   * 刑天：左干右戚，慢慢逼近。贴身时举斧蓄力劈下（必定暴击）；中距离举盾冲撞；
+   * 定时舞干戚甩出一圈飞刃。第一次被打倒时若不是火系击杀，跪地 2 秒后带 35% 生命复起，
+   * 之后更快，舞干戚时还会唤起残兵。
+   */
+  private xingtian(e: Enemy, dt: number, nx: number, ny: number, sp: number, dist: number): [number, number] {
+    const g = this.g;
+    const half = e.hp < e.maxHp * 0.5;
+    const fast = e.rose ? 1.25 : 1;
+    const hurt = this.hurtOf(e);
+    if (e.state === 9) {
+      // 跪地复起
+      e.timer -= dt;
+      if (e.timer <= 0) {
+        e.state = 0;
+        e.timer = 1;
+        e.sprite.setScale(1);
+        audio.sfx('bossCharge');
+        g.cameras.main.shake(300, 0.008);
+        g.fx.ring(e.x, e.y - 10, 70, 0xe06a5a, 0.5);
+        this.bladeRing(e, 20, hurt);
+      }
+      return [0, 0];
+    }
+    e.timer -= dt;
+    e.timer2 -= dt;
+    if (e.state === 0) {
+      e.timer3 -= dt;
+      if (e.timer3 <= 0) {
+        e.timer3 = half ? 5.5 : 7;
+        this.bladeRing(e, half ? 16 : 12, hurt);
+        if (e.rose) {
+          for (let i = 0; i < 3; i++) {
+            const a = (i / 3) * Math.PI * 2;
+            this.spawn('canbing', e.x + Math.cos(a) * 40, e.y + Math.sin(a) * 30, { hpMult: g.hpScale(), noXp: true });
+          }
+        }
+      }
+      if (e.timer <= 0 && dist < 70) {
+        // 举斧：锁定身前一片
+        e.state = 1;
+        e.timer = 0.55 / fast;
+        e.tx = e.x + nx * 34;
+        e.ty = e.y + ny * 34;
+        e.sprite.setScale(1.06, 0.92);
+        g.fx.disc(e.tx, e.ty, 46, 0xff5a4a, 0.25, e.timer);
+        audio.sfx('bossCharge');
+        return [0, 0];
+      }
+      if (e.timer2 <= 0 && dist > 90 && dist < 300) {
+        e.state = 4;
+        e.timer = 0.7 / fast;
+        e.dashX = nx;
+        e.dashY = ny;
+        g.fx.line(e.x, e.y - 10, Math.atan2(ny, nx), 200, 0xff5a4a, e.timer, 14);
+        audio.sfx('bossCharge');
+        return [0, 0];
+      }
+      return [nx * sp * fast, ny * sp * fast];
+    }
+    if (e.state === 1) {
+      if (e.timer <= 0) {
+        // 劈下
+        e.sprite.setScale(1);
+        audio.sfx('explode', { rate: 0.6 });
+        g.cameras.main.shake(200, 0.007);
+        g.fx.crack(e.tx, e.ty, 0.6);
+        g.fx.ring(e.tx, e.ty - 4, 46, 0xe0d8ff, 0.35);
+        g.fx.burst(e.tx, e.ty - 4, 0x9aa4b8, 14);
+        const p = g.player;
+        if (Math.hypot(p.x - e.tx, p.y - e.ty) < 46 + PLAYER_RADIUS) g.hurtPlayer(e.dmg * 1.2, 'metal', this.hurtOf(e, true));
+        e.state = 3;
+        e.timer = 0.7 / fast;
+      }
+      return [0, 0];
+    }
+    if (e.state === 4) {
+      if (e.timer <= 0) {
+        e.state = 5;
+        e.timer = 0.5;
+      }
+      return [0, 0];
+    }
+    if (e.state === 5) {
+      if (e.timer <= 0) {
+        e.state = 3;
+        e.timer = 0.6 / fast;
+        e.timer2 = half ? 4.5 : 6;
+      }
+      return [e.dashX * 260, e.dashY * 260];
+    }
+    // 收招
+    if (e.timer <= 0) {
+      e.state = 0;
+      e.timer = half ? 1.2 : 1.8;
+    }
+    return [0, 0];
+  }
+
+  /** 舞干戚：一圈飞刃 */
+  private bladeRing(e: Enemy, n: number, hurt: HurtOpts) {
+    const g = this.g;
+    audio.sfx('bossShot', { rate: 0.9 });
+    const off = Math.random() * Math.PI;
+    for (let i = 0; i < n; i++) {
+      const a = off + (i / n) * Math.PI * 2;
+      g.proj.enemyShot('ep_blade', e.x, e.y - 18, Math.cos(a) * 95, Math.sin(a) * 95, 10, 'metal', hurt);
+    }
+  }
+
+  /** 刑天第一次被打倒：跪地无敌 2 秒，然后带一截生命复起 */
+  private rise(e: Enemy) {
+    const g = this.g;
+    e.rose = true;
+    e.hp = Math.round(e.maxHp * (e.def.rise ?? 0.3));
+    e.state = 9;
+    e.timer = 2;
+    e.invulnUntil = e.contactAt = g.now + 2;
+    e.kbx = e.kby = 0;
+    e.lift = 0;
+    e.sprite.setScale(1.1, 0.8);
+    e.poisonUntil = e.burnUntil = e.slowUntil = 0;
+    g.proj.clearEnemyShots();
+    g.fx.burst(e.x, e.y - 16, 0xc8372d, 24);
+    g.hud.toast(`${e.def.name}断首犹战！以火终结才不会复起`, '#ff6a5a');
+    audio.sfx('boss');
+  }
+
+  /** 残兵倒地：留下尸骸，几秒后原地复活（不再掉经验） */
+  private corpse(e: Enemy) {
+    const g = this.g;
+    const { x, y, def } = e;
+    if (this.corpses >= 60) return;
+    this.corpses++;
+    const img = g.add.image(x, y, def.tex, 2).setOrigin(0.5, 0.9).setDepth(y - 1).setFlipX(e.sprite.flipX);
+    const t = def.revive!;
+    // 复活前抖一下
+    g.later(t - 0.8, () => {
+      if (img.active) g.tweens.add({ targets: img, x: x + 1, duration: 60, yoyo: true, repeat: 5 });
+    });
+    g.later(t, () => {
+      this.corpses--;
+      img.destroy();
+      if (g.over) return;
+      this.spawn(def.id, x, y, { hpMult: g.hpScale(), noXp: true });
+      g.fx.burst(x, y - 6, 0x9aa4b8, 8);
+      if (!this.reviveHinted) {
+        this.reviveHinted = true;
+        g.hud.toast(`${def.name}又爬起来了！用火系击杀（灼烧也算）才不会复活`, '#ffa060');
+      }
+    });
   }
 
   /**
@@ -545,6 +805,8 @@ export class EnemyManager {
   kill(e: Enemy) {
     if (!e.alive) return;
     const g = this.g;
+    const burnt = e.lastEl === 'fire';
+    if (e.def.rise && !e.rose && !burnt && !g.over) return this.rise(e);
     e.alive = false;
     e.sprite.setVisible(false).setActive(false);
     e.sprite.anims.stop();
@@ -580,6 +842,14 @@ export class EnemyManager {
         if (Math.hypot(p.x - x, p.y - y) < 18 + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale(), 'fire', { inflict: burn });
       });
     }
+    // 残兵：不是被火系击杀就会复活；精英不复活
+    if (e.def.revive && !e.elite && !g.over) {
+      if (burnt) {
+        g.fx.text(e.x, e.y - 18, '焚', '#ffa060', 0.6);
+        g.fx.burst(e.x, e.y - 6, 0xff8a3a, 6);
+      } else this.corpse(e);
+    }
+    if (e.boss && e.def.rise && burnt) g.fx.text(e.x, e.y - 40, '焚', '#ffa060', 1.2);
     if (e.boss) g.onBossKilled(e);
   }
 

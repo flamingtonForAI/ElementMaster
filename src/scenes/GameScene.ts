@@ -73,8 +73,8 @@ export class GameScene extends Phaser.Scene {
   fx!: Fx;
   skills!: SkillSystem;
   world!: World;
-  /** 关卡地形机制（落石等），没有就为空 */
-  hazards: Hazards | null = null;
+  /** 关卡地形机制：落石、熔岩口、余火、剑阵提示 */
+  hazards!: Hazards;
 
   /** 局内时钟（秒），暂停时不走 */
   now = 0;
@@ -163,7 +163,7 @@ export class GameScene extends Phaser.Scene {
     this.status = new PlayerStatus(this);
     this.player = new Player(this);
     this.puppets = new PuppetManager(this);
-    this.hazards = L.rockfall ? new Hazards(this) : null;
+    this.hazards = new Hazards(this);
     if (this.char.balanced) {
       this.zhoutian = GEN_ORDER[Math.floor(Math.random() * 5)];
       this.zhoutianAt = this.zhoutianPeriod();
@@ -233,7 +233,7 @@ export class GameScene extends Phaser.Scene {
     this.pickups.update(dt);
     this.fx.update(dt);
     this.world.update(dt);
-    this.hazards?.update();
+    this.hazards.update();
     this.runTasks();
 
     if (!this.over && !this.boss) {
@@ -421,13 +421,14 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** 敌人对玩家一方的有效护甲：透甲、烧结、盘根、熔金 */
+  /** 敌人对玩家一方的有效护甲：煞气剑阵，透甲、烧结、盘根、熔金 */
   private armorOf(e: Enemy) {
     const m = this.build.mods;
-    if (e.armor <= 0) return e.armor;
+    const armor = e.armor + (this.world?.zoneArmor(e.x, e.y) ?? 0);
+    if (armor <= 0) return armor;
     if (m['hh.stunBreak'] && this.now < e.stunUntil) return 0;
     if (m['kx.fire'] && e.def.el === 'metal' && this.now < e.burnUntil) return 0;
-    const a = m['kx.wood'] && e.def.el === 'earth' ? e.armor * 0.5 : e.armor;
+    const a = m['kx.wood'] && e.def.el === 'earth' ? armor * 0.5 : armor;
     return Math.max(0, a - (m.armorPen ?? 0));
   }
 
@@ -445,7 +446,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   hitEnemy(e: Enemy, base: number, el: El, o: HitOpts = {}) {
-    if (!e.alive) return 0;
+    if (!e.alive || this.now < e.invulnUntil) return 0;
     const rel = relation(el, e.def.el);
     const ps = this.pstats;
     let m = this.dmgMult(e, el);
@@ -463,6 +464,7 @@ export class GameScene extends Phaser.Scene {
     const critDmg = this.pstats.critDmg + (this.now < e.slowUntil ? md['hh.slowCritDmg'] ?? 0 : 0);
     const dmg = Math.max(1, Math.round(base * m * (crit ? critDmg : 1) - this.armorOf(e)));
     e.hp -= dmg;
+    e.lastEl = el;
     // 伐木：残血的木系敌人直接斩杀
     if (md['kx.metal'] && e.def.el === 'wood' && !e.boss && e.hp > 0 && e.hp < e.maxHp * 0.15) {
       e.hp = 0;
@@ -597,17 +599,20 @@ export class GameScene extends Phaser.Scene {
 
   /** 中毒、灼烧的结算：不吃护甲、不暴击；只给精英和 Boss 跳数字，免得刷屏 */
   dotEnemy(e: Enemy, v: number, kind: StatusId) {
-    if (!e.alive) return;
+    if (!e.alive || this.now < e.invulnUntil) return;
     const dmg = Math.max(1, Math.round(v * this.pstats.dotMult));
     e.hp -= dmg;
+    // 灼烧烧死的算火系击杀（残兵不再复活）
+    e.lastEl = kind === 'burn' ? 'fire' : 'wood';
     if (e.boss || e.elite) this.fx.text(e.x + 8, e.y - e.sprite.displayHeight * 0.6, `${dmg}`, kind === 'burn' ? '#ffa060' : '#8fe06a', 0.6);
     if (e.hp <= 0) this.enemies.kill(e);
   }
 
-  /** 地形造成的伤害（落石）：固定数值，不吃玩家加成和护甲 */
-  envDamage(e: Enemy, v: number) {
-    if (!e.alive) return;
+  /** 地形造成的伤害（落石、熔岩）：固定数值，不吃玩家加成和护甲 */
+  envDamage(e: Enemy, v: number, el: El = 'earth') {
+    if (!e.alive || this.now < e.invulnUntil) return;
     e.hp -= Math.max(1, Math.round(v));
+    e.lastEl = el;
     e.flashUntil = this.now + 0.05;
     if (e.hp <= 0) this.enemies.kill(e);
   }
