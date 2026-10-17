@@ -77,7 +77,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 3, name: '山林', duration: 480,
     terrain: T({ earth: 0.7, wood: 0.2, metal: 0.1 }),
-    enemies: [{ id: 'shiyong', w: 3 }, { id: 'shanxiao', w: 3 }, { id: 'chuanshan', w: 2 }, { id: 'zhangchan', w: 1 }, { id: 'tengguai', w: 2 }],
+    enemies: [{ id: 'shiyong', w: 3 }, { id: 'shanxiao', w: 2 }, { id: 'chuanshan', w: 2 }, { id: 'zhangchan', w: 1 }, { id: 'tengguai', w: 2 }],
     spawn: [[0, 1.1, 45], [90, 2.2, 110], [180, 3.4, 170], [300, 4.8, 250], [400, 6.2, 330], [420, 3.6, 330]],
     hpMult: 1.6, boss: 'shanxiaowang', bossName: '山魈王', bgm: 'level3',
     ground: 'ground_3',

@@ -311,7 +311,7 @@ export class EnemyManager {
         // 靠近到一定距离后绕着走，定时朝玩家吐毒囊
         e.timer -= dt;
         if (e.timer <= 0 && dist < 180) {
-          e.timer = 4;
+          e.timer = 4.5 + Math.random();
           g.proj.enemyShot(e.def.shot ?? 'ep_poison', e.x, e.y - 8, nx * 90, ny * 90, e.dmg, e.def.el, this.hurtOf(e));
           audio.sfx('bossShot', { rate: 1.6, vol: 0.4 });
         }
