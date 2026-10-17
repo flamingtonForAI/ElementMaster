@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { UPGRADES, price, wudaoPrice, WUDAO_MAX, type UpgradeDef } from '../config/meta';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
 import { EL_INFO, GEN_ORDER, type El } from '../config/elements';
-import { STAR, CENTER, canLight, canUnlight, describe, hehuaEls, type StarNode } from '../config/startree';
+import { STAR, CENTER, R_KEY, canLight, canUnlight, describe, type StarNode } from '../config/startree';
 import { LEGACIES, LEGACY_LEVELS, type LegacyNode } from '../config/legacy';
 import { loadSave, writeSave, type Save } from '../game/save';
 import { daoPoints, legacyPoints, litNodes, treeStart } from '../game/talents';
@@ -363,7 +363,7 @@ export class DongfuScene extends Phaser.Scene {
     const left = this.pointsLeft();
 
     // 底纹：外圈五边形和五角星
-    const R = 352;
+    const R = R_KEY;
     const vs = GEN_ORDER.map((_, i) => {
       const a = ((-90 + 72 * i) * Math.PI) / 180;
       return this.toScreen(R * Math.cos(a), R * Math.sin(a));
@@ -401,9 +401,9 @@ export class DongfuScene extends Phaser.Scene {
       const r = this.nodeR(nd);
       const isLit = lit.has(nd.id);
       const can = canLight(nd.id, start, lit);
-      const he = hehuaEls(nd.id);
-      const col = he ? EL_INFO[he[0]].color : elColor(nd.el);
-      const ring = he ? EL_INFO[he[1]].color : col;
+      const he = nd.pair;
+      const col = he ? EL_INFO[he.a].color : elColor(nd.el);
+      const ring = he ? EL_INFO[he.b].color : col;
       if (isLit) {
         g.fillStyle(col, 1).fillCircle(x, y, r);
         g.lineStyle(1.5, ring, 1).strokeCircle(x, y, r);
@@ -411,7 +411,7 @@ export class DongfuScene extends Phaser.Scene {
         g.fillStyle(0x0e0b14, 1).fillCircle(x, y, r);
         const dark = nd.el ? EL_INFO[nd.el].dark : 0x5a5266;
         if (can) g.lineStyle(1.5, ring, left > 0 ? 1 : 0.5);
-        else g.lineStyle(1, he ? EL_INFO[he[1]].dark : dark, 0.8);
+        else g.lineStyle(1, he ? EL_INFO[he.b].dark : dark, 0.8);
         g.strokeCircle(x, y, r);
       }
       if (nd.id === start) g.lineStyle(1, 0xf4eee0, 0.9).strokeCircle(x, y, r + 3);
@@ -479,12 +479,12 @@ export class DongfuScene extends Phaser.Scene {
     const L = this.layer;
     const lit = this.lit();
     const start = treeStart(this.char);
-    const he = hehuaEls(nd.id);
-    const col = he ? EL_INFO[he[0]].color : elColor(nd.el);
+    const he = nd.pair;
+    const col = he ? EL_INFO[he.a].color : elColor(nd.el);
     const x = PX + 10;
     const big = nd.name.length <= 7;
     L.add(label(this, x, VY + 30, nd.name, '#f4eee0', big ? 24 : 12));
-    const tag = `${KIND_NAME[nd.kind]}${nd.el && nd.kind !== 'gate' ? ` · ${EL_INFO[nd.el].name}` : ''}${he ? ` · ${EL_INFO[he[0]].name}生${EL_INFO[he[1]].name}` : ''}`;
+    const tag = `${KIND_NAME[nd.kind]}${nd.el && nd.kind !== 'gate' ? ` · ${EL_INFO[nd.el].name}` : ''}${he ? ` · ${EL_INFO[he.a].name}${he.rel === 'gen' ? '生' : '克'}${EL_INFO[he.b].name}` : ''}`;
     L.add(label(this, x, VY + (big ? 60 : 48), tag, hex(col)));
     const lines = [...(nd.note ? [nd.note] : []), ...describe(nd.mods)];
     L.add(label(this, x, VY + 80, wrap(lines.join('\n'), PW - 20), '#d8d0e4', 12, false).setLineSpacing(4));
@@ -554,7 +554,7 @@ export class DongfuScene extends Phaser.Scene {
   }
 
   private zoomAt(sx: number, sy: number, k: number) {
-    const z = Phaser.Math.Clamp(this.zoom * k, 0.35, 1.5);
+    const z = Phaser.Math.Clamp(this.zoom * k, 0.2, 1.5);
     // 保持 (sx, sy) 下的星图坐标不动
     const mx = this.camX + (sx - VX - VW / 2) / this.zoom;
     const my = this.camY + (sy - VY - VH / 2) / this.zoom;
@@ -566,8 +566,8 @@ export class DongfuScene extends Phaser.Scene {
   }
 
   private clampCam() {
-    this.camX = Phaser.Math.Clamp(this.camX, -380, 380);
-    this.camY = Phaser.Math.Clamp(this.camY, -380, 380);
+    this.camX = Phaser.Math.Clamp(this.camX, -R_KEY - 30, R_KEY + 30);
+    this.camY = Phaser.Math.Clamp(this.camY, -R_KEY - 30, R_KEY + 30);
   }
 
   private hitNode(sx: number, sy: number) {

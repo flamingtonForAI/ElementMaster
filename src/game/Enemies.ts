@@ -182,7 +182,11 @@ export class EnemyManager {
         e.dotTick -= dt;
         if (e.dotTick <= 0) {
           e.dotTick += 0.5;
-          const dps = (poisoned ? e.poisonDps : 0) + (burning ? e.burnStacks * e.burnDps : 0);
+          // 润泽：迟缓时中毒加深；引火：中毒时灼烧加深
+          const mods = g.build.mods;
+          const pd = poisoned ? e.poisonDps * (now < e.slowUntil ? 1 + (mods['hh.slowPoison'] ?? 0) : 1) : 0;
+          const bd = burning ? e.burnStacks * e.burnDps * (poisoned ? 1 + (mods['hh.poisonBurn'] ?? 0) : 1) : 0;
+          const dps = pd + bd;
           g.dotEnemy(e, dps * 0.5, burning ? 'burn' : 'poison');
           if (!e.alive) continue;
         }
@@ -513,6 +517,31 @@ export class EnemyManager {
     return [0, 0];
   }
 
+  /** 星图里挂在击杀上的效果：薪传、余烬、甘霖、灭焰 */
+  private comboKill(e: Enemy) {
+    const g = this.g;
+    const m = g.build.mods;
+    const x = e.x;
+    const y = e.y;
+    if (g.now < e.burnUntil) {
+      if (m['hh.burnSpread']) {
+        g.fx.ring(x, y - 6, 45, STATUS_INFO.burn.tint, 0.3);
+        for (const o of this.inRadius(x, y, 45, [])) if (o !== e) g.burnEnemy(o, e.burnDps);
+      }
+      const ember = m['hh.ember'];
+      if (ember && !e.boss) {
+        const dmg = e.maxHp * ember * (e.elite ? 0.25 : 1);
+        // 稍等一下再爆，连锁时一圈圈炸开
+        g.later(0.08, () => {
+          g.fx.ring(x, y - 6, 36, 0xe8a050, 0.35);
+          for (const o of this.inRadius(x, y, 36, [])) g.hitEnemy(o, dmg, 'earth', { kb: 30, fromX: x, fromY: y, proc: 0.5, noCrit: true });
+        });
+      }
+    }
+    if (m['hh.poisonHeal'] && g.now < e.poisonUntil) g.regenPlayer(m['hh.poisonHeal']);
+    if (m['kx.water'] && e.def.el === 'fire') g.regenPlayer(0.3);
+  }
+
   kill(e: Enemy) {
     if (!e.alive) return;
     const g = this.g;
@@ -529,6 +558,7 @@ export class EnemyManager {
       g.fx.ring(e.x, e.y - 6, 50, STATUS_INFO.poison.tint, 0.3);
       for (const o of this.inRadius(e.x, e.y, 50, [])) if (o !== e) g.poisonEnemy(o, e.poisonDps, 3);
     }
+    this.comboKill(e);
     g.fx.burst(e.x, e.y - 6, EL_INFO[e.def.el].color, e.boss ? 40 : e.elite ? 16 : 6);
     if (e.boss || e.elite) audio.sfx('killBig');
     else audio.sfx('kill');
@@ -536,7 +566,8 @@ export class EnemyManager {
     if (e.elite) g.pickups.chest(e.x, e.y, e.chest);
     else if (!e.boss && Math.random() < 0.012) g.pickups.pill(e.x + 6, e.y);
     else if (!e.boss && e.def.inflict?.kind === 'poison' && Math.random() < 0.015) g.pickups.antidote(e.x - 6, e.y);
-    if (e.def.behavior === 'explode') {
+    // 灭焰：火系敌人死后不再自爆
+    if (e.def.behavior === 'explode' && !(g.build.mods['kx.water'] && e.def.el === 'fire')) {
       const x = e.x;
       const y = e.y;
       // 自爆必定灼烧

@@ -18,6 +18,7 @@ import { World } from '../game/World';
 import { Hazards } from '../game/Hazards';
 import { loadSave, writeSave } from '../game/save';
 import { talentMods, daoPoints, legacyPoints } from '../game/talents';
+import { HEHUA_PROC, HEHUA_VULN, hehuaPairs } from '../config/startree';
 import { createDebug, debugEnabled } from '../game/debug';
 import { CRATE_LOOT, ITEM_SPAWN, TALISMANS, itemSpot, pickWeighted, type TalismanId } from '../config/map';
 import { hex } from '../ui/text';
@@ -97,6 +98,8 @@ export class GameScene extends Phaser.Scene {
   shield = 0;
   /** 散人·周天：当前轮到的元素和下次轮转的时间 */
   zhoutian: El | null = null;
+  /** 点亮的合化要穴：相生的母、子，进局时算一次 */
+  hehua: { a: El; b: El }[] = [];
   private zhoutianAt = 0;
   /** 遁符：无敌并加速到这个时刻 */
   dunUntil = 0;
@@ -145,6 +148,7 @@ export class GameScene extends Phaser.Scene {
     const save = loadSave();
     const meta = save.meta;
     this.build = new Build(this.char, L, meta, talentMods(save, this.char));
+    this.hehua = hehuaPairs(this.build.mods);
     this.pstats = this.build.stats();
     this.revives = upgradeSum(meta, 'revive');
     this.rerolls = upgradeSum(meta, 'reroll');
@@ -399,7 +403,45 @@ export class GameScene extends Phaser.Scene {
     if (el === this.zhoutian) k *= 1.25 + (m['xuan.bonus'] ?? 0);
     if (this.shield > 0 && m['qing.shieldDmg']) k *= 1 + m['qing.shieldDmg'];
     if (m['qing.vuln'] && this.now < e.poisonUntil) k *= 1 + m['qing.vuln'];
+    if (m.vsSlow && this.now < e.slowUntil) k *= 1 + m.vsSlow;
+    if (m.hpHighDmg && e.hp > e.maxHp * 0.7) k *= 1 + m.hpHighDmg;
+    if (m['hh.stunBreak'] && this.now < e.stunUntil) k *= 1 + m['hh.stunBreak'];
+    for (const h of this.hehua) if (this.hasStatus(e, STATUS_OF[h.a]) && this.hasStatus(e, STATUS_OF[h.b])) k *= 1 + HEHUA_VULN;
     return k;
+  }
+
+  hasStatus(e: Enemy, kind: StatusId) {
+    const now = this.now;
+    switch (kind) {
+      case 'slow': return now < e.slowUntil;
+      case 'poison': return now < e.poisonUntil;
+      case 'burn': return now < e.burnUntil;
+      case 'flaw': return now < e.flawUntil;
+      case 'stun': return now < e.stunUntil;
+    }
+  }
+
+  /** 敌人对玩家一方的有效护甲：透甲、烧结、盘根、熔金 */
+  private armorOf(e: Enemy) {
+    const m = this.build.mods;
+    if (e.armor <= 0) return e.armor;
+    if (m['hh.stunBreak'] && this.now < e.stunUntil) return 0;
+    if (m['kx.fire'] && e.def.el === 'metal' && this.now < e.burnUntil) return 0;
+    const a = m['kx.wood'] && e.def.el === 'earth' ? e.armor * 0.5 : e.armor;
+    return Math.max(0, a - (m.armorPen ?? 0));
+  }
+
+  /** 星图的跨系效果：合化要穴让两系术互附对方的异常；相克奇穴对被克的那系敌人 */
+  private comboHit(e: Enemy, el: El, dmg: number) {
+    const m = this.build.mods;
+    const foe = e.def.el;
+    for (const h of this.hehua) {
+      const other = el === h.a ? h.b : el === h.b ? h.a : null;
+      if (other && Math.random() < HEHUA_PROC * statusChance(STATUS_OF[other], foe, false)) this.afflict(e, STATUS_OF[other], dmg);
+    }
+    if (m['kx.wood'] && foe === 'earth' && Math.random() < 0.2) this.slowEnemy(e, 2);
+    if (m['kx.fire'] && foe === 'metal' && Math.random() < 0.25) this.afflict(e, 'burn', dmg);
+    if (m['kx.earth'] && foe === 'water' && Math.random() < 0.2) this.stunEnemy(e, 0.6);
   }
 
   hitEnemy(e: Enemy, base: number, el: El, o: HitOpts = {}) {
@@ -414,9 +456,18 @@ export class GameScene extends Phaser.Scene {
       if (dx * dx + dy * dy <= ps.meleeRange * ps.meleeRange) m *= 1 + ps.meleeBonus;
     }
     const flaw = this.now < e.flawUntil ? (e.boss ? ON_ENEMY.flaw.bossCrit : ON_ENEMY.flaw.crit) : 0;
-    const crit = !o.noCrit && !this.build.mods.noCrit && Math.random() < this.pstats.crit + flaw;
-    const dmg = Math.max(1, Math.round(base * m * (crit ? this.pstats.critDmg : 1) - e.armor));
+    const md = this.build.mods;
+    const stunned = this.now < e.stunUntil;
+    const rate = this.pstats.crit + flaw + (this.player.moving ? 0 : md.stillCrit ?? 0) + (stunned ? md['hh.stunCrit'] ?? 0 : 0);
+    const crit = !o.noCrit && !md.noCrit && Math.random() < rate;
+    const critDmg = this.pstats.critDmg + (this.now < e.slowUntil ? md['hh.slowCritDmg'] ?? 0 : 0);
+    const dmg = Math.max(1, Math.round(base * m * (crit ? critDmg : 1) - this.armorOf(e)));
     e.hp -= dmg;
+    // 伐木：残血的木系敌人直接斩杀
+    if (md['kx.metal'] && e.def.el === 'wood' && !e.boss && e.hp > 0 && e.hp < e.maxHp * 0.15) {
+      e.hp = 0;
+      this.fx.text(e.x, e.y - 20, '伐', '#e0d8ff', 0.6);
+    }
     // 带毒的 Boss 每掉 20% 血掉一瓶解毒药，落在 Boss 和玩家之间
     if (e.boss && e.def.inflict?.kind === 'poison' && e.hp > 0) {
       const stage = Math.min(4, Math.floor((1 - e.hp / e.maxHp) / 0.2));
@@ -441,6 +492,7 @@ export class GameScene extends Phaser.Scene {
     if (o.stun) this.stunEnemy(e, o.stun);
     if (o.slow) this.slowEnemy(e, o.slow);
     if (o.proc && e.hp > 0 && Math.random() < o.proc * statusChance(STATUS_OF[el], e.def.el, false)) this.afflict(e, STATUS_OF[el], dmg);
+    if (e.hp > 0) this.comboHit(e, el, dmg);
 
     let prefix = '';
     if (rel === 'counter' && !e.counterShown) {
@@ -485,6 +537,9 @@ export class GameScene extends Phaser.Scene {
     if (this.immune(e, 'slow')) return;
     e.slowUntil = Math.max(e.slowUntil, this.now + dur * this.pstats.slowMult);
     e.slowF = e.boss ? ON_ENEMY.slow.bossF : ON_ENEMY.slow.f;
+    // 凝冰：破绽中的敌人被迟缓时冻住
+    const freeze = this.build.mods['hh.freeze'];
+    if (freeze && this.now < e.flawUntil) this.stunEnemy(e, freeze);
   }
 
   /** Boss 不会被定身，改为迟缓；定身结束后短暂免疫 */
@@ -512,16 +567,22 @@ export class GameScene extends Phaser.Scene {
       case 'poison':
         return this.poisonEnemy(e, dmg * ON_ENEMY.poison.k, ON_ENEMY.poison.dur);
       case 'burn':
-        if (now >= e.poisonUntil && now >= e.burnUntil) e.dotTick = 0.5;
-        if (now >= e.burnUntil) e.burnStacks = e.burnDps = 0;
-        e.burnStacks = Math.min(ON_ENEMY.burn.max, e.burnStacks + 1);
-        e.burnDps = Math.max(e.burnDps, dmg * ON_ENEMY.burn.k);
-        e.burnUntil = now + ON_ENEMY.burn.dur;
-        return;
+        return this.burnEnemy(e, dmg * ON_ENEMY.burn.k);
       case 'flaw':
         e.flawUntil = now + ON_ENEMY.flaw.dur;
         return;
     }
+  }
+
+  /** 灼烧叠一层：每层伤害取更强的，刷新时间；火系敌人免疫，烈焰提高层数上限 */
+  burnEnemy(e: Enemy, dps: number) {
+    if (!e.alive || this.immune(e, 'burn')) return;
+    const now = this.now;
+    if (now >= e.poisonUntil && now >= e.burnUntil) e.dotTick = 0.5;
+    if (now >= e.burnUntil) e.burnStacks = e.burnDps = 0;
+    e.burnStacks = Math.min(ON_ENEMY.burn.max + (this.build.mods.burnMax ?? 0), e.burnStacks + 1);
+    e.burnDps = Math.max(e.burnDps, dps);
+    e.burnUntil = now + ON_ENEMY.burn.dur;
   }
 
   /** 中毒单层：取更强的伤害，刷新时间（不缩短）；木系敌人免疫，pierce（药师的毒雾）无视免疫 */
@@ -531,7 +592,7 @@ export class GameScene extends Phaser.Scene {
     if (now >= e.poisonUntil && now >= e.burnUntil) e.dotTick = 0.5;
     if (now >= e.poisonUntil) e.poisonDps = 0;
     e.poisonDps = Math.max(e.poisonDps, dps);
-    e.poisonUntil = Math.max(e.poisonUntil, now + dur);
+    e.poisonUntil = Math.max(e.poisonUntil, now + dur * (1 + (this.build.mods.poisonDur ?? 0)));
   }
 
   /** 中毒、灼烧的结算：不吃护甲、不暴击；只给精英和 Boss 跳数字，免得刷屏 */
@@ -557,7 +618,7 @@ export class GameScene extends Phaser.Scene {
     if (!p.alive || this.dbg.god || this.over || this.now < this.iframeUntil) return;
     this.iframeUntil = this.now + 0.35;
     const rel = relation(el, this.build.benming);
-    const armor = this.pstats.armor + (p.moving ? 0 : this.pstats.stillArmor);
+    const armor = this.pstats.armor + (p.moving ? 0 : this.pstats.stillArmor) + (p.hp < this.pstats.maxHp * 0.5 ? this.build.mods.lowArmor ?? 0 : 0);
     const crit = o.forceCrit || Math.random() < (o.crit ?? ENEMY_CRIT[el]) + this.status.critTaken;
     const critDmg = crit ? (o.critDmg ?? ENEMY_CRIT_DMG) : 1;
     const dmg = Math.max(1, Math.round(base * critDmg * REL_MULT[rel] * this.pstats.resist[el] - armor));

@@ -47,7 +47,7 @@ const PREFIX = 'elementmaster.';
 const LEGACY_KEY = 'save';
 const SETTINGS_KEY = 'settings';
 const slotKey = (n: number) => `slot.${n}`;
-const VER = 4;
+const VER = 5;
 
 /** 存储层：现在是 localStorage，以后上云只换这里 */
 const store = {
@@ -180,6 +180,12 @@ function normalize(s: Record<string, any>): Save {
     }
     if (reset.length) notes.push(`${reset.join('、')}的星图与传承已清空，可重新点`);
     if (notes.length) save.notice = `洞府改制：道点和传承点改为每个角色自己首通才给。${notes.join('；')}。`;
+  }
+  // v5：星图重绘（辐条加长、新增合化区和相克奇穴），已点的星图全部清空，道点原数退还
+  if (ver < 5) {
+    const cleared = CHARACTERS.filter((c) => save.tree[c.id].length > 0);
+    for (const c of cleared) save.tree[c.id] = [];
+    if (cleared.length) save.notice = `${save.notice ? `${save.notice}\n` : ''}星图重绘：辐条加长，新增合化区和相克奇穴。${cleared.map((c) => c.name).join('、')}的星图已清空，道点全部退还。`;
   }
   return save;
 }

@@ -119,18 +119,19 @@ test('首通只奖实际关卡，补关会给点，重复通关及失败不重�
   assert.equal(daoPoints(save, character('xiao')), 2);
 });
 
-test('v3 最高关记录迁移保留已有点数，EM4 导出再导入保留逐关记录', () => {
+test('v3 最高关记录迁移保留已有点数，星图重绘清空已点星位，EM5 导出再导入保留逐关记录', () => {
   reset();
   assert.ok(importSlot(1, encode({ unlocked: 3, ver: 3, clears: { xiao: 2 }, wudao: { xiao: 1 }, tree: { xiao: ['metal.s1', 'metal.s2'] }, legacy: { xiao: ['xiao.a1'] } })));
   const save = readSlot(1);
-  assert.equal(save.ver, 4);
+  assert.equal(save.ver, 5);
   assert.deepEqual(save.clears.xiao, [1, 2]);
-  assert.deepEqual(save.tree.xiao, ['metal.s1', 'metal.s2']);
+  assert.deepEqual(save.tree.xiao, []);
+  assert.match(save.notice, /星图重绘.*萧寒锋/);
   assert.deepEqual(save.legacy.xiao, ['xiao.a1']);
   assert.equal(daoPoints(save, character('xiao')), 9);
   assert.equal(legacyPoints(save, character('xiao')), 1);
   const code = exportSlot(1);
-  assert.ok(code.startsWith('EM4:'));
+  assert.ok(code.startsWith('EM5:'));
   assert.ok(importSlot(2, code));
   assert.deepEqual(readSlot(2), save);
   writeSave(save);
@@ -167,13 +168,13 @@ test('导入只保留连通的星图与按序的传承，超出点数则清空�
   reset();
   const tree = { xiao: ['metal.gate', 'center', 'metal.s1', 'metal.s2', 'water.s2'], xuanyi: ['center', 'fire.gate'] };
   const legacy = { xiao: ['xiao.a2', 'xiao.b1'] };
-  assert.ok(importSlot(1, encode({ unlocked: 3, ver: 4, clears: { xiao: [1, 2], xuanyi: [1] }, tree, legacy })));
+  assert.ok(importSlot(1, encode({ unlocked: 3, ver: 5, clears: { xiao: [1, 2], xuanyi: [1] }, tree, legacy })));
   let save = readSlot(1);
   assert.deepEqual(save.tree.xiao, ['metal.s1', 'metal.s2']);
   assert.deepEqual(save.tree.xuanyi, ['fire.gate']);
   assert.deepEqual(save.legacy.xiao, ['xiao.b1']);
   assert.equal(save.notice, '');
-  assert.ok(importSlot(1, encode({ unlocked: 3, ver: 4, clears: {}, tree, legacy })));
+  assert.ok(importSlot(1, encode({ unlocked: 3, ver: 5, clears: {}, tree, legacy })));
   save = readSlot(1);
   assert.deepEqual(save.tree.xiao, []);
   assert.deepEqual(save.legacy.xiao, []);
@@ -329,4 +330,98 @@ test('寻路距离场能带着被岩壁挡住的怪绕到缺口', () => {
   assert.equal(nav.steer(300, 300, 0, 1), null);
   assert.ok(!nav.clear(0, -100, 0, 100));
   assert.ok(nav.clear(300, -100, 300, 100));
+});
+
+const { STAR, CENTER, hehuaPairs } = await import('../src/config/startree.ts');
+
+/** 从起点到每个星位要花的道点（起点免费） */
+function costs(start) {
+  const d = new Map([[start, 0]]);
+  const q = [start];
+  while (q.length) {
+    const id = q.shift();
+    for (const l of STAR[id].links) if (!d.has(l)) d.set(l, d.get(id) + 1), q.push(l);
+  }
+  return d;
+}
+
+test('星图连线双向、星位不重叠，本命门到本系极境印 16 点，合化要穴 10 点，奇穴 7 点', () => {
+  const nodes = Object.values(STAR);
+  for (const a of nodes) for (const l of a.links) assert.ok(STAR[l].links.includes(a.id), `${a.id} ↔ ${l}`);
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const [a, b] = [nodes[i], nodes[j]];
+      assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 30, `${a.id} 与 ${b.id} 太近`);
+    }
+  }
+  const glyphs = nodes.filter((n) => n.kind === 'notable' || n.kind === 'keystone').map((n) => n.glyph).filter((g) => g !== '破' && g !== '御');
+  assert.equal(new Set(glyphs).size, glyphs.length);
+  assert.equal(costs(CENTER).size, nodes.length);
+  const wood = costs('wood.gate');
+  assert.equal(wood.get('wood.k'), 16);
+  assert.equal(wood.get('wood.kX'), 7);
+  assert.equal(wood.get('wood.zan'), 7);
+  assert.equal(wood.get('wood.zk'), 10);
+  // 子一侧从御那支进合化区，路程相同
+  assert.equal(wood.get('water.zbn'), 7);
+  assert.equal(wood.get('water.zk'), 10);
+  assert.equal(wood.get('fire.k'), 18);
+  assert.equal(costs(CENTER).get('wood.k'), 17);
+});
+
+function comboScene(mods) {
+  const scene = runScene('qingdai', 1);
+  scene.build = new Build(scene.char, LEVELS[0], {}, mods);
+  scene.hehua = hehuaPairs(mods);
+  scene.terrainMods = { metal: 1, wood: 1, water: 1, fire: 1, earth: 1 };
+  scene.pstats = { ...scene.build.stats(), crit: 0 };
+  scene.player = { x: 1000, y: 1000, moving: true };
+  scene.fx = { number() {}, text() {}, ring() {} };
+  scene.enemies = { kill(e) { e.alive = false; } };
+  scene.now = 1;
+  return scene;
+}
+const enemy = (el, o = {}) => ({ alive: true, def: { el }, x: 0, y: 0, hp: 100, maxHp: 100, armor: 0, flawUntil: 0, flashUntil: 0, slowUntil: 0, stunUntil: 0, stunImmuneUntil: 0, poisonUntil: 0, burnUntil: 0, sprite: { displayHeight: 16 }, ...o });
+
+test('水木滋荣：木术命中附带迟缓，同时迟缓、中毒的敌人受伤 +20%', () => {
+  const random = Math.random;
+  Math.random = () => 0;
+  try {
+    const mods = { 'hehua.water': 1 };
+    const scene = comboScene(mods);
+    const e = enemy('earth');
+    const base = scene.dmgMult(e, 'wood');
+    scene.hitEnemy(e, 10, 'wood');
+    assert.ok(e.slowUntil > scene.now);
+    assert.equal(scene.dmgMult(e, 'wood'), base);
+    e.poisonUntil = scene.now + 2;
+    assert.ok(Math.abs(scene.dmgMult(e, 'wood') / base - 1.2) < 1e-9);
+    // 没点合化要穴就不附带
+    const plain = comboScene({});
+    const f = enemy('earth');
+    plain.hitEnemy(f, 10, 'wood');
+    assert.equal(f.slowUntil, 0);
+  } finally {
+    Math.random = random;
+  }
+});
+
+test('相克奇穴：伐木斩杀残血木系敌人，Boss 和别系不受影响；盘根让土系护甲减半', () => {
+  const scene = comboScene({ 'kx.metal': 1, 'kx.wood': 1 });
+  const random = Math.random;
+  Math.random = () => 0.99;
+  try {
+    const w = enemy('wood', { hp: 20 });
+    scene.dmgMult = () => 1;
+    scene.hitEnemy(w, 10, 'metal');
+    assert.equal(w.alive, false);
+    const boss = enemy('wood', { hp: 20, boss: true });
+    scene.hitEnemy(boss, 10, 'metal');
+    assert.equal(boss.hp, 10);
+    const rock = enemy('earth', { armor: 4 });
+    scene.hitEnemy(rock, 10, 'metal');
+    assert.equal(rock.hp, 92);
+  } finally {
+    Math.random = random;
+  }
 });
