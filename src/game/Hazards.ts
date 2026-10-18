@@ -129,6 +129,19 @@ export class Hazards {
     for (const v of vents) this.blast(v.x, v.y, lv.radius, lv.warn, lv.dmg, lv.burn);
   }
 
+  /** Boss 远吼用：只让屏幕内离玩家最近的 n 个熔岩口提前喷一次，不波及全屏；附近没有就不喷 */
+  erupt(n: number) {
+    const g = this.g;
+    const lv = g.levelDef.lava;
+    if (!lv) return;
+    const p = g.player;
+    const vents = g.world.spotsIn('lava', p.x - 320, p.y - 180, p.x + 320, p.y + 180)
+      .map(([x, y]) => ({ x, y, d: Math.hypot(x - p.x, y - p.y) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, n);
+    for (const v of vents) this.blast(v.x, v.y, lv.radius, lv.warn, lv.dmg, lv.burn);
+  }
+
   /**
    * 火柱：预警 warn 秒（地面发亮、冒火苗），然后喷发，范围内玩家受火伤并必定灼烧，
    * 非火系的普通敌人掉一大截血；之后原地留 burn 秒余火。Boss 的火雨也用这个

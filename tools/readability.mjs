@@ -73,7 +73,7 @@ globalThis.document = {
 const { buildFx } = await import('../src/art/fxArt.ts');
 const { buildEnemies } = await import('../src/art/enemyArt.ts');
 const { OUTLINE, OUTLINE_LIT, rng } = await import('../src/art/painter.ts');
-const { LEVELS } = await import('../src/config/levels.ts');
+const { LEVELS, enemyTex } = await import('../src/config/levels.ts');
 const { ENEMIES } = await import('../src/config/enemies.ts');
 
 // ---------- OKLab 色彩空间转换 ----------
@@ -82,6 +82,9 @@ function srgbToLinear(c) {
   const v = c / 255;
   return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 }
+
+/** 主体与地面的最小明度差；敌人与宝石都要跨过这条线 */
+export const MIN_LUM_DELTA = 0.12;
 
 export function rgbToOklab(r, g, b) {
   const lr = srgbToLinear(r);
@@ -340,7 +343,7 @@ export function runReadabilityCheck({ writeImages = true } = {}) {
 
     // 检查敌人、Boss 与三种宝石的可读性
     const targets = [
-      ...level.enemies.map((e) => ENEMIES[e.id].tex),
+      ...level.enemies.map((e) => enemyTex(level, e.id, ENEMIES[e.id].tex)),
       ENEMIES[level.boss].tex,
       'gem_s',
       'gem_m',
@@ -361,7 +364,7 @@ export function runReadabilityCheck({ writeImages = true } = {}) {
       const dL = Math.max(Math.abs(st.p75L - gStat.p95L), Math.abs(st.meanL - gStat.p95L), Math.abs(gStat.meanL - st.meanL));
       const dC = Math.abs(st.C - gStat.C);
       const dH = hueDiffDeg(st.H, gStat.H);
-      const passL = dL >= 0.12;
+      const passL = dL >= MIN_LUM_DELTA;
       const passCH = dC >= 0.08 && dH >= 30;
       const pass = passL || passCH;
       entityChecks.push({
@@ -439,7 +442,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(`地面平静度 σ_L = ${r.groundStdL} (阈值 ≤ 0.05) -> ${r.groundCalmPass ? 'PASS' : 'FAIL'}, 地面 L95 = ${r.groundP95L}`);
     console.log('装饰物宝石撞色检查 (ΔE < 0.10 占比 < 1%):');
     console.table(r.decorChecks);
-    console.log('敌人与宝石可读性检查 (ΔL ≥ 0.12 或 (ΔC ≥ 0.08 且 ΔH ≥ 30°)):');
+    console.log(`敌人与宝石可读性检查 (ΔL ≥ ${MIN_LUM_DELTA} 或 (ΔC ≥ 0.08 且 ΔH ≥ 30°)):`);
     console.table(r.entityChecks);
   }
   if (!res.every((r) => r.pass)) process.exit(1);

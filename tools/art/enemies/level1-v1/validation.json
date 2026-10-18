@@ -1,0 +1,101 @@
+{
+  "method": "主体排除描边；abs(p75L-groundP95L) 或 abs(meanL-groundP95L) ≥ 0.12；沿用现有 OKLab 转换。另检查硬透明与色数（上限取 sprites.json 的 38 色）。仅为静态对比度检查。",
+  "sprites": [
+    {
+      "file": "huoya-native.png",
+      "size": [
+        24,
+        24
+      ],
+      "bytes": 1047,
+      "alpha": [
+        0,
+        255
+      ],
+      "colors": 18,
+      "groundP95L": 0.502,
+      "dL": 0.207,
+      "pass": true
+    },
+    {
+      "file": "langyao-native.png",
+      "size": [
+        56,
+        48
+      ],
+      "bytes": 1509,
+      "alpha": [
+        0,
+        255
+      ],
+      "colors": 21,
+      "groundP95L": 0.502,
+      "dL": 0.38,
+      "pass": true
+    },
+    {
+      "file": "shiyong-native.png",
+      "size": [
+        24,
+        24
+      ],
+      "bytes": 1026,
+      "alpha": [
+        0,
+        255
+      ],
+      "colors": 8,
+      "groundP95L": 0.502,
+      "dL": 0.229,
+      "pass": true
+    },
+    {
+      "file": "shuigui-native.png",
+      "size": [
+        24,
+        24
+      ],
+      "bytes": 1037,
+      "alpha": [
+        0,
+        255
+      ],
+      "colors": 11,
+      "groundP95L": 0.502,
+      "dL": 0.241,
+      "pass": true
+    },
+    {
+      "file": "tengguai-native.png",
+      "size": [
+        24,
+        24
+      ],
+      "bytes": 1045,
+      "alpha": [
+        0,
+        255
+      ],
+      "colors": 18,
+      "groundP95L": 0.502,
+      "dL": 0.244,
+      "pass": true
+    },
+    {
+      "file": "tiejia-native.png",
+      "size": [
+        28,
+        28
+      ],
+      "bytes": 1048,
+      "alpha": [
+        0,
+        255
+      ],
+      "colors": 15,
+      "groundP95L": 0.502,
+      "dL": 0.249,
+      "pass": true
+    }
+  ]
+}

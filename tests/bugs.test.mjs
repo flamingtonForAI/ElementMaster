@@ -583,3 +583,142 @@ test('煞气剑阵里的敌人护甲 +3，出阵恢复', () => {
   assert.equal(inside.hp, 93);
   assert.equal(outside.hp, 90);
 });
+
+test('第 1 关分批进场：开场只有石俑、藤怪，25/75/135 秒依次加入水鬼、铁甲兵、火鸦；其他关不受影响', async () => {
+  const { enemyPool } = await import('../src/config/levels.ts');
+  const ids = (level, t) => enemyPool(LEVELS.find((l) => l.id === level), t).map((e) => e.id).sort();
+  assert.deepEqual(ids(1, 0), ['shiyong', 'tengguai']);
+  assert.deepEqual(ids(1, 24.9), ['shiyong', 'tengguai']);
+  assert.deepEqual(ids(1, 25), ['shiyong', 'shuigui', 'tengguai']);
+  assert.deepEqual(ids(1, 75), ['shiyong', 'shuigui', 'tengguai', 'tiejia']);
+  assert.deepEqual(ids(1, 135), ['huoya', 'shiyong', 'shuigui', 'tengguai', 'tiejia']);
+  for (const l of LEVELS.filter((l) => l.available && l.id > 1)) assert.deepEqual(ids(l.id, 0), l.enemies.map((e) => e.id).sort());
+  // 配置写错、一个都没到点时退回第一种
+  assert.deepEqual(enemyPool({ enemies: [{ id: 'a', w: 1, from: 10 }, { id: 'b', w: 1, from: 20 }] }, 0).map((e) => e.id), ['a']);
+
+  // pickEnemy（普通刷怪、成群来袭、精英共用）只从已解锁的池里抽
+  const scene = runScene('xiao', 1);
+  const random = Math.random;
+  try {
+    for (const [t, allowed] of [[10, ['shiyong', 'tengguai']], [100, ['shiyong', 'tengguai', 'shuigui', 'tiejia']]]) {
+      scene.elapsed = t;
+      const seen = new Set();
+      for (let i = 0; i < 100; i++) {
+        Math.random = () => i / 100;
+        seen.add(scene.pickEnemy());
+      }
+      assert.deepEqual([...seen].sort(), allowed.sort());
+    }
+  } finally {
+    Math.random = random;
+  }
+
+  // 到点亮相：刷 3 只新怪并提示
+  const spawned = [];
+  let toast = '';
+  scene.player = { x: 1000, y: 1000 };
+  scene.ringPos = () => [0, 0];
+  scene.hpScale = () => 1;
+  scene.enemies = { spawn: (id) => spawned.push(id) };
+  Object.defineProperty(scene, 'hud', { value: { toast: (s) => { toast = s; } } });
+  scene.introEnemy('shuigui');
+  assert.deepEqual(spawned, ['shuigui', 'shuigui', 'shuigui']);
+  assert.equal(toast, '水鬼出没');
+});
+
+test('Boss 远吼：元素加成叠上按 id 写的那条；没写的元素用 other', async () => {
+  const { roarBuff } = await import('../src/config/levels.ts');
+  const L = (id) => LEVELS.find((l) => l.id === id);
+  assert.deepEqual(roarBuff(L(1), 'tiejia', 'metal'), { dmg: 0.08, windup: 0.15, dash: 0.15, cd: 0.1 });
+  assert.deepEqual(roarBuff(L(1), 'shuigui', 'water'), { speed: 0.1 });
+  assert.deepEqual(roarBuff(L(4), 'shiyong', 'earth'), { dmg: 0.08, armor: 2 });
+  assert.deepEqual(roarBuff(L(5), 'canbing', 'metal'), { cd: 0.15, dash: 0.15, revive: 0.8 });
+  assert.equal(roarBuff({}, 'shiyong', 'earth'), null);
+  // 每关的台词和吼的次数对得上，吼都在 Boss 现身前
+  for (const l of LEVELS.filter((l) => l.available)) {
+    assert.ok(l.roar, `第 ${l.id} 关没配远吼`);
+    assert.equal(l.roar.lines.length, l.roar.times.length);
+    for (const t of l.roar.times) assert.ok(t < l.duration - 60);
+  }
+});
+
+test('Boss 远吼：场上的怪一层层补差和出生直接带两层结果一致，Boss 不吃加成', () => {
+  const g = { levelDef: LEVELS.find((l) => l.id === 2), roarStacks: 0, now: 5 };
+  const mgr = new EnemyManager(g);
+  const fresh = (id) => ({ ...mob(id), roarN: 0, maxHp: 100, hp: 60, speed: 30, dmg: 10, atkDps: 2, armor: 1, cdMul: 1, windMul: 1, dashMul: 1, blastMul: 1, regenMul: 1, trailAdd: 0, reviveSub: 0, chanceAdd: 0, hopAt: -1 });
+  const a = fresh('tengguai');
+  mgr.list.push(a);
+  mgr.onRoar(1);
+  mgr.onRoar(2);
+  const b = fresh('tengguai');
+  mgr.applyRoar(b, 2);
+  for (const k of ['maxHp', 'hp', 'speed', 'dmg', 'regenMul']) assert.ok(Math.abs(a[k] - b[k]) < 1e-9, k);
+  assert.equal(a.maxHp, 120);
+  assert.equal(a.regenMul, 2);
+  assert.equal(a.hopAt, 5);
+  // 竹叶青另有冲刺间隔缩短，土系只吃 other 的伤害
+  const snake = fresh('zhushe');
+  mgr.applyRoar(snake, 2);
+  assert.ok(Math.abs(snake.cdMul - 0.7) < 1e-9);
+  const rock = fresh('shiyong');
+  mgr.applyRoar(rock, 2);
+  assert.equal(rock.maxHp, 100);
+  assert.ok(Math.abs(rock.dmg - 11.6) < 1e-9);
+  const boss = fresh('shuyao');
+  mgr.list.push(boss);
+  mgr.onRoar(3);
+  assert.equal(boss.maxHp, 100);
+  assert.equal(boss.hopAt, -1);
+});
+
+test('Boss 远吼：每吼一层，提示、全场加成、本关地形事件各一次；Boss 现身后不再吼', () => {
+  const scene = runScene('xiao', 3);
+  const calls = [];
+  const toasts = [];
+  scene.enemies = { onRoar: (n) => calls.push(['roar', n]) };
+  scene.hazards = { rain: (n) => calls.push(['rain', n]), erupt: (n) => calls.push(['erupt', n]) };
+  scene.cameras = { main: { shake() {} } };
+  Object.defineProperty(scene, 'hud', { value: { toast: (s) => toasts.push(s) } });
+  scene.roar();
+  scene.roar();
+  assert.deepEqual(calls, [['roar', 1], ['rain', 3], ['roar', 2], ['rain', 3]]);
+  assert.equal(toasts[0], LEVELS[2].roar.lines[0]);
+  assert.equal(toasts[2], LEVELS[2].roar.lines[1]);
+  scene.boss = {};
+  scene.roar();
+  assert.equal(scene.roarStacks, 2);
+});
+
+test('Boss 狂暴：血量跌破 30% 且回到普通走位才触发，只触发一次，停顿期间无敌；全场小怪再叠一层', () => {
+  const { g, mgr } = killScene();
+  let rage = 0;
+  g.cameras = { main: { shake() {} } };
+  g.onBossRage = () => rage++;
+  g.now = 10;
+  const boss = mob('langyao', { maxHp: 1000, hp: 310, state: 0, lift: 0, timer: 0, raged: false });
+  mgr.maybeEnrage(boss);
+  assert.equal(rage, 0);
+  boss.hp = 290;
+  boss.state = 2;
+  mgr.maybeEnrage(boss);
+  assert.equal(rage, 0, '冲刺中不打断');
+  boss.state = 0;
+  mgr.maybeEnrage(boss);
+  mgr.maybeEnrage(boss);
+  assert.equal(rage, 1);
+  assert.equal(boss.raged, true);
+  assert.equal(boss.invulnUntil, 11);
+  // 小怪不会狂暴
+  const minion = mob('shiyong', { maxHp: 100, hp: 10, state: 0, lift: 0 });
+  mgr.maybeEnrage(minion);
+  assert.equal(rage, 1);
+
+  const scene = runScene('xiao', 1);
+  const stacks = [];
+  scene.roarStacks = 2;
+  scene.enemies = { onRoar: (n) => stacks.push(n) };
+  Object.defineProperty(scene, 'hud', { value: { toast() {} } });
+  scene.onBossRage({ def: ENEMIES.langyao });
+  assert.deepEqual(stacks, [3]);
+  assert.equal(scene.roarStacks, 3);
+});

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { EL_INFO, GEN_ORDER, counters, counteredBy, type El } from '../config/elements';
 import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS } from '../config/skills';
 import { LEVELS } from '../config/levels';
+import { ENEMIES } from '../config/enemies';
 import { optionKey, type Option } from '../game/Build';
 import { label, hex } from '../ui/text';
 import { MAP_TEXEL } from '../game/World';
@@ -60,6 +61,9 @@ export class HudScene extends Phaser.Scene {
   private killText!: Phaser.GameObjects.Text;
   /** 散人：当前周天元素，显示在本命下面 */
   private ztText!: Phaser.GameObjects.Text;
+  /** Boss 远吼层数，如“狼啸 ×2” */
+  private roarText!: Phaser.GameObjects.Text;
+  private roarShown = -1;
   private tabKey!: Phaser.Input.Keyboard.Key;
   private bigTitle!: Phaser.GameObjects.Text;
   private mini!: MapLayer;
@@ -110,6 +114,8 @@ export class HudScene extends Phaser.Scene {
     this.keText = label(this, MM_X + 26, MM_Y + MM + 2, '');
     this.weiText = label(this, MM_X + 26, MM_Y + MM + 15, '');
     this.ztText = label(this, MM_X + MM / 2, MM_Y + MM + 28, '').setOrigin(0.5, 0);
+    this.roarShown = -1;
+    this.roarText = label(this, MM_X + MM / 2, MM_Y + MM + 41, '', hex(EL_INFO[ENEMIES[L.boss]?.el ?? 'metal'].color)).setOrigin(0.5, 0);
     this.bossText = label(this, 320, 44, '').setOrigin(0.5, 0).setVisible(false);
 
     this.skillGlyphs = [];
@@ -264,6 +270,15 @@ export class HudScene extends Phaser.Scene {
       this.drawSeal(b.benming);
       const zt = this.g.zhoutian;
       this.ztText.setText(zt ? `周天 ${EL_INFO[zt].name}` : '').setColor(zt ? hex(EL_INFO[zt].color) : '#fff');
+    }
+
+    if (g.roarStacks !== this.roarShown) {
+      this.roarShown = g.roarStacks;
+      this.roarText.setText(g.roarStacks && g.levelDef.roar ? `${g.levelDef.roar.name} ×${g.roarStacks}` : '');
+      if (g.roarStacks) {
+        this.roarText.setScale(1.6);
+        this.tweens.add({ targets: this.roarText, scale: 1, duration: 260, ease: 'Back.out' });
+      }
     }
 
     const p = g.player;

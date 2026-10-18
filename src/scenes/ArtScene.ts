@@ -27,8 +27,8 @@ export class ArtScene extends Phaser.Scene {
         } else s.play(key);
       });
     });
-    const en = ['en_shiyong', 'en_tengguai', 'en_shuigui', 'en_huoya', 'en_tiejia', 'en_zhushe', 'en_zhangchan'];
-    en.forEach((k, i) => this.add.sprite(60 + i * 40, 230, k, 0).play(k + '_move'));
+    const en = ['en_shiyong', 'en_shiyong_moss', 'en_shiyong_rock', 'en_shiyong_lava', 'en_shiyong_armor', 'en_tengguai', 'en_shuigui', 'en_huoya', 'en_tiejia', 'en_zhushe', 'en_zhangchan'];
+    en.forEach((k, i) => this.add.sprite(40 + i * 28, 230, k, 0).play(k + '_move'));
     this.add.sprite(370, 236, 'boss_langyao', 0).play('boss_langyao_move');
     this.add.sprite(460, 226, 'boss_shuyao', 0).play('boss_shuyao_move');
     this.add.sprite(530, 236, 'pp_golem', 0).play('pp_golem_move');
@@ -41,6 +41,11 @@ export class ArtScene extends Phaser.Scene {
     ['fire', 'metal', 'wood', 'water', 'earth'].forEach((el, i) => this.add.sprite(490 + i * 14, 300, `pj_fu_${el}`, 0).play(`pj_fu_${el}`));
     const decor = ['dc_rock', 'dc_tuft', 'dc_tablet', 'dc_deadtree', 'dc_bamboo', 'dc_shoot', 'dc_mossrock', 'dc_fern'];
     decor.forEach((k, i) => this.add.image(470 + (i % 4) * 40, 120 + Math.floor(i / 4) * 70, k).setOrigin(0.5, 1));
+    // 第 3 关
+    ['en_shanxiao', 'en_chuanshan'].forEach((k, i) => this.add.sprite(60 + i * 40, 334, k, 0).play(k + '_move'));
+    this.add.sprite(140, 334, 'en_chuanshan', 2).play('en_chuanshan_dig');
+    this.add.sprite(200, 326, 'boss_shanxiao', 0).play('boss_shanxiao_move');
+    ['ep_rock', 'ep_boulder'].forEach((k, i) => this.add.image(250 + i * 18, 334, k));
     // 第 4、5 关
     const en45 = ['en_chihu', 'en_huojing', 'en_canbing', 'en_feilian'];
     en45.forEach((k, i) => this.add.sprite(60 + i * 40, 270, k, 0).play(k + '_move'));

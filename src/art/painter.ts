@@ -80,6 +80,18 @@ export class PC {
     for (let i = 0; i < pts.length - 1; i++) this.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], col, width);
   }
 
+  /** 实心三角形（翅膀、鬃毛等大块面） */
+  tri(a: [number, number], b: [number, number], c: [number, number], col: number) {
+    const [x0, x1] = [Math.min(a[0], b[0], c[0]), Math.max(a[0], b[0], c[0])];
+    const [y0, y1] = [Math.min(a[1], b[1], c[1]), Math.max(a[1], b[1], c[1])];
+    const side = (p1: [number, number], p2: [number, number], x: number, y: number) => (p2[0] - p1[0]) * (y - p1[1]) - (p2[1] - p1[1]) * (x - p1[0]);
+    for (let y = Math.floor(y0); y <= Math.ceil(y1); y++)
+      for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
+        const d1 = side(a, b, x + 0.5, y + 0.5), d2 = side(b, c, x + 0.5, y + 0.5), d3 = side(c, a, x + 0.5, y + 0.5);
+        if ((d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0)) this.set(x, y, col);
+      }
+  }
+
   /** 把已有颜色 from 替换成 to（用于在某个区域做阴影） */
   recolor(x0: number, y0: number, x1: number, y1: number, from: number, to: number) {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (this.get(x, y) === from) this.set(x - this.ox, y - this.oy, to);

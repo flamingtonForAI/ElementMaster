@@ -4,3 +4,4 @@ dist
 tools/art/reports
 __pycache__
 tools/art/raw
+tools/art/enemies/level1-v1/source.png

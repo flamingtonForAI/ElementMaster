@@ -20,6 +20,7 @@ export function createDebug(g: GameScene) {
   f1.addButton({ title: '时间 +60 秒' }).on('click', () => (g.elapsed += 60));
   f1.addButton({ title: '刷精英' }).on('click', () => g.spawnElite());
   f1.addButton({ title: '刷 Boss' }).on('click', () => g.spawnBoss());
+  f1.addButton({ title: 'Boss 血量降到 29%（看狂暴）' }).on('click', () => g.boss && (g.boss.hp = g.boss.maxHp * 0.29));
   f1.addButton({ title: '清屏' }).on('click', () => g.enemies.list.filter((e) => !e.boss).forEach((e) => g.enemies.kill(e)));
   const f2 = pane.addFolder({ title: '五行倍率', expanded: false });
   for (const k of Object.keys(REL_MULT) as (keyof typeof REL_MULT)[]) f2.addBinding(REL_MULT, k, { min: 0, max: 3, step: 0.05 });

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { ENEMIES, type EnemyDef } from '../config/enemies';
+import { enemyTex, roarBuff, type RoarBuff } from '../config/levels';
 import { STATUS_INFO, type Inflict } from '../config/status';
 import { EL_INFO, type El } from '../config/elements';
 import { SpatialGrid } from './SpatialGrid';
@@ -12,6 +13,8 @@ import { audio } from '../audio/Audio';
 export class Enemy {
   id = 0;
   def!: EnemyDef;
+  /** 本关实际用的贴图：有地域外观时和 def.tex 不同，动画、尸骸都跟着它走 */
+  tex = '';
   x = 0;
   y = 0;
   hp = 0;
@@ -69,14 +72,38 @@ export class Enemy {
   lastEl: El | null = null;
   /** 这之前不受伤（刑天复起） */
   invulnUntil = 0;
+  /** Boss 已进入狂暴（血量跌破 RAGE_AT），之后一直保持；rageUntil 前是吼叫的停顿 */
+  raged = false;
+  rageUntil = 0;
+  /** 狼妖狂暴后的连冲：这一轮还能再冲几次 */
+  combo = 0;
   /** 已经复起过（刑天） */
   rose = false;
   noKill = false;
   /** 冲刺留火的里程（赤狐、毕方） */
   trailAcc = 0;
+  /** 已吃到的远吼层数，以及由它换算出的行为倍率（见 RoarBuff） */
+  roarN = 0;
+  cdMul = 1;
+  windMul = 1;
+  dashMul = 1;
+  blastMul = 1;
+  regenMul = 1;
+  trailAdd = 0;
+  reviveSub = 0;
+  chanceAdd = 0;
+  /** 远吼时全场一跳的起始时刻 */
+  hopAt = -1;
   glyph: Phaser.GameObjects.Text | null = null;
   constructor(readonly sprite: Phaser.GameObjects.Sprite) {}
 }
+
+/** 远吼时一跳的时长 */
+const HOP = 0.3;
+/** Boss 血量跌破这个比例进入狂暴：停顿吼一声、全场小怪叠一层远吼，之后换成狂暴的出招 */
+export const RAGE_AT = 0.3;
+/** 狂暴吼叫的停顿（期间无敌、不出招） */
+const RAGE_PAUSE = 1;
 
 const TINTS: Record<number, number> = {
   2: STATUS_INFO.stun.tint,
@@ -107,6 +134,13 @@ export class EnemyManager {
   private corpses = 0;
   private reviveHinted = false;
 
+  /** 远吼时一跳染的颜色：Boss 的元素色，调淡一点免得盖住原色 */
+  private get roarTint() {
+    const c = EL_INFO[ENEMIES[this.g.levelDef.boss]?.el ?? 'metal'].color;
+    const mix = (sh: number) => Math.round(((c >> sh) & 255) * 0.6 + 255 * 0.4) << sh;
+    return mix(16) | mix(8) | mix(0);
+  }
+
   constructor(private g: GameScene) {}
 
   spawn(defId: string, x: number, y: number, o: SpawnOpts = {}): Enemy {
@@ -131,8 +165,15 @@ export class EnemyManager {
     e.lastEl = null;
     e.invulnUntil = 0;
     e.rose = false;
+    e.raged = false;
+    e.rageUntil = 0;
+    e.combo = 0;
     e.noKill = !!o.noKill;
     e.trailAcc = 0;
+    e.roarN = 0;
+    e.cdMul = e.windMul = e.dashMul = e.blastMul = e.regenMul = 1;
+    e.trailAdd = e.reviveSub = e.chanceAdd = 0;
+    e.hopAt = -1;
     e.alive = true;
     e.kbx = e.kby = 0;
     e.slowUntil = e.stunUntil = e.stunImmuneUntil = e.flashUntil = e.contactAt = 0;
@@ -145,13 +186,88 @@ export class EnemyManager {
     e.lift = 0;
     e.tint = -1;
     e.navUntil = 0;
-    e.sprite.setTexture(def.tex, 0).setVisible(true).setActive(true).setScale(e.elite ? 1.5 : 1).setAlpha(1).clearTint();
-    e.sprite.play(def.tex + '_move');
+    const tex = enemyTex(this.g.levelDef, defId, def.tex);
+    e.tex = tex;
+    e.sprite.setTexture(tex, 0).setVisible(true).setActive(true).setScale(e.elite ? 1.5 : 1).setAlpha(1).clearTint();
+    this.play(e, '_move');
+    this.applyRoar(e, this.g.roarStacks);
     if (e.elite || e.boss) {
       e.glyph = label(this.g, 0, 0, EL_INFO[def.el].name, hex(EL_INFO[def.el].color)).setOrigin(0.5, 1);
     }
     this.list.push(e);
     return e;
+  }
+
+  /**
+   * 把敌人的远吼层数调到 n：生命、速度、伤害按“新层/旧层”的比例补差，护甲补点数，行为倍率直接按 n 重算。
+   * Boss 自己不吃加成
+   */
+  applyRoar(e: Enemy, n: number) {
+    const from = e.roarN;
+    e.roarN = n;
+    const b = e.boss ? null : roarBuff(this.g.levelDef, e.def.id, e.def.el);
+    if (!b || n === from) return;
+    const ratio = (k: keyof RoarBuff) => (1 + (b[k] ?? 0) * n) / (1 + (b[k] ?? 0) * from);
+    const hr = ratio('hp');
+    e.maxHp = Math.round(e.maxHp * hr);
+    e.hp = Math.min(e.maxHp, e.hp * hr);
+    e.speed *= ratio('speed');
+    const dr = ratio('dmg');
+    e.dmg *= dr;
+    e.atkDps *= dr;
+    e.armor += (b.armor ?? 0) * (n - from);
+    e.cdMul = Math.max(0.5, 1 - (b.cd ?? 0) * n);
+    e.windMul = Math.max(0.5, 1 - (b.windup ?? 0) * n);
+    e.dashMul = 1 + (b.dash ?? 0) * n;
+    e.blastMul = 1 + (b.blast ?? 0) * n;
+    e.regenMul = 1 + (b.regen ?? 0) * n;
+    e.trailAdd = (b.trail ?? 0) * n;
+    e.reviveSub = (b.revive ?? 0) * n;
+    e.chanceAdd = (b.chance ?? 0) * n;
+  }
+
+  /** 血量跌破 RAGE_AT 就狂暴；等 Boss 回到普通走位（不在蓄力、冲刺、半空里）再触发，免得打断一半的招 */
+  maybeEnrage(e: Enemy) {
+    if (e.boss && !e.raged && e.state === 0 && e.lift <= 0 && e.hp > 0 && e.hp < e.maxHp * RAGE_AT) this.enrage(e);
+  }
+
+  /** Boss 进入狂暴：停顿吼一声（期间无敌），通知场景给全场小怪叠一层 */
+  enrage(e: Enemy) {
+    const g = this.g;
+    e.raged = true;
+    e.rageUntil = e.invulnUntil = g.now + RAGE_PAUSE;
+    e.timer = Math.max(e.timer, 0.4);
+    e.combo = 0;
+    const col = EL_INFO[e.def.el].color;
+    g.fx.ring(e.x, e.y - 12, 60, col, 0.5);
+    g.later(0.25, () => g.fx.ring(e.x, e.y - 12, 90, col, 0.5));
+    g.cameras.main.shake(500, 0.008);
+    audio.sfx('boss', { rate: 0.8, vol: 0.7 });
+    g.onBossRage(e);
+  }
+
+  /** 狂暴脉动色：在原色和元素色之间来回 */
+  private ragePulse(e: Enemy, now: number) {
+    const c = EL_INFO[e.def.el].color;
+    const k = 0.25 + 0.25 * Math.sin(now * 6);
+    const mix = (sh: number) => Math.round(255 * (1 - k) + ((c >> sh) & 255) * k) << sh;
+    return mix(16) | mix(8) | mix(0);
+  }
+
+  /** Boss 远吼：场上所有怪升到 n 层，并一齐跳一下 */
+  onRoar(n: number) {
+    const now = this.g.now;
+    for (const e of this.list) {
+      if (!e.alive || e.boss) continue;
+      this.applyRoar(e, n);
+      e.hopAt = now;
+    }
+  }
+
+  /** 按地域外观播放动作帧；皮肤没做这套帧（如 _dig）就退回默认贴图 */
+  private play(e: Enemy, suffix: '_move' | '_dig') {
+    const key = e.tex + suffix;
+    e.sprite.play(this.g.anims.exists(key) ? key : e.def.tex + suffix);
   }
 
   get count() {
@@ -188,7 +304,9 @@ export class EnemyManager {
       let vx = 0;
       let vy = 0;
 
-      if (!stunned) {
+      this.maybeEnrage(e);
+      const roaring = now < e.rageUntil;
+      if (!stunned && !roaring) {
         const mv = this.behave(e, dt, nx, ny, dist, slow);
         vx = mv[0];
         vy = mv[1];
@@ -196,7 +314,7 @@ export class EnemyManager {
       // 中毒期间不回血
       const poisoned = now < e.poisonUntil;
       const burning = now < e.burnUntil;
-      if (e.def.regen && !poisoned) e.hp = Math.min(e.maxHp, e.hp + e.def.regen * dt);
+      if (e.def.regen && !poisoned) e.hp = Math.min(e.maxHp, e.hp + e.def.regen * e.regenMul * dt);
       if (poisoned || burning) {
         e.dotTick -= dt;
         if (e.dotTick <= 0) {
@@ -262,23 +380,31 @@ export class EnemyManager {
       }
 
       const s = e.sprite;
-      s.setPosition(e.x, e.y - e.lift);
+      const hop = now - e.hopAt < HOP ? Math.sin(((now - e.hopAt) / HOP) * Math.PI) * 4 : 0;
+      s.setPosition(e.x, e.y - e.lift - hop);
       s.setDepth(e.y);
       if (Math.abs(dx) > 2) s.setFlipX(dx < 0);
       // 着色优先级：受击闪白 > 定身 > 冲锋预警 > 灼烧 > 中毒 > 迟缓 > 破绽
       const tint =
         now < e.flashUntil ? 1
+        : hop > 0 ? 8
         : stunned ? 2
         : (e.state === 1 && (e.def.behavior === 'charge' || e.boss)) || (e.state === 4 && e.def.behavior === 'boss_xingtian') || (e.state === 2 && e.def.behavior === 'burrow') ? 4
         : burning ? 5
         : poisoned ? 6
         : slow < 1 ? 3
         : now < e.flawUntil ? 7
+        : e.raged ? 9
         : 0;
-      if (tint !== e.tint) {
+      // 狂暴的 Boss 一直带着元素色脉动，每帧重算
+      if (tint === 9) {
+        e.tint = 9;
+        s.setTint(this.ragePulse(e, now));
+      } else if (tint !== e.tint) {
         e.tint = tint;
         if (tint === 1) s.setTintFill(0xffffff);
         else if (tint === 0) s.clearTint();
+        else if (tint === 8) s.setTint(this.roarTint);
         else s.setTint(TINTS[tint]);
       }
       if (e.glyph) e.glyph.setPosition(Math.round(e.x), Math.round(e.y - e.lift - s.displayHeight * 0.9)).setDepth(e.y + 1);
@@ -308,10 +434,10 @@ export class EnemyManager {
         if (e.state === 0) {
           if (e.timer <= 0 && dist < 130) {
             e.state = 1;
-            e.timer = 0.55;
+            e.timer = 0.55 * e.windMul;
             e.dashX = nx;
             e.dashY = ny;
-            g.fx.line(e.x, e.y - 6, Math.atan2(ny, nx), 90, 0xff5a4a, 0.55);
+            g.fx.line(e.x, e.y - 6, Math.atan2(ny, nx), 90, 0xff5a4a, e.timer);
             audio.sfx('charge');
           }
           return [nx * sp, ny * sp];
@@ -325,17 +451,18 @@ export class EnemyManager {
         }
         if (e.timer <= 0) {
           e.state = 0;
-          e.timer = 3.5;
+          e.timer = 3.5 * e.cdMul;
         }
+        const dash = 170 * e.dashMul * slow;
         // 赤狐：冲过的地方留一溜火
-        if (e.def.trail) this.trail(e, 170 * slow * dt, 18, 9, 1.8, 3);
-        return [e.dashX * 170 * slow, e.dashY * 170 * slow];
+        if (e.def.trail) this.trail(e, dash * dt, 18, 9, 1.8 + e.trailAdd, 3);
+        return [e.dashX * dash, e.dashY * dash];
       }
       case 'spit': {
         // 靠近到一定距离后绕着走，定时朝玩家吐毒囊
         e.timer -= dt;
         if (e.timer <= 0 && dist < 180) {
-          e.timer = 4.5 + Math.random();
+          e.timer = (4.5 + Math.random()) * e.cdMul;
           g.proj.enemyShot(e.def.shot ?? 'ep_poison', e.x, e.y - 8, nx * 90, ny * 90, e.dmg, e.def.el, this.hurtOf(e));
           audio.sfx('bossShot', { rate: 1.6, vol: 0.4 });
         }
@@ -349,7 +476,7 @@ export class EnemyManager {
           if (e.timer <= 0 && dist < 220 && dist > 50) {
             e.state = 1;
             e.timer = 2.5;
-            e.sprite.play(e.def.tex + '_dig');
+            this.play(e, '_dig');
           }
           return [nx * sp, ny * sp];
         }
@@ -364,8 +491,8 @@ export class EnemyManager {
         }
         if (e.timer <= 0) {
           e.state = 0;
-          e.timer = 4 + Math.random() * 2;
-          e.sprite.play(e.def.tex + '_move');
+          e.timer = (4 + Math.random() * 2) * e.cdMul;
+          this.play(e, '_move');
           audio.sfx('spike', { rate: 0.8 });
           g.fx.anim('fx_spike', e.x, e.y + 2, { originY: 0.92, depth: e.y + 1, tint: 0xdaa53e });
           g.fx.burst(e.x, e.y - 2, 0x8a6220, 8);
@@ -404,7 +531,7 @@ export class EnemyManager {
           if (e.timer <= 0) {
             e.state = 3;
             e.timer = 0.6;
-            const n = e.hp < e.maxHp * 0.5 ? 16 : 12;
+            const n = e.raged ? 16 : 12;
             const hurt = this.hurtOf(e);
             audio.sfx('bossShot');
             for (let i = 0; i < n; i++) {
@@ -415,19 +542,27 @@ export class EnemyManager {
           return [e.dashX * 250, e.dashY * 250];
         }
         if (e.timer <= 0) {
-          e.state = 0;
-          e.timer = 2.2;
+          // 狂暴后一半机会立刻再冲一次：重新瞄准、重新预警
+          if (e.raged && e.combo === 0 && Math.random() < 0.5) {
+            e.combo = 1;
+            e.state = 0;
+            e.timer = 0;
+          } else {
+            e.combo = 0;
+            e.state = 0;
+            e.timer = e.raged ? 1.5 : 2.2;
+          }
         }
         return [0, 0];
       }
       case 'boss_tree': {
         e.timer -= dt;
         e.timer2 -= dt;
-        const half = e.hp < e.maxHp * 0.5;
+        const rage = e.raged;
         const hurt = this.hurtOf(e);
         if (e.timer <= 0) {
-          e.timer = half ? 2.6 : 3.2;
-          const n = half ? 20 : 14;
+          e.timer = rage ? 2.6 : 3.2;
+          const n = rage ? 20 : 14;
           audio.sfx('bossShot', { rate: 0.8 });
           const off = Math.random() * Math.PI;
           for (let i = 0; i < n; i++) {
@@ -442,8 +577,8 @@ export class EnemyManager {
             this.spawn('tengguai', e.x + Math.cos(a) * 40, e.y + Math.sin(a) * 30, { hpMult: g.hpScale(), noXp: true });
           }
         }
-        // 半血后：朝玩家方向钻出一排毒刺
-        if (half) {
+        // 狂暴后：朝玩家方向钻出一排毒刺
+        if (rage) {
           e.timer3 -= dt;
           if (e.timer3 <= 0) {
             e.timer3 = 4.5;
@@ -478,13 +613,13 @@ export class EnemyManager {
 
   /**
    * 毕方：绕着玩家飞，定时朝玩家扇出一把火球；蓄力后贴地俯冲，冲过的地方留下一道余火；
-   * 半血后火球更密、俯冲更勤，并且每 6.5 秒在玩家周围降下四道火柱。
+   * 狂暴后火球更密、俯冲更勤，并且每 6.5 秒在玩家周围降下四道火柱。
    */
   private bird(e: Enemy, dt: number, nx: number, ny: number, sp: number, dist: number): [number, number] {
     const g = this.g;
-    const half = e.hp < e.maxHp * 0.5;
+    const rage = e.raged;
     e.timer -= dt;
-    if (half) {
+    if (rage) {
       e.timer3 -= dt;
       if (e.timer3 <= 0) {
         e.timer3 = 6.5;
@@ -502,8 +637,8 @@ export class EnemyManager {
       e.lift = Math.max(0, e.lift - dt * 40);
       e.timer2 -= dt;
       if (e.timer2 <= 0) {
-        e.timer2 = half ? 2.4 : 3.2;
-        const n = half ? 7 : 5;
+        e.timer2 = rage ? 2.4 : 3.2;
+        const n = rage ? 7 : 5;
         const a = Math.atan2(ny, nx);
         audio.sfx('bossShot', { rate: 1.1 });
         for (let i = 0; i < n; i++) {
@@ -544,7 +679,7 @@ export class EnemyManager {
     }
     if (e.timer <= 0) {
       e.state = 0;
-      e.timer = half ? 3.2 : 4.5;
+      e.timer = rage ? 3.2 : 4.5;
     }
     return [0, 0];
   }
@@ -556,7 +691,7 @@ export class EnemyManager {
    */
   private xingtian(e: Enemy, dt: number, nx: number, ny: number, sp: number, dist: number): [number, number] {
     const g = this.g;
-    const half = e.hp < e.maxHp * 0.5;
+    const rage = e.raged;
     const fast = e.rose ? 1.25 : 1;
     const hurt = this.hurtOf(e);
     if (e.state === 9) {
@@ -578,8 +713,8 @@ export class EnemyManager {
     if (e.state === 0) {
       e.timer3 -= dt;
       if (e.timer3 <= 0) {
-        e.timer3 = half ? 5.5 : 7;
-        this.bladeRing(e, half ? 16 : 12, hurt);
+        e.timer3 = rage ? 5.5 : 7;
+        this.bladeRing(e, rage ? 16 : 12, hurt);
         if (e.rose) {
           for (let i = 0; i < 3; i++) {
             const a = (i / 3) * Math.PI * 2;
@@ -636,14 +771,14 @@ export class EnemyManager {
       if (e.timer <= 0) {
         e.state = 3;
         e.timer = 0.6 / fast;
-        e.timer2 = half ? 4.5 : 6;
+        e.timer2 = rage ? 4.5 : 6;
       }
       return [e.dashX * 260, e.dashY * 260];
     }
     // 收招
     if (e.timer <= 0) {
       e.state = 0;
-      e.timer = half ? 1.2 : 1.8;
+      e.timer = rage ? 1.2 : 1.8;
     }
     return [0, 0];
   }
@@ -683,8 +818,10 @@ export class EnemyManager {
     const { x, y, def } = e;
     if (this.corpses >= 60) return;
     this.corpses++;
-    const img = g.add.image(x, y, def.tex, 2).setOrigin(0.5, 0.9).setDepth(y - 1).setFlipX(e.sprite.flipX);
-    const t = def.revive!;
+    // 尸骸用第 2 帧；皮肤只有移动帧时退回默认贴图（测试里的假场景没有 textures，也走默认）
+    const skinned = e.tex !== def.tex && g.textures?.get(e.tex)?.has('2');
+    const img = g.add.image(x, y, skinned ? e.tex : def.tex, 2).setOrigin(0.5, 0.9).setDepth(y - 1).setFlipX(e.sprite.flipX);
+    const t = Math.max(1.5, def.revive! - e.reviveSub);
     // 复活前抖一下
     g.later(t - 0.8, () => {
       if (img.active) g.tweens.add({ targets: img, x: x + 1, duration: 60, yoyo: true, repeat: 5 });
@@ -711,14 +848,14 @@ export class EnemyManager {
 
   /**
    * 山魈王：追着走，定时蓄力跳到玩家脚下砸地（落地放一圈碎石），间隙朝玩家扔三块巨石；
-   * 半血后跳得更勤，并且每 6 秒在玩家周围召一波落石。
+   * 狂暴后跳得更勤，并且每 6 秒在玩家周围召一波落石。
    */
   private ape(e: Enemy, dt: number, nx: number, ny: number, sp: number): [number, number] {
     const g = this.g;
-    const half = e.hp < e.maxHp * 0.5;
+    const rage = e.raged;
     const R = 46;
     e.timer -= dt;
-    if (half) {
+    if (rage) {
       e.timer3 -= dt;
       if (e.timer3 <= 0) {
         e.timer3 = 6;
@@ -728,7 +865,7 @@ export class EnemyManager {
     if (e.state === 0) {
       e.timer2 -= dt;
       if (e.timer2 <= 0) {
-        e.timer2 = half ? 4 : 5.5;
+        e.timer2 = rage ? 4 : 5.5;
         audio.sfx('bossShot', { rate: 0.7 });
         const a = Math.atan2(ny, nx);
         for (const k of [-0.28, 0, 0.28]) g.proj.enemyShot('ep_boulder', e.x, e.y - 26, Math.cos(a + k) * 115, Math.sin(a + k) * 115, 12, 'earth', this.hurtOf(e));
@@ -771,7 +908,7 @@ export class EnemyManager {
         const p = g.player;
         // 有前摇的重击必定暴击
         if (Math.hypot(p.x - e.x, p.y - e.y) < R + PLAYER_RADIUS) g.hurtPlayer(e.dmg, 'earth', this.hurtOf(e, true));
-        const n = half ? 14 : 10;
+        const n = rage ? 14 : 10;
         const off = Math.random() * Math.PI;
         const hurt = this.hurtOf(e);
         for (let i = 0; i < n; i++) {
@@ -783,7 +920,7 @@ export class EnemyManager {
     }
     if (e.timer <= 0) {
       e.state = 0;
-      e.timer = half ? 3 : 4.2;
+      e.timer = rage ? 3 : 4.2;
     }
     return [0, 0];
   }
@@ -845,12 +982,13 @@ export class EnemyManager {
       const y = e.y;
       // 自爆必定灼烧
       const burn: Inflict | undefined = e.def.inflict && { ...e.def.inflict, chance: 1, dps: e.atkDps };
-      g.fx.disc(x, y, 18, 0xff5a3a, 0.28, 0.6);
+      const R = 18 * e.blastMul;
+      g.fx.disc(x, y, R, 0xff5a3a, 0.28, 0.6);
       g.later(0.6, () => {
-        g.fx.anim('fx_explosion', x, y, { scale: 0.8 });
+        g.fx.anim('fx_explosion', x, y, { scale: (0.8 * R) / 18 });
         audio.sfx('explode', { rate: 1.3, vol: 0.6 });
         const p = g.player;
-        if (Math.hypot(p.x - x, p.y - y) < 18 + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale(), 'fire', { inflict: burn });
+        if (Math.hypot(p.x - x, p.y - y) < R + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale(), 'fire', { inflict: burn });
       });
     }
     // 残兵：不是被火系击杀就会复活；精英不复活
@@ -867,7 +1005,7 @@ export class EnemyManager {
   /** 敌人这次攻击附带的异常和暴击 */
   private hurtOf(e: Enemy, forceCrit = false): HurtOpts {
     const f = e.def.inflict;
-    return { inflict: f && { ...f, dps: e.atkDps }, crit: e.def.crit, critDmg: e.def.critDmg, forceCrit };
+    return { inflict: f && { ...f, chance: Math.min(1, f.chance + e.chanceAdd), dps: e.atkDps }, crit: e.def.crit, critDmg: e.def.critDmg, forceCrit };
   }
 
   /** 预警 0.7 秒后沿直线钻出毒刺，压到玩家就造成伤害 */

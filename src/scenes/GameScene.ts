@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
-import { LEVELS, DIFF, type LevelDef } from '../config/levels';
+import { LEVELS, DIFF, enemyPool, type LevelDef } from '../config/levels';
 import { ENEMIES } from '../config/enemies';
 import { ENEMY_CRIT, ENEMY_CRIT_DMG, ON_ENEMY, STATUS_OF, statusChance, type Inflict, type StatusId } from '../config/status';
 import { EL_INFO, GEN_ORDER, REL_MULT, relation, terrainMod, type El } from '../config/elements';
@@ -78,6 +78,8 @@ export class GameScene extends Phaser.Scene {
 
   /** 局内时钟（秒），暂停时不走 */
   now = 0;
+  /** Boss 远吼已经叠了几层 */
+  roarStacks = 0;
   elapsed = 0;
   kills = 0;
   boss: Enemy | null = null;
@@ -129,6 +131,7 @@ export class GameScene extends Phaser.Scene {
     this.char = CHARACTERS.find((c) => c.id === (data.char ?? 'xiao')) ?? CHARACTERS[0];
     this.now = 0;
     this.elapsed = 0;
+    this.roarStacks = 0;
     this.kills = 0;
     this.boss = null;
     this.over = false;
@@ -189,6 +192,8 @@ export class GameScene extends Phaser.Scene {
       { t: d * 0.7, done: false, fn: () => this.swarm() },
       { t: d - 90, done: false, fn: () => this.spawnElite('gold') },
       { t: d - 60, done: false, fn: () => this.spawnBoss() },
+      ...L.enemies.filter((e) => e.from).map((e) => ({ t: e.from!, done: false, fn: () => this.introEnemy(e.id) })),
+      ...(L.roar?.times ?? []).map((t) => ({ t, done: false, fn: () => this.roar() })),
     ];
 
     if (this.scene.isActive('hud')) this.scene.stop('hud');
@@ -239,10 +244,6 @@ export class GameScene extends Phaser.Scene {
 
     if (!this.over) audio.setIntensity(this.musicIntensity());
 
-    if (this.boss && !this.over && !this.rageMusic && this.boss.hp < this.boss.maxHp * 0.5) {
-      this.rageMusic = true;
-      audio.music('boss_rage', 1.5);
-    }
 
     if (!this.over && this.elapsed >= this.nextEliteAt && this.elapsed < this.levelDef.duration - 60) {
       const { every } = this.levelDef.elites;
@@ -310,7 +311,8 @@ export class GameScene extends Phaser.Scene {
     const progress = Math.min(1, this.elapsed / Math.max(60, this.levelDef.duration - 60));
     const crowd = Math.min(1, this.enemies.count / 120);
     const near = Math.min(1, this.enemies.inRadius(p.x, p.y, 120, this.musicTmp).length / 12);
-    const I = 0.1 + 0.25 * progress + 0.3 * crowd + 0.35 * near;
+    // 每吼一层，底子抬高一点
+    const I = Math.min(1, 0.1 + 0.25 * progress + 0.3 * crowd + 0.35 * near + 0.05 * this.roarStacks);
     const b = this.boss;
     return b ? Math.max(I, 0.6 + 0.4 * (1 - b.hp / b.maxHp)) : I;
   }
@@ -337,7 +339,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private pickEnemy(): string {
-    const list = this.levelDef.enemies;
+    const list = enemyPool(this.levelDef, this.elapsed);
     const total = list.reduce((s, e) => s + e.w, 0);
     let r = Math.random() * total;
     for (const e of list) if ((r -= e.w) <= 0) return e.id;
@@ -382,6 +384,48 @@ export class GameScene extends Phaser.Scene {
     }
     audio.sfx('warn');
     this.hud.toast(`${ENEMIES[id].name}成群来袭！`, EL_INFO[ENEMIES[id].el].css);
+  }
+
+  /** 新敌人进池时先来一小群，让玩家看清它长什么样、怎么动 */
+  private introEnemy(id: string) {
+    for (let i = 0; i < 3; i++) {
+      const [x, y] = this.ringPos(300);
+      this.enemies.spawn(id, x, y, { hpMult: this.hpScale() });
+    }
+    this.hud.toast(`${ENEMIES[id].name}出没`, EL_INFO[ENEMIES[id].el].css);
+  }
+
+  /**
+   * Boss 在远处吼一声：全场叠一层加成，提示两行字、镜头轻震、怪一齐跳一下，
+   * 再在玩家附近触发一次小范围地形事件。Boss 已经现身就不再吼
+   */
+  roar() {
+    const r = this.levelDef.roar;
+    if (!r || this.boss) return;
+    const n = ++this.roarStacks;
+    this.enemies.onRoar(n);
+    const css = EL_INFO[ENEMIES[this.levelDef.boss].el].css;
+    this.hud.toast(r.lines[Math.min(n, r.lines.length) - 1], css);
+    this.hud.toast(r.detail, '#b8aec8');
+    audio.sfx('boss', { rate: 0.7, vol: 0.55 });
+    this.cameras.main.shake(350, 0.004);
+    if (r.event?.kind === 'rockfall') this.hazards.rain(r.event.count);
+    else if (r.event?.kind === 'lava') this.hazards.erupt(r.event.count);
+  }
+
+  /** Boss 狂暴（Enemies.enrage 调用）：最后一吼，全场小怪再叠一层，换狂暴 BGM */
+  onBossRage(e: Enemy) {
+    const r = this.levelDef.roar;
+    this.hud.toast(`${e.def.name}狂暴了！`, EL_INFO[e.def.el].css);
+    if (r) {
+      const n = ++this.roarStacks;
+      this.enemies.onRoar(n);
+      this.hud.toast(`群妖应声而起：${r.detail}`, '#b8aec8');
+    }
+    if (!this.rageMusic) {
+      this.rageMusic = true;
+      audio.music('boss_rage', 1.5);
+    }
   }
 
   /** 游荡精英掉铜匣，精英潮和 Boss 前的精英掉金宝箱 */
@@ -444,7 +488,8 @@ export class GameScene extends Phaser.Scene {
   /** 敌人对玩家一方的有效护甲：煞气剑阵，透甲、烧结、盘根、熔金 */
   private armorOf(e: Enemy) {
     const m = this.build.mods;
-    const armor = e.armor + (this.world?.zoneArmor(e.x, e.y) ?? 0);
+    const zone = this.world?.zoneArmor(e.x, e.y) ?? 0;
+    const armor = e.armor + (zone && zone + (this.levelDef.roar?.zoneArmor ?? 0) * this.roarStacks);
     if (armor <= 0) return armor;
     if (m['hh.stunBreak'] && this.now < e.stunUntil) return 0;
     if (m['kx.fire'] && e.def.el === 'metal' && this.now < e.burnUntil) return 0;

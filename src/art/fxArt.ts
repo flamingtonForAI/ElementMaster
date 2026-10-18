@@ -322,45 +322,80 @@ function disc(): PC {
   return p;
 }
 
+/** 树妖环射的飞叶：尖头杏叶带叶脉，飞行中翻转 */
 function eLeaf(): PC {
   const p = new PC(9, 9);
-  p.ellipse(4.5, 4.5, 3.5, 3.5, 0x8fd04a);
-  p.circle(4.5, 4.5, 1.8, 0xe8ff9a);
+  const L = 0x6fb840, H = 0xb4e86a, V = 0x3f7a2a;
+  for (const [y, x0, x1] of [[1, 6, 7], [2, 4, 7], [3, 3, 7], [4, 2, 6], [5, 2, 5], [6, 1, 4], [7, 1, 2]] as const) p.span(y, x0, x1, L);
+  for (const [y, x0, x1] of [[2, 4, 5], [3, 3, 4], [4, 2, 3], [5, 2, 2]] as const) p.span(y, x0, x1, H);
+  p.line(1, 7, 6, 2, V);
   p.outline(0x2a4a12);
   return p;
 }
 
+/** 瘴蟾吐的毒涎：朝飞行方向（右）的圆头，拖一条渐细的尾巴 */
 function ePoison(): PC {
-  const p = new PC(9, 9);
-  p.circle(4.5, 4.5, 3.4, 0x7ac83a);
-  p.circle(3.8, 3.8, 1.5, 0xd8ff8a);
+  const p = new PC(12, 9);
+  p.span(4, 1, 5, 0x7ac83a);
+  p.span(3, 3, 5, 0x7ac83a);
+  p.span(5, 3, 5, 0x5f9a34);
+  p.circle(7.5, 4.5, 3.1, 0x7ac83a);
+  p.span(6, 7, 9, 0x5f9a34);
+  p.set(9, 5, 0x5f9a34);
+  p.span(3, 6, 7, 0xd8ff8a);
+  p.set(7, 2, 0xd8ff8a);
   p.outline(0x2a3a12);
   return p;
 }
 
+/** 狼妖的风刃：凸面朝前的新月，后面拖两道风痕 */
 function eWind(): PC {
-  const p = new PC(11, 11);
-  p.circle(5.5, 5.5, 3.6, 0xdfe8ff);
-  p.circle(5.5, 5.5, 2, 0xffffff);
+  const p = new PC(12, 11);
+  for (let y = 0; y < 11; y++)
+    for (let x = 0; x < 12; x++) {
+      const r = Math.hypot(x + 0.5 - 4.5, y + 0.5 - 5.5);
+      const r2 = Math.hypot(x + 0.5 - 2.6, y + 0.5 - 5.5);
+      if (r <= 5.2 && r2 > 4.6) p.set(x, y, r > 4.2 ? 0xffffff : 0xdfe8ff);
+    }
+  p.span(3, 2, 4, 0xb8c8f0);
+  p.span(7, 2, 4, 0xb8c8f0);
   p.outline(0x4a3a6a);
   return p;
 }
 
+/** 山魈投的石块：不规则的棱角碎石，飞行中翻滚 */
 function eRock(): PC {
   const p = new PC(9, 9);
-  p.circle(4.5, 4.8, 3.4, 0x9a8a72);
-  p.ellipse(3.8, 3.8, 1.8, 1.2, 0xd4c4a0);
-  p.set(6, 6, 0x5e4e3c);
+  const M = 0x9a8a72, H = 0xd4c4a0, D = 0x5e4e3c;
+  p.span(1, 3, 5, M);
+  p.span(2, 2, 6, M);
+  p.span(3, 1, 7, M);
+  p.span(4, 1, 7, M);
+  p.span(5, 2, 7, M);
+  p.span(6, 2, 6, M);
+  p.span(7, 4, 5, M);
+  p.span(1, 3, 4, H);
+  p.span(2, 2, 3, H);
+  p.set(1, 3, H);
+  p.span(6, 4, 6, D);
+  p.set(7, 5, D);
+  p.set(5, 3, D);
   p.outline(0x2c2238);
   return p;
 }
 
+/** 山魈王掷出的巨石：多面棱角，一道裂纹，飞行中翻滚 */
 function eBoulder(): PC {
   const p = new PC(13, 13);
-  p.circle(6.5, 6.8, 5.2, 0x9a8a72);
-  p.ellipse(8, 8.5, 3, 2.4, 0x6e5e4a);
-  p.ellipse(5, 4.8, 2.6, 1.8, 0xd4c4a0);
-  p.set(4, 4, 0xf0e4c4);
+  const M = 0x9a8a72, S = 0x6e5e4a, H = 0xd4c4a0, HL = 0xf0e4c4;
+  for (const [y, x0, x1] of [[1, 4, 8], [2, 3, 9], [3, 2, 10], [4, 1, 11], [5, 1, 11], [6, 1, 11], [7, 1, 11], [8, 2, 11], [9, 2, 10], [10, 3, 9], [11, 5, 8]] as const) p.span(y, x0, x1, M);
+  p.ellipse(8.5, 8.5, 3, 2.4, S);
+  p.span(2, 4, 6, H);
+  p.span(3, 3, 5, H);
+  p.span(4, 2, 3, H);
+  p.set(4, 2, HL);
+  p.line(6, 4, 8, 7, S);
+  p.set(9, 7, S);
   p.outline(0x2c2238);
   return p;
 }
@@ -753,12 +788,20 @@ function cliff(variant = 0, pal = CLIFF_PAL): PC {
   return p;
 }
 
-/** 火精、毕方吐的火球 */
+/** 火精、毕方的火球：亮焰心在前（右），三条火舌往后拖 */
 function eFire(): PC {
-  const p = new PC(9, 9);
-  p.circle(4.5, 4.5, 3.6, 0xff7a2a);
-  p.circle(4, 4, 2.2, 0xffd05a);
-  p.set(3, 3, 0xfff6c8);
+  const p = new PC(13, 9);
+  const R = 0xd83c28, O = 0xff7a2a, Y = 0xffd05a, W = 0xfff6c8;
+  p.strand([[6, 2], [2, 1]], R, 1);
+  p.strand([[6, 6], [2, 7]], R, 1);
+  p.span(3, 2, 6, O);
+  p.span(4, 0, 6, O);
+  p.span(5, 2, 6, O);
+  p.set(0, 4, R);
+  p.circle(8.5, 4.5, 3.3, O);
+  p.circle(9, 4.5, 2, Y);
+  p.set(9, 4, W);
+  p.set(10, 4, W);
   p.outline(0x5a1a12);
   return p;
 }

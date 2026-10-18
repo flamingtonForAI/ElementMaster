@@ -68,6 +68,9 @@ export interface FireOpts {
   stick?: boolean;
 }
 
+/** 有朝向的敌方弹丸（贴图朝右画），按飞行方向转；其余敌弹原地翻滚 */
+const AIMED_SHOTS = new Set(['ep_fire', 'ep_poison', 'ep_wind']);
+
 export class ProjectileManager {
   private list: Proj[] = [];
   private pool: Proj[] = [];
@@ -197,6 +200,7 @@ export class ProjectileManager {
       if (p.kind === 'leaf') s.rotation += 14 * dt;
       else if (p.kind === 'fu') s.setRotation(Math.atan2(p.vy, p.vx) + Math.PI / 2);
       else if (p.kind !== 'enemy') s.setRotation(Math.atan2(p.vy, p.vx));
+      else if (AIMED_SHOTS.has(s.texture.key)) s.setRotation(Math.atan2(p.vy, p.vx));
       else s.rotation += 6 * dt;
 
       if (p.kind === 'water') {

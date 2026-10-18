@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>荒郊古道 · 怪物造型试稿</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#171a1d;color:#eee9df;font:15px/1.6 system-ui,sans-serif}main{max-width:1320px;margin:auto;padding:32px}h1{font-size:30px;margin:0 0 8px}p{color:#b4bab8;margin:8px 0 22px}a{color:#e3bc79}h2{font-size:20px;margin:32px 0 12px}button,select{font:inherit;padding:7px 14px;background:#2e3538;color:#f5ead8;border:1px solid #535e62;border-radius:4px;cursor:pointer}button[aria-pressed=true]{border-color:#e3bc79;color:#e3bc79}.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0}.grid{display:grid;grid-template-columns:repeat(6,minmax(140px,1fr));gap:1px;background:#3c4242;border:1px solid #3c4242;overflow:auto}.monster{background:#22282a;text-align:center;padding:16px 5px}.monster h3{margin:0;font-size:17px}.monster small{color:#b4bab8}.study{display:flex;justify-content:center;align-items:center;min-height:145px}.study canvas{image-rendering:pixelated}.caption{font-size:12px;color:#b4bab8}.crowd-wrap{overflow:auto;background:#0d1012;padding:12px}#crowd{display:block;image-rendering:pixelated;width:1280px;height:720px}#sheet{display:block;width:100%;max-width:960px;background:#252b2c}.note{border-left:3px solid #c49c64;padding:8px 16px;color:#d6d6c9}#engine{display:none}@media(max-width:800px){main{padding:16px}.grid{grid-template-columns:repeat(3,minmax(140px,1fr))}}
+</style>
+<main>
+<h1>荒郊古道 · 怪物造型试稿</h1>
+<p>第一关五只小怪 + 狼妖。AI 原画 → 96px 单体低分辨率母图 → 38 色共享色板 → 硬透明像素图。当前为静态造型验证。</p>
+<div class="controls"><a href="./level1-v1/source.png">整页原图</a><a href="./level1-v1/source-lowres.png">384 × 256 母图</a><a href="./level1-v1/comparison.png">像素化对照图</a><a href="./REVIEW.md">关卡评审与优化建议</a></div>
+<div class="grid" id="studies"></div>
+<h2>原游戏地面上的密集排列</h2>
+<p>固定排布，便于对照遮挡与轮廓；包含原版主角、宝石和装饰。此处不模拟战斗、碰撞或动画。</p>
+<div class="controls">
+<button id="original" aria-pressed="false">当前程序画</button><button id="generated" aria-pressed="true">AI 试稿</button>
+<label>尺寸 <select id="size"><option value="native">当前尺寸 · 24 / 28 / 56×48</option><option value="32">小怪统一 32px · Boss 原尺寸</option></select></label>
+<label>检查 <select id="filter"><option value="none">彩色</option><option value="grayscale(1)">灰度</option><option value="blur(2px)">模糊 2px</option><option value="silhouette">轮廓剪影</option></select></label>
+<label>密度 <select id="density"><option value="24">24 只</option><option value="72">72 只</option><option value="160">160 只</option></select></label>
+<button id="zoom" aria-pressed="true">显示 2×</button>
+</div>
+<div class="crowd-wrap"><canvas id="crowd" width="640" height="360" aria-label="640×360 游戏地面怪物可读性预览"></canvas></div>
+<p class="note">先看轮廓再看细节：石俑的肩甲、藤怪的白木面具、水鬼的脸与尾、火鸦的翼和亮胸、铁甲兵的枪尖、狼妖的鬃毛与前爪。量产前还需移动、蓄力和攻击帧，以及元素底环。</p>
+<h2>整页生成原稿</h2><img id="sheet" src="./level1-v1/source.png" alt="石俑、藤怪、水鬼、火鸦、铁甲兵和狼妖六只怪物的统一造型原稿">
+</main><div id="engine"></div>
+<script type="module" src="./preview.ts"></script>
+</html>
