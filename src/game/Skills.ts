@@ -19,7 +19,8 @@ export class SkillSystem {
   private fuCount = 0;
   private sticks: { e: Enemy; id: number; mark: Phaser.GameObjects.Sprite; x: number; y: number; t: number; dmg: number; el: El; radius: number }[] = [];
   /** 药师：脚下的毒雾光环 */
-  private aura: Phaser.GameObjects.Image | null = null;
+  /** 毒雾光环的贴图（HD 光影原型读它的位置和大小） */
+  aura: Phaser.GameObjects.Image | null = null;
 
   constructor(private g: GameScene) {}
 

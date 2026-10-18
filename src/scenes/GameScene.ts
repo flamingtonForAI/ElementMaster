@@ -16,6 +16,7 @@ import { PuppetManager } from '../game/Puppets';
 import { PlayerStatus } from '../game/Status';
 import { World } from '../game/World';
 import { Hazards } from '../game/Hazards';
+import { HdLook, hdLookAvailable } from '../game/HdLook';
 import { loadSave, writeSave } from '../game/save';
 import { talentMods, daoPoints, legacyPoints } from '../game/talents';
 import { HEHUA_PROC, HEHUA_VULN, hehuaPairs } from '../config/startree';
@@ -75,6 +76,7 @@ export class GameScene extends Phaser.Scene {
   world!: World;
   /** 关卡地形机制：落石、熔岩口、余火、剑阵提示 */
   hazards!: Hazards;
+  hdLook: HdLook | null = null;
 
   /** 局内时钟（秒），暂停时不走 */
   now = 0;
@@ -177,6 +179,7 @@ export class GameScene extends Phaser.Scene {
     // 镜头最多看到墙外一点
     const h = this.world.half + 56;
     this.cameras.main.setBounds(-h, -h, h * 2, h * 2);
+    this.hdLook = hdLookAvailable(L.id) ? new HdLook(this) : null;
 
     const d = L.duration;
     this.nextEliteAt = L.elites.first;
@@ -240,6 +243,7 @@ export class GameScene extends Phaser.Scene {
     this.fx.update(dt);
     this.world.update(dt);
     this.hazards.update();
+    this.hdLook?.update(dt);
     this.runTasks();
 
     if (!this.over) audio.setIntensity(this.musicIntensity());
