@@ -100,7 +100,8 @@ export class ProjectileManager {
     p.dmg = o.dmg;
     p.el = o.el;
     p.life = o.life;
-    p.pierce = o.pierce ?? 0;
+    // 破军诀：本来就能穿透的投射物再多穿几个
+    p.pierce = o.pierce ? o.pierce + this.g.pstats.pierce : 0;
     p.bounces = o.bounces ?? 0;
     p.radius = o.radius ?? 4;
     p.slow = o.slow ?? 0;

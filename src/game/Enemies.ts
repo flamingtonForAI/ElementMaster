@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ENEMIES, type EnemyDef } from '../config/enemies';
 import { enemyTex, roarBuff, type RoarBuff } from '../config/levels';
-import { STATUS_INFO, type Inflict } from '../config/status';
+import { STATUS_INFO, FROZEN, type Inflict } from '../config/status';
 import { EL_INFO, type El } from '../config/elements';
 import { SpatialGrid } from './SpatialGrid';
 import { PLAYER_RADIUS } from './Player';
@@ -38,13 +38,23 @@ export class Enemy {
   stunUntil = 0;
   /** 定身结束后的免疫期 */
   stunImmuneUntil = 0;
-  /** 身上的异常：中毒单层、灼烧叠层（每层 burnDps）、破绽 */
+  /** 寒意攒满冻住时为真，只影响着色 */
+  frozenUntil = 0;
+  /** 寒意、震慑的累积层数和上次累积的时刻；冰冻后的免疫期 */
+  chill = 0;
+  chillAt = 0;
+  chillImmuneUntil = 0;
+  daze = 0;
+  dazeAt = 0;
+  /** 身上的异常：中毒单层、灼烧叠层（每层 burnDps）、流血叠层（每层 bleedDps） */
   poisonUntil = 0;
   poisonDps = 0;
   burnUntil = 0;
   burnStacks = 0;
   burnDps = 0;
-  flawUntil = 0;
+  bleedUntil = 0;
+  bleedStacks = 0;
+  bleedDps = 0;
   dotTick = 0;
   flashUntil = 0;
   contactAt = 0;
@@ -111,7 +121,8 @@ const TINTS: Record<number, number> = {
   4: 0xff9a8a,
   5: STATUS_INFO.burn.tint,
   6: STATUS_INFO.poison.tint,
-  7: STATUS_INFO.flaw.tint,
+  7: STATUS_INFO.bleed.tint,
+  10: FROZEN.tint,
 };
 
 export interface SpawnOpts {
@@ -177,7 +188,8 @@ export class EnemyManager {
     e.alive = true;
     e.kbx = e.kby = 0;
     e.slowUntil = e.stunUntil = e.stunImmuneUntil = e.flashUntil = e.contactAt = 0;
-    e.poisonUntil = e.poisonDps = e.burnUntil = e.burnStacks = e.burnDps = e.flawUntil = e.dotTick = 0;
+    e.poisonUntil = e.poisonDps = e.burnUntil = e.burnStacks = e.burnDps = e.dotTick = 0;
+    e.bleedUntil = e.bleedStacks = e.bleedDps = e.frozenUntil = e.chill = e.chillAt = e.chillImmuneUntil = e.daze = e.dazeAt = 0;
     e.counterShown = false;
     e.state = 0;
     e.timer = 1 + Math.random() * 2;
@@ -314,8 +326,9 @@ export class EnemyManager {
       // 中毒期间不回血
       const poisoned = now < e.poisonUntil;
       const burning = now < e.burnUntil;
+      const bleeding = now < e.bleedUntil;
       if (e.def.regen && !poisoned) e.hp = Math.min(e.maxHp, e.hp + e.def.regen * e.regenMul * dt);
-      if (poisoned || burning) {
+      if (poisoned || burning || bleeding) {
         e.dotTick -= dt;
         if (e.dotTick <= 0) {
           e.dotTick += 0.5;
@@ -323,8 +336,8 @@ export class EnemyManager {
           const mods = g.build.mods;
           const pd = poisoned ? e.poisonDps * (now < e.slowUntil ? 1 + (mods['hh.slowPoison'] ?? 0) : 1) : 0;
           const bd = burning ? e.burnStacks * e.burnDps * (poisoned ? 1 + (mods['hh.poisonBurn'] ?? 0) : 1) : 0;
-          const dps = pd + bd;
-          g.dotEnemy(e, dps * 0.5, burning ? 'burn' : 'poison');
+          if (pd + bd > 0) g.dotEnemy(e, pd * 0.5, bd * 0.5);
+          if (bleeding && e.alive) g.bleedTick(e, e.bleedStacks * e.bleedDps * 0.5);
           if (!e.alive) continue;
         }
       }
@@ -384,16 +397,16 @@ export class EnemyManager {
       s.setPosition(e.x, e.y - e.lift - hop);
       s.setDepth(e.y);
       if (Math.abs(dx) > 2) s.setFlipX(dx < 0);
-      // 着色优先级：受击闪白 > 定身 > 冲锋预警 > 灼烧 > 中毒 > 迟缓 > 破绽
+      // 着色优先级：受击闪白 > 定身（冰冻）> 冲锋预警 > 灼烧 > 中毒 > 迟缓 > 流血
       const tint =
         now < e.flashUntil ? 1
         : hop > 0 ? 8
-        : stunned ? 2
+        : stunned ? (now < e.frozenUntil ? 10 : 2)
         : (e.state === 1 && (e.def.behavior === 'charge' || e.boss)) || (e.state === 4 && e.def.behavior === 'boss_xingtian') || (e.state === 2 && e.def.behavior === 'burrow') ? 4
         : burning ? 5
         : poisoned ? 6
         : slow < 1 ? 3
-        : now < e.flawUntil ? 7
+        : bleeding ? 7
         : e.raged ? 9
         : 0;
       // 狂暴的 Boss 一直带着元素色脉动，每帧重算

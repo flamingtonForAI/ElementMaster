@@ -43,6 +43,39 @@ function flySword(): PC {
   return p;
 }
 
+/** 金针雨：竖直落下的金针，针尖朝下 */
+function needle(): PC {
+  const p = new PC(5, 14);
+  p.line(2, 0, 2, 3, 0xa07a30);
+  p.line(2, 4, 2, 11, 0xf0d070);
+  p.set(1, 5, 0xfff4c0);
+  p.set(2, 12, 0xffffff);
+  p.outline(0x5a4018);
+  return p;
+}
+
+/** 藤缚：地上盘开的一丛藤蔓，按地面压扁（宽:高 = 1:0.6） */
+function vine(): PC {
+  const p = new PC(40, 24);
+  const D = 0x2e7a4a, L = 0x4fbf7a, H = 0xa8e890;
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * Math.PI * 2 + 0.4;
+    const pts: [number, number][] = [];
+    for (let t = 0; t <= 16; t += 2) {
+      const w = Math.sin(t * 0.6 + k) * 2;
+      pts.push([20 + Math.cos(a) * t * 1.1 - Math.sin(a) * w, 12 + (Math.sin(a) * t * 1.1 + Math.cos(a) * w) * 0.6]);
+    }
+    p.strand(pts, D, 1);
+    const [lx, ly] = pts[pts.length - 2];
+    p.set(Math.round(lx), Math.round(ly), L);
+    p.set(Math.round(lx) + 1, Math.round(ly), H);
+  }
+  p.ellipse(20, 12, 3, 2, D);
+  p.set(20, 11, L);
+  p.outline(0x173a24);
+  return p;
+}
+
 function wave(): PC {
   const p = new PC(14, 24);
   for (let y = 0; y < 24; y++) {
@@ -1022,6 +1055,8 @@ export function buildFx(scene: Phaser.Scene) {
   addAnim(scene, 'fx_slash', 'fx_slash', [0, 1, 1, 2], 20, 0);
   single(scene, 'pj_sword', flySword());
   single(scene, 'pj_wave', wave());
+  single(scene, 'pj_needle', needle());
+  single(scene, 'fx_vine', vine());
   addSheet(scene, 'pj_fireball', [0, 1].map(fireball));
   addAnim(scene, 'pj_fireball', 'pj_fireball', [0, 1], 10);
   for (const el of GEN_ORDER) {

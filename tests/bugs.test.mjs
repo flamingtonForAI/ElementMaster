@@ -55,19 +55,19 @@ test('玄一没有土系心法亲和，墨衡仍保留本系加成', () => {
   }
 });
 
-test('青龙印禁止破绽带来的暴击，普通构筑仍可借破绽暴击', () => {
+test('青龙印禁止暴击，普通构筑照常暴击', () => {
   const random = Math.random;
   Math.random = () => 0;
   try {
     for (const [mods, noCrit, expected] of [[{}, false, true], [{ noCrit: 1 }, false, false], [{}, true, false]]) {
       const scene = runScene('xiao', 1);
       scene.build = new Build(scene.char, LEVELS[0], {}, mods);
-      scene.pstats = { ...scene.build.stats(), crit: 0 };
+      scene.pstats = { ...scene.build.stats(), crit: 1 };
       scene.player = { x: 1000, y: 1000 };
       scene.dmgMult = () => 1;
       let crit;
       scene.fx = { number: (_x, _y, _dmg, _rel, value) => { crit = value; } };
-      scene.hitEnemy({ alive: true, def: { el: 'metal' }, x: 0, y: 0, hp: 1000, armor: 0, flawUntil: 10, flashUntil: 0, sprite: { displayHeight: 16 } }, 10, 'metal', { noCrit });
+      scene.hitEnemy({ alive: true, def: { el: 'metal' }, x: 0, y: 0, hp: 1000, armor: 0, flashUntil: 0, sprite: { displayHeight: 16 } }, 10, 'metal', { noCrit });
       assert.equal(crit, expected);
     }
   } finally {
@@ -119,11 +119,11 @@ test('首通只奖实际关卡，补关会给点，重复通关及失败不重�
   assert.equal(daoPoints(save, character('xiao')), 2);
 });
 
-test('v3 最高关记录迁移保留已有点数，星图重绘清空已点星位，EM5 导出再导入保留逐关记录', () => {
+test('v3 最高关记录迁移保留已有点数，星图重绘清空已点星位，EM6 导出再导入保留逐关记录', () => {
   reset();
   assert.ok(importSlot(1, encode({ unlocked: 3, ver: 3, clears: { xiao: 2 }, wudao: { xiao: 1 }, tree: { xiao: ['metal.s1', 'metal.s2'] }, legacy: { xiao: ['xiao.a1'] } })));
   const save = readSlot(1);
-  assert.equal(save.ver, 5);
+  assert.equal(save.ver, 6);
   assert.deepEqual(save.clears.xiao, [1, 2]);
   assert.deepEqual(save.tree.xiao, []);
   assert.match(save.notice, /星图重绘.*萧寒锋/);
@@ -131,7 +131,7 @@ test('v3 最高关记录迁移保留已有点数，星图重绘清空已点星�
   assert.equal(daoPoints(save, character('xiao')), 9);
   assert.equal(legacyPoints(save, character('xiao')), 1);
   const code = exportSlot(1);
-  assert.ok(code.startsWith('EM5:'));
+  assert.ok(code.startsWith('EM6:'));
   assert.ok(importSlot(2, code));
   assert.deepEqual(readSlot(2), save);
   writeSave(save);
@@ -168,13 +168,13 @@ test('导入只保留连通的星图与按序的传承，超出点数则清空�
   reset();
   const tree = { xiao: ['metal.gate', 'center', 'metal.s1', 'metal.s2', 'water.s2'], xuanyi: ['center', 'fire.gate'] };
   const legacy = { xiao: ['xiao.a2', 'xiao.b1'] };
-  assert.ok(importSlot(1, encode({ unlocked: 3, ver: 5, clears: { xiao: [1, 2], xuanyi: [1] }, tree, legacy })));
+  assert.ok(importSlot(1, encode({ unlocked: 3, ver: 6, clears: { xiao: [1, 2], xuanyi: [1] }, tree, legacy })));
   let save = readSlot(1);
   assert.deepEqual(save.tree.xiao, ['metal.s1', 'metal.s2']);
   assert.deepEqual(save.tree.xuanyi, ['fire.gate']);
   assert.deepEqual(save.legacy.xiao, ['xiao.b1']);
   assert.equal(save.notice, '');
-  assert.ok(importSlot(1, encode({ unlocked: 3, ver: 5, clears: {}, tree, legacy })));
+  assert.ok(importSlot(1, encode({ unlocked: 3, ver: 6, clears: {}, tree, legacy })));
   save = readSlot(1);
   assert.deepEqual(save.tree.xiao, []);
   assert.deepEqual(save.legacy.xiao, []);
@@ -251,6 +251,22 @@ test('升级预览给出选后的灵根与本命，且不改动当前构筑', ()
   assert.equal(build.skills.get('leaf'), 1);
   assert.equal(build.version, v0);
   assert.equal(build.benming, 'metal');
+});
+
+test('有前置的心法：身上没有对应的术不会出现，学会后才会出现', () => {
+  const build = new Build(character('xiao'), LEVELS[0]);
+  const seen = (id) => {
+    for (let i = 0; i < 400; i++) if (build.options(3).some((o) => o.kind === 'passive' && o.id === id)) return true;
+    return false;
+  };
+  // 剑客开局只有剑气斩：金系的破军诀有，水系的玄冥诀、要穿透投射物的贯日诀没有
+  assert.equal(seen('pojun'), true);
+  assert.equal(seen('xuanming'), false);
+  assert.equal(seen('guanri'), false);
+  build.skills.set('hanbing', 1);
+  build.skills.set('flysword', 1);
+  assert.equal(seen('xuanming'), true);
+  assert.equal(seen('guanri'), true);
 });
 
 const { isRidge, woodland } = await import('../src/game/terrain.ts');
@@ -333,7 +349,7 @@ test('寻路距离场能带着被岩壁挡住的怪绕到缺口', () => {
   assert.ok(nav.clear(300, -100, 300, 100));
 });
 
-const { STAR, CENTER, hehuaPairs } = await import('../src/config/startree.ts');
+const { STAR, CENTER, hehuaPairs, blocked } = await import('../src/config/startree.ts');
 
 /** 从起点到每个星位要花的道点（起点免费） */
 function costs(start) {
@@ -370,6 +386,35 @@ test('星图连线双向、星位不重叠，本命门到本系极境印 16 点�
   assert.equal(costs(CENTER).get('wood.k'), 17);
 });
 
+/** 按真实点星规则（别系本命门、中宫不能点）算从本命门出发的道点 */
+function realCosts(start) {
+  const d = new Map([[start, 0]]);
+  const q = [start];
+  while (q.length) {
+    const id = q.shift();
+    for (const l of STAR[id].links) if (!d.has(l) && !blocked(l, start)) d.set(l, d.get(id) + 1), q.push(l);
+  }
+  return d;
+}
+
+test('星图：去相邻元素的脉 3 点不变，去相克的元素多绕 2 点；御火在火的子一侧，剑客要 9 点', () => {
+  const order = ['wood', 'fire', 'earth', 'metal', 'water'];
+  order.forEach((el, i) => {
+    const d = realCosts(`${el}.gate`);
+    const next = order[(i + 1) % 5];
+    const prev = order[(i + 4) % 5];
+    assert.equal(d.get(`${next}.s1b`), 3);
+    assert.equal(d.get(`${prev}.s1`), 3);
+    assert.equal(d.get(`${order[(i + 2) % 5]}.s1b`), 7);
+    assert.equal(d.get(`${order[(i + 3) % 5]}.s1`), 7);
+    assert.equal(d.get(`${el}.k`), 16);
+  });
+  const xiao = realCosts('metal.gate');
+  assert.equal(xiao.get('fire.yt'), 9);
+  assert.equal(xiao.get('metal.yt'), 5);
+  assert.ok(STAR['fire.yt'].mods['sres.burn'] > 0);
+});
+
 function comboScene(mods) {
   const scene = runScene('qingdai', 1);
   scene.build = new Build(scene.char, LEVELS[0], {}, mods);
@@ -382,7 +427,7 @@ function comboScene(mods) {
   scene.now = 1;
   return scene;
 }
-const enemy = (el, o = {}) => ({ alive: true, def: { el }, x: 0, y: 0, hp: 100, maxHp: 100, armor: 0, flawUntil: 0, flashUntil: 0, slowUntil: 0, stunUntil: 0, stunImmuneUntil: 0, poisonUntil: 0, burnUntil: 0, sprite: { displayHeight: 16 }, ...o });
+const enemy = (el, o = {}) => ({ alive: true, def: { el }, x: 0, y: 0, hp: 100, maxHp: 100, armor: 0, flashUntil: 0, bleedUntil: 0, bleedStacks: 0, bleedDps: 0, chill: 0, chillAt: 0, chillImmuneUntil: 0, frozenUntil: 0, daze: 0, dazeAt: 0, invulnUntil: 0, slowUntil: 0, stunUntil: 0, stunImmuneUntil: 0, poisonUntil: 0, burnUntil: 0, sprite: { displayHeight: 16 }, ...o });
 
 test('水木滋荣：木术命中附带迟缓，同时迟缓、中毒的敌人受伤 +20%', () => {
   const random = Math.random;
@@ -507,11 +552,11 @@ test('寻路只算玩家附近：窗口内和全图结果一致，窗口外当�
 test('灼烧烧死算火系击杀，中毒毒死不算', () => {
   const scene = comboScene({});
   const a = enemy('metal', { hp: 1 });
-  scene.dotEnemy(a, 5, 'burn');
+  scene.dotEnemy(a, 0, 5);
   assert.equal(a.lastEl, 'fire');
   assert.equal(a.alive, false);
   const b = enemy('metal', { hp: 1 });
-  scene.dotEnemy(b, 5, 'poison');
+  scene.dotEnemy(b, 5, 0);
   assert.equal(b.lastEl, 'wood');
 });
 
@@ -721,4 +766,67 @@ test('Boss 狂暴：血量跌破 30% 且回到普通走位才触发，只触发�
   scene.onBossRage({ def: ENEMIES.langyao });
   assert.deepEqual(stacks, [3]);
   assert.equal(scene.roarStacks, 3);
+});
+
+test('流血叠满撕裂，剩下的流血一次打完；同系打五折、被克的火系只剩三成，不再完全免疫', () => {
+  const scene = comboScene({});
+  scene.fx = { number() {}, text() {}, ring() {} };
+  const e = enemy('earth');
+  for (let i = 0; i < 4; i++) scene.bleedEnemy(e, 2);
+  assert.equal(e.bleedStacks, 4);
+  assert.equal(e.hp, 100);
+  scene.bleedEnemy(e, 2);
+  assert.equal(e.bleedStacks, 0);
+  assert.equal(e.hp, 100 - 5 * 2 * 3);
+  const m = enemy('metal');
+  scene.bleedEnemy(m, 2);
+  assert.equal(m.bleedStacks, 1);
+  assert.equal(m.bleedDps, 1);
+  const f = enemy('fire');
+  scene.bleedEnemy(f, 10);
+  assert.ok(Math.abs(f.bleedDps - 3) < 1e-9);
+});
+
+test('异常几率按五行缩放：克 ×1.5、同系 ×0.5、被克 ×0.3，没有 0', async () => {
+  const { statusChance } = await import('../src/config/status.ts');
+  assert.equal(statusChance('bleed', 'wood'), 1.5);
+  assert.equal(statusChance('bleed', 'metal'), 0.5);
+  assert.equal(statusChance('bleed', 'fire'), 0.3);
+  for (const k of ['slow', 'poison', 'burn', 'bleed', 'stun']) for (const el of ['metal', 'wood', 'water', 'fire', 'earth']) assert.ok(statusChance(k, el) > 0);
+});
+
+test('水系迟缓命中攒寒意，满 3 层冰冻；别系的迟缓不攒；玄冥诀满级 2 层就冻', () => {
+  // 水克火，寒意在火系敌人身上不打折
+  const scene = comboScene({});
+  const e = enemy('fire');
+  scene.hitEnemy(e, 1, 'water', { slow: 1 });
+  scene.hitEnemy(e, 1, 'water', { slow: 1 });
+  assert.ok(!(e.stunUntil > scene.now));
+  scene.hitEnemy(e, 1, 'water', { slow: 1 });
+  assert.ok(e.stunUntil > scene.now && e.frozenUntil > scene.now);
+  const w = enemy('fire');
+  for (let i = 0; i < 5; i++) scene.hitEnemy(w, 1, 'wood', { slow: 1 });
+  assert.equal(w.chill, 0);
+  scene.build.passives.set('xuanming', 5);
+  scene.pstats = scene.build.stats();
+  const f = enemy('fire');
+  scene.hitEnemy(f, 1, 'water', { slow: 1 });
+  scene.hitEnemy(f, 1, 'water', { slow: 1 });
+  assert.ok(f.stunUntil > scene.now);
+});
+
+test('几率触发的震慑攒满 3 层才打晕', () => {
+  const random = Math.random;
+  Math.random = () => 0;
+  try {
+    const scene = comboScene({});
+    const e = enemy('water');
+    scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+    scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+    assert.ok(!(e.stunUntil > scene.now));
+    scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+    assert.ok(e.stunUntil > scene.now);
+  } finally {
+    Math.random = random;
+  }
 });

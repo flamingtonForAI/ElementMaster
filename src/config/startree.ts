@@ -1,4 +1,5 @@
 import { GEN_ORDER, EL_INFO, counters, type El } from './elements';
+import { STATUS_INFO, STATUS_OF, type StatusId } from './status';
 
 /**
  * 星图：五边形，五行按相生顺序各占一个顶点方向（木在正上方，顺时针）。
@@ -6,10 +7,12 @@ import { GEN_ORDER, EL_INFO, counters, type El } from './elements';
  *
  * - 中宫（太极）：五行散人的起点，其他角色不能点
  * - 本命门：各角色的起点，免费
- * - 内环：五角星中间的小五边形。辐条节点在边的中点，通脉节点在顶点，走它去相邻元素
+ * - 内环：五角星中间的小五边形。每系在内环上有两个脉（s1 朝子一侧、s1b 朝母一侧），都连本命门和辐条；
+ *   通脉节点在顶点，连着两侧相邻元素的脉。别系的本命门不能点，所以穿过邻居要从它的一个脉经辐条绕到另一个脉，
+ *   去相邻元素的路程不变，去相克的元素（隔一个邻居）多走两步
  * - 辐条：本系专精区，分叉两条各过两个要穴，汇合后再过一个要穴，通向顶点的极境印（门起 16 点）
  * - 克弦：每个通脉节点向两侧各伸出一支：靠近「我」的一支是「破」（打我克的元素），末端是相克奇穴；
- *   靠近邻居的一支是「御」（防克它的元素）
+ *   靠近子一侧的一支是「御我」（防本系敌人的伤害和异常）。怕这一系的角色（被它克的）要穿过它的子才够得着
  * - 合化区：破、御两支的末端在相邻两系之间汇成一片，两侧各一个合化奇穴，汇合后通向合化要穴
  */
 
@@ -18,7 +21,7 @@ import { GEN_ORDER, EL_INFO, counters, type El } from './elements';
  * hp/armor/regen/dmg/crit/critDmg/area/cd/speed/pickup/xp：同 PlayerStats
  * el.X 某系术伤害；res.X 受某系敌人伤害减免；vs.X 攻击某系敌人伤害；lingen.X 初始灵根；
  * off.X 极境印代价：X 以外的术伤害；regenMult 回复倍率；noCrit 无法暴击；
- * slowDur/stunDur 减速/眩晕时长；stillArmor 站立不动时额外护甲；burst 本命爆发伤害；
+ * slowDur/stunDur 减速/眩晕时长；stillArmor 站立不动时额外护甲；burst 本命爆发伤害；sres.<异常> 敌人让你挂上该异常的几率减免；
  * 传承专用见 legacy.ts
  */
 export type Mods = Record<string, number>;
@@ -56,9 +59,7 @@ export const R_KEY = 660;
 
 const n = (el: El) => EL_INFO[el].name;
 const at = (i: number) => GEN_ORDER[(i + 5) % 5];
-/** 克 el 的元素 */
-const ctrlBy = (el: El) => GEN_ORDER.find((k) => counters(k) === el)!;
-const ST: Record<El, string> = { metal: '破绽', wood: '中毒', water: '迟缓', fire: '灼烧', earth: '定身' };
+const ST: Record<El, string> = { metal: '流血', wood: '中毒', water: '迟缓', fire: '灼烧', earth: '震慑' };
 
 /** 各系的小加成，辐条上隔一个星位带一份 */
 const THEME: Record<El, Mods> = {
@@ -151,7 +152,7 @@ const HEHUA: Record<El, { name: string; glyph: string; a: Notable; b: Notable }>
   metal: {
     name: '相涵', glyph: '涵',
     a: { name: '霜刃', glyph: '霜', note: '对迟缓中的敌人暴击伤害 +35%', mods: { 'hh.slowCritDmg': 0.35 } },
-    b: { name: '凝冰', glyph: '凝', note: '破绽中的敌人被迟缓时冻住，定身 0.6 秒', mods: { 'hh.freeze': 0.6 } },
+    b: { name: '凝冰', glyph: '凝', note: '流血中的敌人少攒 1 层寒意就冰冻', mods: { 'hh.freeze': 1 } },
   },
   water: {
     name: '滋荣', glyph: '滋',
@@ -200,7 +201,8 @@ function build(): Record<string, StarNode> {
     const sm = (id: string, r: number, d: number, mods: Mods, name = `${N}术`) => add(`${el}.${id}`, 'small', el, pol(r, th + d), name, '', mods);
     const nt = (id: string, r: number, d: number, x: Notable) => add(`${el}.${id}`, 'notable', el, pol(r, th + d), x.name, x.glyph, x.mods, x.note);
     add(`${el}.gate`, 'gate', el, pol(R_GATE, th), `${N}门`, N, { [E]: 0.03 }, `${N}亲和角色的起点`);
-    sm('s1', APO, 0, INNER[el], `${N}脉`);
+    sm('s1', APO, 12, INNER[el], `${N}脉`);
+    sm('s1b', APO, -12, { [E]: 0.03 }, `${N}脉`);
     sm('s2', 140, 0, { [E]: 0.03 });
     sm('s3', 180, 0, { [E]: 0.03, ...T });
     // 分叉：左右两支各 5 个星位，过两个要穴
@@ -227,6 +229,7 @@ function build(): Record<string, StarNode> {
 
     link(CENTER, `${el}.gate`);
     chain(`${el}.gate`, `${el}.s1`, `${el}.s2`, `${el}.s3`);
+    chain(`${el}.gate`, `${el}.s1b`, `${el}.s2`);
     chain(`${el}.m1`, `${el}.m2`, `${el}.mn`, `${el}.m3`, `${el}.m4`, `${el}.m5`, `${el}.m6`, `${el}.k`);
     link(`${el}.m2`, `${el}.l1`);
     link(`${el}.m4`, `${el}.l2`);
@@ -250,14 +253,14 @@ function build(): Record<string, StarNode> {
     add(`${el}.kx`, 'small', el, pol(280, th + 17), `${n(el)}克${n(prey)}`, '', { [vs]: 0.04 });
     add(`${el}.kX`, 'notable', el, pol(320, th + 16), kx.name, kx.glyph, { ...kx.mods, [vs]: 0.05 }, kx.note, ctrl);
     chain(I, `${el}.kc1`, `${el}.kc2`, `${el}.kt`, `${el}.kx`, `${el}.kX`);
-    // 通脉 → 邻居一侧：邻居的御（防克它的元素）
-    const foe = ctrlBy(next);
-    const res = `res.${foe}`;
-    add(`${next}.yc1`, 'small', next, pol(160, th + 45), `${n(next)}御${n(foe)}`, '', { [res]: 0.03 });
-    add(`${next}.yc2`, 'small', next, pol(198, th + 50), `${n(next)}御${n(foe)}`, '', { [res]: 0.03 });
-    add(`${next}.yt`, 'notable', next, pol(238, th + 53), `御${n(foe)}`, '御', { [res]: 0.12 });
-    chain(I, `${next}.yc1`, `${next}.yc2`, `${next}.yt`);
-    link(I, `${next}.s1`);
+    // 通脉 → 子一侧：御我（防本系敌人的伤害和异常）
+    const res = `res.${el}`;
+    const st = STATUS_OF[el];
+    add(`${el}.yc1`, 'small', el, pol(160, th + 45), `御${n(el)}`, '', { [res]: 0.03 });
+    add(`${el}.yc2`, 'small', el, pol(198, th + 50), `御${n(el)}`, '', { [res]: 0.03 });
+    add(`${el}.yt`, 'notable', el, pol(238, th + 53), `御${n(el)}`, '御', { [res]: 0.08, [`sres.${st}`]: 0.4 });
+    chain(I, `${el}.yc1`, `${el}.yc2`, `${el}.yt`);
+    link(I, `${next}.s1b`);
 
     // 合化区：el 生 next
     const h = HEHUA[el];
@@ -273,7 +276,7 @@ function build(): Record<string, StarNode> {
       { [`hehua.${el}`]: 1, [`el.${el}`]: 0.05, [`el.${next}`]: 0.05, burst: 0.25 },
       `${n(el)}术命中时 ${HEHUA_PROC * 100}% 几率附带${ST[next]}，${n(next)}术命中时 ${HEHUA_PROC * 100}% 几率附带${ST[el]}；同时${ST[el]}、${ST[next]}的敌人受到伤害 +${HEHUA_VULN * 100}%`, gen);
     chain(`${el}.kt`, `${el}.za`, `${el}.zan`, `${el}.zc`, `${el}.zc2`, `${el}.zk`);
-    chain(`${next}.yt`, `${el}.zb`, `${el}.zbn`, `${el}.zc`);
+    chain(`${el}.yt`, `${el}.zb`, `${el}.zbn`, `${el}.zc`);
   });
   return nodes;
 }
@@ -295,9 +298,13 @@ export function litSet(start: string, lit: string[]) {
   return new Set([start, ...lit]);
 }
 
+/** 中宫只有散人能点；别系的本命门只有从中宫出发的散人能点 */
+export function blocked(id: string, start: string) {
+  return start !== CENTER && (id === CENTER || STAR[id].kind === 'gate');
+}
+
 export function canLight(id: string, start: string, lit: Set<string>) {
-  if (lit.has(id)) return false;
-  if (id === CENTER && start !== CENTER) return false;
+  if (lit.has(id) || blocked(id, start)) return false;
   return STAR[id].links.some((l) => lit.has(l));
 }
 
@@ -360,6 +367,10 @@ export function describe(m: Mods): string[] {
       else if (kind === 'vs') out.push(`攻击${n(el)}系敌人伤害 ${pct(v)}`);
       else if (kind === 'lingen') out.push(`开局${n(el)}灵根 +${v}`);
       else if (kind === 'off') out.push(`${n(el)}系以外的术伤害 ${pct(v)}`);
+      continue;
+    }
+    if (kind === 'sres') {
+      out.push(`被挂上${STATUS_INFO[el as unknown as StatusId].name}的几率 −${Math.round(v * 100)}%`);
       continue;
     }
     if (k === 'noCrit') {

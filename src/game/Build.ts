@@ -1,5 +1,6 @@
 import { GEN_ORDER, relation, type El, type Rel } from '../config/elements';
-import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS, type SkillId, type PassiveId } from '../config/skills';
+import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS, type SkillId, type PassiveId, type PassiveDef } from '../config/skills';
+import { ON_ENEMY } from '../config/status';
 import type { CharacterDef } from '../config/characters';
 import type { LevelDef } from '../config/levels';
 import { UPGRADES, type MetaLevels, type UpgradeStat } from '../config/meta';
@@ -42,6 +43,19 @@ export interface PlayerStats {
   /** 傀儡生命、伤害倍率（傀儡师） */
   puppetHp: number;
   puppetDmg: number;
+  /** 专属术伤害倍率（角色成长） */
+  sigDmg: number;
+  /** 能穿透的投射物额外穿透（贯日诀） */
+  pierce: number;
+  /** 各系术触发本系异常的几率倍率（本系异常心法） */
+  procMult: Record<El, number>;
+  /** 流血撕裂所需层数、冰冻所需寒意、灼烧上限加层（破军、玄冥、燎原满级） */
+  bleedMax: number;
+  chillNeed: number;
+  burnMaxAdd: number;
+  /** 打晕时长倍率（镇岳诀）、中毒伤害倍率（繁茂诀） */
+  dazeMult: number;
+  poisonMult: number;
 }
 
 const EL0 = (v: number): Record<El, number> => ({ metal: v, wood: v, water: v, fire: v, earth: v });
@@ -134,6 +148,7 @@ export class Build {
     const gr = (stat: string) =>
       c.growth.filter((g) => g.stat === stat).reduce((s, g) => s + Math.min(g.cap ?? Infinity, Math.floor(this.level / g.every) * g.v), 0);
     const m = (k: string) => this.mods[k] ?? 0;
+    const full = (id: PassiveId) => (this.passives.get(id) ?? 0) >= PASSIVES[id].maxLv;
     const elDmg = EL0(1);
     const resist = EL0(1);
     const vsEl = EL0(1);
@@ -155,14 +170,14 @@ export class Build {
       maxHp: Math.round(c.hp * (1 + 0.12 * p('houtu') + u('hp') + m('hp'))),
       speed: c.speed * (1 + 0.07 * p('qingshen') + u('speed') + gr('speed') + m('speed') + 0.1 * taiji),
       armor,
-      regen: ((c.regen ?? 0) + 0.4 * p('changsheng') + u('regen') + gr('regen') + m('regen')) * (1 + m('regenMult')),
+      regen: ((c.regen ?? 0) + 0.5 * p('changsheng') + u('regen') + gr('regen') + m('regen')) * (1 + m('regenMult')),
       dmgMult: 1 + 0.08 * p('yanyang') + m('dmg') + variety + even + 0.15 * taiji,
       crit: m('noCrit') ? 0 : 0.05 + (c.crit ?? 0) + 0.06 * p('ruijin') + m('crit') + gr('crit'),
-      area: 1 + (c.area ?? 0) + 0.1 * p('roushui') + m('area') + gr('area'),
+      area: 1 + (c.area ?? 0) + 0.08 * p('roushui') + m('area') + gr('area'),
       pickup: 30 * (1 + (c.pickup ?? 0) + 0.25 * p('juling') + u('pickup') + m('pickup')),
       xpMult: 1 + 0.05 * p('juling') + u('xp') + m('xp'),
       critDmg: 2 + m('critDmg'),
-      cdMult: 1 - (c.cdr ?? 0) - m('cd') - gr('cd') - 0.1 * taiji,
+      cdMult: 1 - (c.cdr ?? 0) - m('cd') - gr('cd') - 0.1 * taiji - 0.04 * p('ningshen'),
       elDmg,
       resist,
       vsEl,
@@ -175,6 +190,14 @@ export class Build {
       dotMult: 1 + (c.dotBonus ?? 0) + m('qing.dot'),
       puppetHp: 1 + gr('puppetHp') + m('mo.hp'),
       puppetDmg: 1 + gr('puppetDmg'),
+      sigDmg: 1 + gr('sigDmg'),
+      pierce: Math.floor((p('guanri') + 1) / 2),
+      procMult: { metal: 1 + 0.15 * p('pojun'), wood: 1 + 0.15 * p('fanmao'), water: 1 + 0.15 * p('xuanming'), fire: 1 + 0.15 * p('liaoyuan'), earth: 1 + 0.15 * p('zhenyue') },
+      bleedMax: ON_ENEMY.bleed.max - (full('pojun') ? 1 : 0),
+      chillNeed: ON_ENEMY.chill.need - (full('xuanming') ? 1 : 0),
+      burnMaxAdd: full('liaoyuan') ? 2 : 0,
+      dazeMult: 1 + 0.15 * p('zhenyue'),
+      poisonMult: 1 + 0.1 * p('fanmao'),
     };
   }
 
@@ -202,7 +225,7 @@ export class Build {
       const lv = this.passives.get(def.id);
       if (lv !== undefined) {
         if (lv < def.maxLv) add({ kind: 'passive', id: def.id, lv: lv + 1 }, 2 * elW(def.el));
-      } else if (this.passives.size < PASSIVE_SLOTS) {
+      } else if (this.passives.size < PASSIVE_SLOTS && this.unlocked(def)) {
         add({ kind: 'passive', id: def.id, lv: 1 }, 1.5 * elW(def.el));
       }
     }
@@ -218,6 +241,13 @@ export class Build {
     if (out.length < n && !exclude.includes('heal')) out.push({ kind: 'heal' });
     if (out.length < n && !exclude.includes('lingshi')) out.push({ kind: 'lingshi' });
     return out;
+  }
+
+  /** 有前置的心法：要有指定的术，或本系异常心法要有本系的术 */
+  private unlocked(def: PassiveDef) {
+    const owned = [...this.skills.keys()];
+    if (def.requires && !def.requires.some((id) => this.skills.has(id))) return false;
+    return !def.needsEl || owned.some((id) => SKILLS[id].el === def.el);
   }
 
   /** 应用选项，返回本命是否变化 */

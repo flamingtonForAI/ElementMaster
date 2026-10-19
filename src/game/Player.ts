@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
 import { dirFromVector, type HeroDir } from '../art/heroXiao';
 import type { GameScene } from '../scenes/GameScene';
-import { STATUS_INFO, type StatusId } from '../config/status';
+import { FROZEN, STATUS_INFO, type StatusId } from '../config/status';
 import { stick } from '../ui/touch';
 
 export const PLAYER_RADIUS = 7;
-const PIP_ORDER: StatusId[] = ['stun', 'burn', 'poison', 'slow', 'flaw'];
+const PIP_ORDER: StatusId[] = ['stun', 'burn', 'poison', 'slow', 'bleed'];
 
 export class Player {
   readonly sprite: Phaser.GameObjects.Sprite;
@@ -84,8 +84,9 @@ export class Player {
     this.sprite.setFlipX(this.flip);
     this.sprite.setPosition(this.x, this.y);
     this.sprite.setDepth(this.y);
-    const tint = st.stunned ? 'stun' : st.burning ? 'burn' : st.poisoned ? 'poison' : st.slowed ? 'slow' : st.flawed ? 'flaw' : null;
+    const tint = st.stunned ? 'stun' : st.burning ? 'burn' : st.poisoned ? 'poison' : st.slowed ? 'slow' : st.bleeding ? 'bleed' : null;
     if (g.now < this.hurtUntil) this.sprite.setTintFill(0xff5a5a);
+    else if (tint === 'stun' && st.frozen) this.sprite.setTint(FROZEN.tint);
     else if (tint) this.sprite.setTint(STATUS_INFO[tint].tint);
     else this.sprite.clearTint();
 
@@ -106,7 +107,7 @@ export class Player {
 
   private updatePips() {
     const st = this.g.status;
-    const on: Record<StatusId, boolean> = { stun: st.stunned, burn: st.burning, poison: st.poisoned, slow: st.slowed, flaw: st.flawed };
+    const on: Record<StatusId, boolean> = { stun: st.stunned, burn: st.burning, poison: st.poisoned, slow: st.slowed, bleed: st.bleeding };
     const active = PIP_ORDER.filter((k) => on[k]);
     let x = this.x - (active.length * 4 - 1) / 2;
     for (const k of PIP_ORDER) {
@@ -116,9 +117,13 @@ export class Player {
       r.setPosition(Math.round(x), this.y + 9).setDepth(this.y + 2);
       x += 4;
     }
-    const m = st.stunMeter;
+    // 震慑、寒意的累积条共用一根，显示更满的那个
+    const sm = st.stunMeter;
+    const cm = st.chillMeter;
+    const m = Math.max(sm, cm);
     this.stunBar.setVisible(m > 0);
     if (m > 0) {
+      this.stunBar.fillColor = cm > sm ? FROZEN.tint : 0xdaa53e;
       this.stunBar.width = Math.round(18 * m);
       this.stunBar.setPosition(this.x - 9, this.y + 7).setDepth(this.y + 2);
     }

@@ -1,7 +1,7 @@
 import { UPGRADES, WUDAO_MAX, wudaoPrice } from '../config/meta';
 import { CHARACTERS } from '../config/characters';
 import { LEVELS } from '../config/levels';
-import { STAR, CENTER } from '../config/startree';
+import { STAR, blocked } from '../config/startree';
 import { LEGACIES } from '../config/legacy';
 import { daoPoints, legacyPoints, treeStart } from './talents';
 
@@ -47,7 +47,7 @@ const PREFIX = 'elementmaster.';
 const LEGACY_KEY = 'save';
 const SETTINGS_KEY = 'settings';
 const slotKey = (n: number) => `slot.${n}`;
-const VER = 5;
+const VER = 6;
 
 /** 存储层：现在是 localStorage，以后上云只换这里 */
 const store = {
@@ -100,7 +100,7 @@ const ids = (v: unknown, allowed: Set<string>) =>
 function connected(start: string, v: unknown) {
   const lit = new Set(ids(v, new Set(Object.keys(STAR))));
   lit.delete(start);
-  if (start !== CENTER) lit.delete(CENTER);
+  for (const id of lit) if (blocked(id, start)) lit.delete(id);
   const seen = new Set<string>();
   const q = [start];
   while (q.length) {
@@ -186,6 +186,12 @@ function normalize(s: Record<string, any>): Save {
     const cleared = CHARACTERS.filter((c) => save.tree[c.id].length > 0);
     for (const c of cleared) save.tree[c.id] = [];
     if (cleared.length) save.notice = `${save.notice ? `${save.notice}\n` : ''}星图重绘：辐条加长，新增合化区和相克奇穴。${cleared.map((c) => c.name).join('、')}的星图已清空，道点全部退还。`;
+  }
+  // v6：内环每系分成两个脉、御改为防本系敌人并挪到子一侧，已点的星图全部清空，道点原数退还
+  if (ver >= 5 && ver < 6) {
+    const cleared = CHARACTERS.filter((c) => save.tree[c.id].length > 0);
+    for (const c of cleared) save.tree[c.id] = [];
+    if (cleared.length) save.notice = `${save.notice ? `${save.notice}\n` : ''}星图改版：去相克的元素要多绕一段，御改为防该系敌人的伤害和异常。${cleared.map((c) => c.name).join('、')}的星图已清空，道点全部退还。`;
   }
   return save;
 }
