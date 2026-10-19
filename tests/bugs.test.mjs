@@ -119,6 +119,17 @@ test('首通只奖实际关卡，补关会给点，重复通关及失败不重�
   assert.equal(daoPoints(save, character('xiao')), 2);
 });
 
+test('图鉴：结算把本局击杀累加进存档，未知敌人和非正数丢掉', () => {
+  reset();
+  assert.ok(importSlot(1, encode({ unlocked: 1, ver: 6, bestiary: { shiyong: 3, nobody: 5, shuigui: -2, huoya: 'x' } })));
+  assert.deepEqual(readSlot(1).bestiary, { shiyong: 3 });
+  const scene = runScene('xiao', 1);
+  scene.killed = { shiyong: 2, langyao: 1 };
+  scene.endRun(true);
+  assert.deepEqual(loadSave().bestiary, { shiyong: 5, langyao: 1 });
+  assert.deepEqual(scene.killed, {});
+});
+
 test('v3 最高关记录迁移保留已有点数，星图重绘清空已点星位，EM6 导出再导入保留逐关记录', () => {
   reset();
   assert.ok(importSlot(1, encode({ unlocked: 3, ver: 3, clears: { xiao: 2 }, wudao: { xiao: 1 }, tree: { xiao: ['metal.s1', 'metal.s2'] }, legacy: { xiao: ['xiao.a1'] } })));
@@ -481,7 +492,7 @@ function killScene() {
   const chain = new Proxy({}, { get: (_t, k) => (k === 'active' ? true : () => chain) });
   const noop = new Proxy({}, { get: () => () => {} });
   const g = {
-    now: 0, over: false, kills: 0, bossKilled: 0, build: { mods: {} }, fx: noop, pickups: noop, hud: noop, proj: noop,
+    now: 0, over: false, kills: 0, killed: {}, bossKilled: 0, build: { mods: {} }, fx: noop, pickups: noop, hud: noop, proj: noop,
     add: { image: () => chain }, tweens: { add() {} }, later: (_t, fn) => tasks.push(fn), hpScale: () => 1, cap: 999, spawnCap() { return this.cap; },
     onBossKilled() { this.bossKilled++; },
   };

@@ -17,7 +17,7 @@ import { PlayerStatus } from '../game/Status';
 import { World } from '../game/World';
 import { Hazards } from '../game/Hazards';
 import { HdLook, hdLookAvailable } from '../game/HdLook';
-import { loadSave, writeSave } from '../game/save';
+import { loadSave, writeSave, type Save } from '../game/save';
 import { talentMods, daoPoints, legacyPoints } from '../game/talents';
 import { HEHUA_PROC, HEHUA_VULN, hehuaPairs } from '../config/startree';
 import { createDebug, debugEnabled } from '../game/debug';
@@ -84,6 +84,8 @@ export class GameScene extends Phaser.Scene {
   roarStacks = 0;
   elapsed = 0;
   kills = 0;
+  /** 本局各种敌人的击杀数，结束或中途退出时并进存档图鉴 */
+  killed: Record<string, number> = {};
   boss: Enemy | null = null;
   private musicTmp: Enemy[] = [];
   over = false;
@@ -135,6 +137,7 @@ export class GameScene extends Phaser.Scene {
     this.elapsed = 0;
     this.roarStacks = 0;
     this.kills = 0;
+    this.killed = {};
     this.boss = null;
     this.over = false;
     this.rageMusic = false;
@@ -212,6 +215,12 @@ export class GameScene extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.PAUSE, duck);
     this.events.on(Phaser.Scenes.Events.RESUME, unduck);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      // 中途重开或返回选角不走结算，图鉴在这里补记
+      if (Object.keys(this.killed).length) {
+        const save = loadSave();
+        this.recordKills(save);
+        writeSave(save);
+      }
       this.disposeDebug?.();
       this.disposeDebug = null;
       this.events.off(Phaser.Scenes.Events.PAUSE, duck);
@@ -988,6 +997,12 @@ export class GameScene extends Phaser.Scene {
     this.endRun(true);
   }
 
+  /** 本局击杀并进图鉴，记完清空，免得退出时重复记 */
+  private recordKills(save: Save) {
+    for (const [id, n] of Object.entries(this.killed)) save.bestiary[id] = (save.bestiary[id] ?? 0) + n;
+    this.killed = {};
+  }
+
   private endRun(win: boolean) {
     if (this.over) return;
     this.over = true;
@@ -1013,6 +1028,7 @@ export class GameScene extends Phaser.Scene {
     }
     const gain = [daoPoints(save, this.char) - dao0, legacyPoints(save, this.char) - lg0];
     const growth = gain[0] || gain[1] ? `${this.char.name}首通：${[gain[0] ? `道点 +${gain[0]}` : '', gain[1] ? `传承点 +${gain[1]}` : ''].filter(Boolean).join('　')}` : '';
+    this.recordKills(save);
     save.runs++;
     save.playTime += this.elapsed;
     save.lastChar = this.char.id;

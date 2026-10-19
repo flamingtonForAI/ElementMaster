@@ -976,6 +976,8 @@ export class EnemyManager {
       e.glyph = null;
     }
     if (!e.noKill) g.kills++;
+    // 图鉴按真的打死算，召唤物、复活的残兵也收录
+    g.killed[e.def.id] = (g.killed[e.def.id] ?? 0) + 1;
     // 药师·传染：中毒的敌人死时把毒传给周围
     if (g.build.mods['qing.spread'] && g.now < e.poisonUntil) {
       g.fx.ring(e.x, e.y - 6, 50, STATUS_INFO.poison.tint, 0.3);

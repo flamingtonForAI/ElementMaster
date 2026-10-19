@@ -3,6 +3,7 @@ import { CHARACTERS } from '../config/characters';
 import { LEVELS } from '../config/levels';
 import { STAR, blocked } from '../config/startree';
 import { LEGACIES } from '../config/legacy';
+import { ENEMIES } from '../config/enemies';
 import { daoPoints, legacyPoints, treeStart } from './talents';
 
 /** 一个存档槽的全部进度 */
@@ -21,6 +22,8 @@ export interface Save {
   clears: Record<string, number[]>;
   /** 每个角色悟道买过的道点 */
   wudao: Record<string, number>;
+  /** 图鉴：每种敌人累计击杀数，杀过的才收录 */
+  bestiary: Record<string, number>;
   /** 洞府提示，看过后清空 */
   notice: string;
   /** 最近一局用的角色，首页存档卡片上显示 */
@@ -76,7 +79,7 @@ const store = {
 
 function fresh(): Save {
   const now = Date.now();
-  return { unlocked: 1, lingshi: 0, meta: {}, spent: 0, tree: {}, legacy: {}, clears: {}, wudao: {}, notice: '', lastChar: '', runs: 0, playTime: 0, createdAt: now, updatedAt: now, ver: VER };
+  return { unlocked: 1, lingshi: 0, meta: {}, spent: 0, tree: {}, legacy: {}, clears: {}, wudao: {}, bestiary: {}, notice: '', lastChar: '', runs: 0, playTime: 0, createdAt: now, updatedAt: now, ver: VER };
 }
 
 function parse(raw: string | null): Record<string, any> | null {
@@ -131,6 +134,8 @@ function normalize(s: Record<string, any>): Save {
     updatedAt: number(s.updatedAt, base.updatedAt),
   };
   const meta = record(s.meta);
+  const bestiary = record(s.bestiary);
+  for (const id in ENEMIES) if (integer(bestiary[id]) > 0) save.bestiary[id] = integer(bestiary[id]);
   for (const u of UPGRADES) if (u.id in meta) save.meta[u.id] = integer(meta[u.id], 0, u.maxLv);
   const clears = record(s.clears);
   const tree = record(s.tree);

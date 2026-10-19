@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import { CHARACTERS } from '../config/characters';
 import { EL_INFO, SAY_ORDER } from '../config/elements';
+import { ENEMIES, type Behavior, type EnemyDef } from '../config/enemies';
+import { LEVELS } from '../config/levels';
+import { STATUS_INFO } from '../config/status';
 import { SLOTS, activeSlot, deleteSlot, exportSlot, importSlot, listSlots, newSlot, useSlot, type Save } from '../game/save';
 import { label, hex } from '../ui/text';
 import { isTouch } from '../ui/touch';
@@ -15,8 +18,8 @@ const GOLD = '#ffd23f';
 const MUTED = '#b8aec8';
 const DIMTXT = '#5a5464';
 
-type View = 'main' | 'slots' | 'settings';
-type MainId = 'continue' | 'new' | 'slots' | 'settings';
+type View = 'main' | 'slots' | 'bestiary' | 'settings';
+type MainId = 'continue' | 'new' | 'slots' | 'bestiary' | 'settings';
 type Armed = '' | 'overwrite' | 'delete';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -29,6 +32,32 @@ const duration = (sec: number) => {
   return m >= 60 ? `${Math.floor(m / 60)}小时${m % 60}分` : `${m}分`;
 };
 const farthest = (s: Save) => Math.max(0, ...Object.values(s.clears).flat());
+
+/** 首次出场的关卡；同关先小怪后 Boss，图鉴按这个顺序排 */
+const firstLevel = (id: string) => LEVELS.find((l) => l.boss === id || l.enemies.some((e) => e.id === id))?.id;
+const BESTIARY_ORDER = Object.keys(ENEMIES).sort((a, b) => (firstLevel(a) ?? 99) - (firstLevel(b) ?? 99) || +!!ENEMIES[a].boss - +!!ENEMIES[b].boss);
+const BEHAVIOR: Record<Behavior, string> = {
+  walk: '贴身围攻',
+  regen: '受伤后慢慢回血',
+  explode: '死后原地自爆',
+  charge: '停顿预警后直线冲锋',
+  spit: '隔着距离吐毒涎',
+  burrow: '钻进土里追到脚下，冒头预警后破土',
+  boss_wolf: '冲锋撕咬，环射风刃',
+  boss_tree: '召唤藤怪，半血后放毒刺',
+  boss_ape: '跳砸、碎石环、投巨石，半血召落石雨',
+  boss_bird: '扇形火球，俯冲留下火线，半血降火柱',
+  boss_xingtian: '举斧劈砍、盾冲、舞干戚飞刃环',
+};
+const SHOT: Record<string, string> = { ep_rock: '隔着距离投石', ep_fire: '隔着距离吐火球', ep_blade: '隔着距离甩飞刃' };
+function traits(d: EnemyDef) {
+  const t = [d.behavior === 'spit' && d.shot ? SHOT[d.shot] ?? BEHAVIOR.spit : BEHAVIOR[d.behavior]];
+  if (d.trail) t.push('冲刺时身后留火');
+  if (d.revive) t.push(`死后 ${d.revive} 秒原地复活，火系击杀则不会`);
+  if (d.rise) t.push('第一次被打倒会复起，火系击杀则不会');
+  if (d.inflict) t.push(`攻击 ${Math.round(d.inflict.chance * 100)}% 附带${STATUS_INFO[d.inflict.kind].name}`);
+  return t.join('；');
+}
 
 /** 首页背景按清晨→白天→傍晚→夜里循环：每个时辰停 HOLD 毫秒，再用 FADE 毫秒淡入下一个 */
 const HOLD = 14000;
@@ -46,6 +75,7 @@ export class TitleScene extends Phaser.Scene {
   private view: View = 'main';
   private sel = 0;
   private slotSel = 0;
+  private beastSel = 0;
   private armed: Armed = '';
   /** 从“新游戏”进来且槽位已满：提示选一个覆盖 */
   private full = false;
@@ -146,7 +176,9 @@ export class TitleScene extends Phaser.Scene {
   private mainItems(): { id: MainId; name: string }[] {
     const items: { id: MainId; name: string }[] = [];
     if (this.current()) items.push({ id: 'continue', name: '继续游戏' });
-    items.push({ id: 'new', name: '新游戏' }, { id: 'slots', name: '存档' }, { id: 'settings', name: '设置' });
+    items.push({ id: 'new', name: '新游戏' }, { id: 'slots', name: '存档' });
+    if (this.current()) items.push({ id: 'bestiary', name: '图鉴' });
+    items.push({ id: 'settings', name: '设置' });
     return items;
   }
 
@@ -154,6 +186,7 @@ export class TitleScene extends Phaser.Scene {
     this.layer.removeAll(true);
     if (this.view === 'main') this.renderMain();
     else if (this.view === 'slots') this.renderSlots();
+    else if (this.view === 'bestiary') this.renderBestiary();
     else this.renderSettings();
   }
 
@@ -263,6 +296,11 @@ export class TitleScene extends Phaser.Scene {
     if (it.id === 'slots') {
       this.full = false;
       return this.openSlots();
+    }
+    if (it.id === 'bestiary') {
+      this.view = 'bestiary';
+      this.beastSel = 0;
+      return this.render();
     }
     this.view = 'settings';
     this.sel = 0;
@@ -409,6 +447,71 @@ export class TitleScene extends Phaser.Scene {
     this.render();
   }
 
+  // ---------- 图鉴 ----------
+
+  /** 当前存档杀过的敌人，没杀过的不显示 */
+  private known() {
+    const b = this.current()?.bestiary ?? {};
+    return BESTIARY_ORDER.filter((id) => b[id] > 0);
+  }
+
+  private renderBestiary() {
+    const L = this.layer;
+    this.back(() => this.toMain());
+    L.add(label(this, 48, 44, '图鉴', '#f4eee0', 24));
+    const ids = this.known();
+    L.add(label(this, 600, 54, `已收录 ${ids.length} / ${BESTIARY_ORDER.length}`, '#8a8494').setOrigin(1, 0));
+    if (!ids.length) {
+      L.add(label(this, 48, 96, '还没有打倒过妖物，出去历练一番再来看', '#8a8494'));
+      if (!isTouch()) this.hint('Esc 返回');
+      return;
+    }
+    this.beastSel = Math.min(this.beastSel, ids.length - 1);
+    const COLS = 7;
+    const C = 44;
+    const GAP = 4;
+    ids.forEach((id, i) => {
+      const d = ENEMIES[id];
+      const x = 40 + (i % COLS) * (C + GAP);
+      const y = 84 + Math.floor(i / COLS) * (C + GAP);
+      const on = i === this.beastSel;
+      const cell = this.add.rectangle(x, y, C, C, on ? 0x2a2238 : PANEL, 0.92).setOrigin(0).setStrokeStyle(on ? 2 : 1, on ? 0xffd23f : d.boss ? 0x8a4a4a : LINE);
+      L.add(this.hit(cell, () => {
+        if (this.beastSel === i) return;
+        audio.sfx('tick');
+        this.beastSel = i;
+        this.render();
+      }));
+      // 小怪原尺寸，Boss 缩到格子里
+      const sp = this.monster(d, x + C / 2, y + C - 4, C - 8, C - 8, false);
+      L.add(sp);
+    });
+
+    // 详情
+    const d = ENEMIES[ids[this.beastSel]];
+    const px = 392;
+    const pw = 208;
+    L.add(this.add.rectangle(px, 84, pw, 236, PANEL, 0.92).setOrigin(0).setStrokeStyle(1, LINE));
+    L.add(this.monster(d, px + pw / 2, 172, pw - 24, 80, true));
+    const col = EL_INFO[d.el].color;
+    L.add(label(this, px + 12, 180, d.name, d.boss ? '#ff8a7a' : '#f4eee0', 24));
+    const lv = firstLevel(d.id);
+    L.add(label(this, px + 12, 208, `${EL_INFO[d.el].name}系${d.boss ? ' · Boss' : ''}${lv ? ` · 第${lv}关` : ''}`, hex(col)));
+    L.add(label(this, px + pw - 12, 208, `击杀 ${this.current()!.bestiary[d.id]}`, GOLD).setOrigin(1, 0));
+    L.add(label(this, px + 12, 226, `生命 ${d.hp}　移速 ${d.speed}　护甲 ${d.armor}`, '#6a6474'));
+    L.add(label(this, px + 12, 246, wrap(traits(d), pw - 24), '#d8d0e4', 12, false).setLineSpacing(3));
+    if (!isTouch()) this.hint('← → ↑ ↓ 选择　Esc 返回');
+  }
+
+  /** 敌人播走路动画，底边对齐 (x, y)；big 时按整数倍放大填满，否则只缩不放 */
+  private monster(d: EnemyDef, x: number, y: number, w: number, h: number, big: boolean) {
+    const sp = this.add.sprite(x, y, d.tex, 0).setOrigin(0.5, 1);
+    const fit = Math.min(w / sp.width, h / sp.height);
+    sp.setScale(big && fit >= 1 ? Math.floor(fit) : Math.min(1, fit));
+    if (this.anims.exists(`${d.tex}_move`)) sp.play(`${d.tex}_move`);
+    return sp;
+  }
+
   // ---------- 设置 ----------
 
   private settingItems() {
@@ -496,6 +599,13 @@ export class TitleScene extends Phaser.Scene {
       if (!up && !down) return;
       this.slotSel = (this.slotSel + (up ? SLOTS - 1 : 1)) % SLOTS;
       this.armed = '';
+    } else if (this.view === 'bestiary') {
+      if (k === 'Escape') return this.toMain();
+      const n = this.known().length;
+      const step = k === 'ArrowLeft' || k === 'a' || k === 'A' ? -1 : k === 'ArrowRight' || k === 'd' || k === 'D' ? 1 : up ? -7 : down ? 7 : 0;
+      const next = this.beastSel + step;
+      if (!step || next < 0 || next >= n) return;
+      this.beastSel = next;
     } else {
       if (k === 'Escape') return this.toMain();
       if (ok) return this.toggleSetting();
