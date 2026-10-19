@@ -325,88 +325,76 @@ function tiejia(f: number): PC {
   return p;
 }
 
-// 竹叶青（木）：低伏成扁 S 的粗竹节蛇，大三角头、尾尖一簇竹叶、米黄腹（暖柠绿高光 → 竹翠 → 深青节环）
+// 竹叶青（木）：地上盘一道 S，脖子昂起，大三角头；通体翠绿，体侧一道米黄线，尾尖赤红（真竹叶青的辨识点）
 function zhushe(f: number): PC {
   const p = new PC(24, 24);
-  const B = 0x62c44a, S = 0x34863c, D = 0x245c34, H = 0xbef27c, BL = 0xeee2a6, EY = 0xffe44a, TG = 0xee403a;
-  const ph = f === 1 ? 1.6 : 0;
-  // 竹节身：低伏成扁 S，上亮下米黄腹，每 4 格一道深色节环；尾端收细
-  const bodyY = (x: number) => Math.round(17.5 + 2 * Math.sin((x + ph) / 3));
-  for (let x = 1; x <= 15; x++) {
-    const y = bodyY(x);
-    const node = x % 4 === 0;
-    if (x >= 4) p.set(x, y - 2, node ? S : H);
-    p.set(x, y - 1, node ? D : B);
-    if (x >= 2) p.set(x, y, node ? D : B);
-    if (x >= 3) p.set(x, y + 1, node ? S : BL);
-  }
-  // 尾尖一簇竹叶
-  const ty = bodyY(1);
-  p.strand([[2, ty - 1], [0, ty - 4]], H, 2);
-  p.set(3, ty - 3, B);
-  p.set(4, ty - 4, B);
-  // 压低的脖子
-  p.strand([[15, bodyY(15) - 1], [17, 15]], B, 3);
-  // 大三角头：后脑宽、吻部收尖，朝右
-  p.span(11, 16, 18, H);
-  p.span(12, 15, 20, B);
-  p.span(13, 15, 22, B);
-  p.span(14, 15, 20, BL);
-  p.span(15, 16, 17, S);
-  p.set(15, 12, H);
-  p.set(18, 12, EY);
-  p.set(19, 12, D);
+  const B = 0x62c44a, S = 0x34863c, H = 0xbef27c, LN = 0xf2e6a0, EY = 0xffe44a, PU = 0x1c1424, TG = 0xee403a, TL = 0xc8442e;
+  const w = f === 1 ? 1 : -1;
+  // 地上的身体：一道扁 S，暗面在下
+  p.strand([[2, 19], [6, 20 + w], [10, 19], [14, 20 - w], [17, 18]], S, 4);
+  p.strand([[2, 18], [6, 19 + w], [10, 18], [14, 19 - w], [16, 17]], B, 2);
+  p.set(5, 18 + w, H); p.set(6, 18 + w, H); p.set(11, 17, H); p.set(12, 17, H);
+  // 体侧米黄线
+  p.strand([[4, 20 + w], [6, 21 + w], [9, 20], [13, 21 - w], [16, 20 - w]], LN, 1);
+  // 赤红尾尖
+  p.set(1, 18, TL); p.set(1, 19, TL); p.set(0, 18, TL);
+  // 昂起的脖子：S 弯
+  p.strand([[17, 18], [18, 15], [17, 12], [16, 10]], S, 4);
+  p.strand([[16, 17], [17, 15], [16, 12], [15, 10]], B, 2);
+  p.set(18, 16, LN); p.set(18, 17, LN); p.set(19, 14, LN);
+  // 大三角头：后脑宽，吻部收尖，朝右
+  p.rect(14, 6, 4, 5, B);
+  p.rect(18, 7, 3, 3, B);
+  p.span(8, 21, 22, B);
+  p.span(9, 21, 21, B);
+  p.span(6, 14, 18, H);
+  p.span(7, 19, 20, H);
+  p.span(10, 15, 20, S);
+  p.span(11, 15, 16, S);
+  p.set(18, 7, EY); p.set(19, 7, EY); p.set(18, 8, EY); p.set(19, 8, PU);
   // 信子
-  p.set(23, 13 + (f === 1 ? -1 : 0), TG);
-  if (f === 1) p.set(23, 11, TG);
-  finish(p, 'wood', 12, 22, 7, 2);
+  if (f === 1) { p.set(23, 9, TG); p.set(23, 8, TG); } else p.set(23, 9, TG);
+  finish(p, 'wood', 11, 22, 8, 2);
   return p;
 }
-
-// 瘴蟾（土）：宽扁泥蟾，后腿粗大，背上三个大毒囊，浅黄喉袋吐弹前鼓起；绿色只在毒囊上
+// 瘴蟾（土）：侧面蹲坐，臀低在后、背朝头斜升，前腿把头撑高，腹下留空；大鼓眼凸出头顶，阔嘴横穿到腮，大后腿折在身侧，背上几颗绿毒疣，喉袋鼓起
 function zhangchan(f: number): PC {
   const p = new PC(24, 24);
-  const B = 0xac883e, S = 0x76582a, D = 0x56401e, H = 0xdcbe66, PO = 0x9ed84a, PS = 0x5f9a34, PH = 0xe2ff8e;
-  const TH = 0xf2e2a0, EY = 0xff5a3a, M = 0x2a1816;
-  const puff = f === 1 ? 0.7 : 0;
-  // 远侧后腿
-  p.ellipse(4.5, 17, 2.4, 2.6, D);
-  // 宽扁身体 + 大扁头
-  p.ellipse(10, 16, 6.5, 3.8, B);
-  p.ellipse(15.5, 14.5, 4.6, 3.4, B);
-  p.ellipse(11, 18.2, 6, 1.6, S);
-  p.span(13, 13, 18, H);
-  // 近侧粗后腿：大腿根单独一块亮面，脚掌向后摊开
-  p.ellipse(6, 17, 3.4, 2.8, H);
-  p.ellipse(6.6, 17.8, 2.8, 2, B);
-  p.set(9, 17, D);
-  p.set(9, 18, D);
-  p.span(20, 1, 8, S);
-  p.set(1, 19, S);
-  p.rect(15, 19, 2, 2, S);
-  p.set(17, 20, D);
-  // 背上三个毒囊，彼此分开，只占背部
-  for (const [x, y, r] of [[5, 12, 1.7], [8.5, 11, 2], [12, 11.5, 1.6]] as const) {
-    p.circle(x, y, r + puff, PO);
-    p.set(Math.round(x), Math.round(y + r * 0.6), PS);
-    p.set(Math.round(x - 1), Math.round(y - r * 0.6), PH);
-  }
-  // 头顶两颗鼓眼
-  p.circle(15.5, 11, 1.6, H);
-  p.circle(19, 11.5, 1.3, B);
-  p.set(16, 11, EY);
-  p.set(15, 11, M);
-  p.set(19, 11, EY);
-  // 阔嘴一直咧到腮
-  p.span(15, 15, 20, M);
-  p.set(14, 14, M);
-  // 喉袋：吐弹前鼓成圆
-  p.circle(17, 17.5, 1.5 + puff * 1.4, TH);
-  p.set(16, 17, 0xfff6d0);
+  const B = 0xac883e, S = 0x76582a, D = 0x56401e, H = 0xdcbe66, PO = 0x9ed84a, PS = 0x5f9a34;
+  const TH = 0xf2e2a0, EY = 0xffc23a, M = 0x2a1816;
+  const puff = f === 1 ? 1 : 0;
+  // 前腿：从头下竖直撑地，脚掌朝前
+  p.rect(16, 15, 2, 5, S);
+  p.span(20, 16, 19, D);
+  // 身体：臀低、背斜升到头
+  p.ellipse(8, 16.5, 5.5, 3.6, B);
+  p.ellipse(12, 14.5, 4.5, 3.6, B);
+  p.ellipse(16.5, 12.2, 4.2, 2.8, B);
+  // 背脊一道亮面
+  p.line(4, 13, 17, 9, H);
+  // 腹下暗面
+  p.span(19, 4, 12, S);
+  // 折起的大后腿：大腿圆块，脚掌朝前摊在地上
+  p.ellipse(6.5, 16.6, 3.2, 2.7, S);
+  p.ellipse(6, 16, 2.2, 1.7, B);
+  p.span(20, 2, 12, S); p.span(21, 8, 13, D);
+  // 腹下留空，前后腿分开
+  p.set(14, 20, -1); p.set(15, 20, -1); p.set(14, 19, -1); p.set(15, 19, -1);
+  // 大鼓眼：凸出头顶轮廓，黑瞳金边
+  p.circle(16, 8.5, 2.2, B);
+  p.span(7, 15, 16, H);
+  p.rect(16, 8, 2, 2, M);
+  p.set(15, 8, EY); p.set(15, 9, EY); p.set(16, 10, EY); p.set(16, 8, EY);
+  // 阔嘴：从吻端横到腮下
+  p.span(13, 14, 21, M);
+  p.span(12, 18, 20, H);
+  // 背上的绿毒疣
+  for (const [x, y] of [[5, 14], [8, 12], [11, 12], [9, 15]] as const) { p.rect(x, y, 2, 2, PO); p.set(x + 1, y + 1, PS); }
+  // 喉袋：吐弹前鼓圆
+  p.circle(18.5, 15, 1 + puff * 1.4, TH);
   finish(p, 'earth', 11, 22, 8, 2);
   return p;
 }
-
 // 穿山甲（土）：豆形拱背，三列大甲片、尖长吻、粗锥尾；帧 2、3 是土包里露出的三角背甲（暖金鳞 → 赭褐 → 深褐暗部）
 function chuanshan(f: number): PC {
   const p = new PC(24, 24);
