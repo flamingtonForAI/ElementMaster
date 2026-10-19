@@ -990,40 +990,235 @@ function xingtian(f: number): PC {
   return p;
 }
 
+// 鱼妖（水）：直立的鲤鱼精，大鱼头朝前张嘴、鼓眼，背上一片朱红背鳍，短腿短鳍手、身后一截尾鳍；
+// 朱红鳍和水鬼的长发白脸、蛟的长身区分开（青蓝鳞 → 深蓝暗部，米白肚皮）
+function yuyao(f: number): PC {
+  const p = new PC(24, 24);
+  const B = 0x4a9ac8, S = 0x2e6a9a, D = 0x1e4470, H = 0x9ad4f0, BL = 0xdce8dc, FN = 0xe0704a, FD = 0xa84434, EY = 0xffe45c, M = 0x1c1424;
+  const w = f === 1 ? 1 : 0;
+  // 短腿
+  p.strand([[10, 17], [9 - w, 21]], D, 2);
+  p.strand([[13, 17], [14 + w, 21]], S, 2);
+  p.oy = -w;
+  // 尾鳍
+  p.tri([8, 15], [3, 12 - w], [4, 19 + w], FN);
+  p.line(4, 13, 7, 15, FD);
+  // 背鳍：一排鳍刺
+  p.tri([8, 9], [10, 2 + w], [14, 6], FN);
+  p.line(10, 3 + w, 11, 8, FD);
+  p.line(12, 4, 12, 8, FD);
+  // 身子
+  p.ellipse(11, 13.5, 4.5, 4.5, B);
+  p.ellipse(10, 15.5, 3.5, 2.4, S);
+  p.ellipse(13, 14.5, 2.2, 3, BL);
+  for (const [x, y] of [[9, 12], [11, 11], [8, 14]]) p.set(x, y, H);
+  // 大鱼头
+  p.ellipse(15.5, 8.5, 5, 4, B);
+  p.span(5, 13, 17, H);
+  p.span(12, 13, 19, S);
+  // 张开的嘴
+  p.set(20, 9, BL);
+  p.set(20, 10, M);
+  p.set(19, 10, M);
+  p.set(20, 11, BL);
+  // 鼓眼
+  p.circle(16.5, 7, 1.6, EY);
+  p.set(17, 7, M);
+  // 鳍手
+  p.strand([[14, 13], [17, 15 - w]], S, 2);
+  p.set(18, 15 - w, FN);
+  p.oy = 0;
+  finish(p, 'water', 12, 22, 5, 1.6);
+  return p;
+}
+
+// 蛟（水）：贴地游走的长身幼龙，S 形长身、四条短爪、头上两只后掠小角和一对长须，背脊一溜浅色鳍棘
+// （深青鳞 → 墨蓝暗部，浅青肚皮，背棘冰蓝）
+function jiao(f: number): PC {
+  const p = new PC(30, 22);
+  const B = 0x2e7a9a, S = 0x1e5470, D = 0x143650, H = 0x6ab4c8, BL = 0xbcd8c8, FN = 0x9ad8ec, HN = 0xe8e0c0, EY = 0xffe45c, M = 0x1c1424;
+  const ph = f === 1 ? Math.PI : 0;
+  const pts: [number, number][] = [];
+  for (let x = 2; x <= 22; x += 2) pts.push([x, 13 + Math.sin(x * 0.42 + ph) * 2]);
+  // 四条短爪，交替迈步
+  const t = f === 1 ? 1 : -1;
+  for (const [x, k] of [[8, 1], [11, -1], [17, 1], [20, -1]] as const) {
+    const y = 13 + Math.sin(x * 0.42 + ph) * 2;
+    p.strand([[x, y + 2], [x + t * k, y + 6]], k > 0 ? D : S, 2);
+  }
+  // 长身：尾细身粗
+  p.strand(pts.slice(0, 4), S, 2);
+  p.strand(pts.slice(3), B, 4);
+  pts.slice(3).forEach(([x, y]) => p.set(x, y + 1, BL));
+  // 背棘
+  pts.slice(2, -1).forEach(([x, y], i) => i % 2 === 0 && p.set(x, y - 2, FN));
+  pts.slice(4).forEach(([x, y]) => p.set(x, y - 1, H));
+  // 头：扁长吻，两只后掠角、长须
+  const [hx, hy] = pts[pts.length - 1];
+  p.ellipse(hx + 3, hy - 1, 3.6, 2.6, B);
+  p.strand([[hx + 5, hy], [hx + 8, hy + 0.5]], B, 2);
+  p.span(Math.round(hy) + 1, hx + 3, hx + 8, BL);
+  p.strand([[hx + 2, hy - 3], [hx - 1, hy - 6]], HN, 1);
+  p.strand([[hx + 4, hy - 3], [hx + 2, hy - 6]], HN, 1);
+  p.strand([[hx + 7, hy + 1], [hx + 9, hy + 4 + t]], H, 1);
+  p.set(hx + 4, hy - 2, EY);
+  p.set(hx + 8, hy, M);
+  finish(p, 'water', 14, 20, 10, 1.6);
+  return p;
+}
+
+// 相柳（水，Boss）：九首蛇身而青。盘成两圈的粗蛇身压在地上，九条长颈从上圈扇形升起，
+// 每个头是一张小人面：青灰头、苍白面孔、黄眼，中间那颗最大；颈上挂着毒涎（青鳞 → 墨青暗部，病黄肚皮，毒涎黄绿）
+function xiangliu(f: number): PC {
+  const p = new PC(56, 56);
+  const B = 0x2e6a78, S = 0x1e4a58, D = 0x14303c, H = 0x5aa0a8, BL = 0xc8c890, BLS = 0x9a9a6a;
+  const FACE = 0xd8d4bc, EY = 0xffe45c, M = 0x1c1424, VEN = 0x8ad04a;
+  const s = Math.sin((f / 4) * Math.PI * 2);
+  // 卷起的尾尖
+  p.strand([[12, 48], [5, 47], [3, 43], [6, 41]], S, 3);
+  // 下圈
+  p.ellipse(28, 46, 20, 7, S);
+  p.ellipse(28, 45, 18, 5.5, B);
+  p.span(41, 16, 38, H);
+  p.span(49, 20, 40, BLS);
+  // 上圈
+  p.ellipse(27, 38, 14, 5.5, S);
+  p.ellipse(27, 37, 12.5, 4.2, B);
+  p.span(34, 19, 32, H);
+  p.span(41, 21, 34, BL);
+  // 九条长颈：后面四条暗、前面五条亮，长短高低错开，各自弯成 S 形，随帧摆动；先画颈再画头，头不被别的颈盖住
+  const order = [0, 8, 2, 6, 1, 7, 3, 5, 4];
+  const LEN = [17, 25, 22, 30, 34, 29, 23, 26, 18];
+  const heads: { i: number; hx: number; hy: number; fx: number; back: boolean }[] = [];
+  for (const i of order) {
+    const a = Math.PI * (1.14 + (i / 8) * 0.72);
+    const back = i % 2 === 1;
+    const len = LEN[i];
+    const sway = s * (i % 2 ? 1.4 : -1.4);
+    const bx = 19 + i * 2;
+    const by = 35;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    // 垂直于颈的方向，左右交替弯
+    const bend = (i % 2 ? 3 : -3) * (i < 4 ? 1 : -1);
+    const p1: [number, number] = [bx + ca * len * 0.33 - sa * bend, by + sa * len * 0.33 + ca * bend];
+    const p2: [number, number] = [bx + ca * len * 0.66 + sa * bend + sway * 0.5, by + sa * len * 0.66 - ca * bend];
+    const hx = bx + ca * len + sway;
+    const hy = by + sa * len;
+    p.strand([[bx, by], p1, p2, [hx, hy]], back ? S : B, i === 4 ? 4 : 3);
+    if (!back) p.strand([p1, p2], H, 1);
+    heads.push({ i, hx, hy, fx: ca >= 0 ? 1 : -1, back });
+  }
+  for (const { i, hx, hy, fx, back } of heads) {
+    // 小人面朝外：中间那颗最大
+    const r = i === 4 ? 4 : 3;
+    p.ellipse(hx, hy, r + 0.6, r, back ? S : B);
+    p.ellipse(hx + fx * 0.9, hy + 0.5, r * 0.62, r * 0.62, FACE);
+    p.set(hx + fx * 0.4, hy, EY);
+    p.set(hx + fx * 1.8, hy, EY);
+    p.set(hx + fx * 1.1, hy + r * 0.65, M);
+    // 毒涎挂在几张嘴下
+    if (i === 2 || i === 4 || i === 7) p.set(hx + fx * 1.1, hy + r + 1 + (f % 2), VEN);
+  }
+  for (const [x, y] of [[22, 44], [30, 46], [36, 43], [24, 37], [31, 36]]) p.set(x, y, D);
+  finish(p, 'water', 28, 50, 20, 3.5);
+  return p;
+}
+
+/** 0xRRGGBB → [h 0–1, s, v] */
+function hsv(c: number): [number, number, number] {
+  const r = ((c >> 16) & 255) / 255, g = ((c >> 8) & 255) / 255, b = (c & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d) h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h / 6, mx ? d / mx : 0, mx];
+}
+
+function rgb(h: number, s: number, v: number): number {
+  const i = Math.floor(h * 6), f = h * 6 - i, p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+  const [r, g, b] = [[v, t, p], [q, v, p], [p, v, t], [p, q, v], [t, p, v], [v, p, q]][((i % 6) + 6) % 6];
+  return (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255);
+}
+
+/** 两色按 k 混合 */
+function mixCol(a: number, b: number, k: number): number {
+  const m = (sh: number) => Math.round(((a >> sh) & 255) * (1 - k) + ((b >> sh) & 255) * k) << sh;
+  return m(16) | m(8) | m(0);
+}
+
+/**
+ * 升阶重新着色（只动不透明的身体像素，半透明的影子和元素底座不动，色相不变）：
+ * 二阶「凶」往本元素色里混（水更蓝、火更红、土更金），明度基本不变，阴影一侧的描边换成本元素暗色；
+ * 三阶「煞」身体压到很暗，黑描边整圈换成本元素的亮色。两阶都保留白色高光和黄色火光（眼睛、火核、刃口）
+ */
+export function tierFrame(src: PC, tier: 2 | 3, el: El): PC {
+  const p = new PC(src.w, src.h);
+  p.c.set(src.c);
+  p.a.set(src.a);
+  const rim = mixCol(EL_INFO[el].color, EL_INFO[el].dark, 0.25);
+  const low = mixCol(EL_INFO[el].dark, OUTLINE, 0.25);
+  for (let i = 0; i < p.c.length; i++) {
+    const c = p.c[i];
+    if (c === -1 || p.a[i] !== 255) continue;
+    // 凶：下半圈（阴影一侧）的描边换成本元素暗色；煞：整圈换成本元素亮色
+    if (c === OUTLINE || c === OUTLINE_LIT) {
+      if (tier === 3) p.c[i] = rim;
+      else if (c === OUTLINE) p.c[i] = low;
+      continue;
+    }
+    const [h, sat, v] = hsv(c);
+    // 亮处只算白色高光和黄色火光（眼睛、火核、刃口），身体本色再亮也压
+    const glow = v > 0.88 && (sat < 0.3 || (h > 0.1 && h < 0.18));
+    if (glow) continue;
+    if (tier === 2) {
+      // 往本元素色里混，明度基本不变（压暗会和暗地面糊在一起）
+      const [h2, s2, v2] = hsv(mixCol(c, EL_INFO[el].color, 0.35));
+      p.c[i] = rgb(h2, Math.min(1, s2 * 1.15 + 0.04), v2 * 0.92);
+    }
+    else p.c[i] = rgb(h, Math.min(1, sat * 1.1 + 0.05), v * 0.45);
+  }
+  return p;
+}
+
 export function buildEnemies(scene: Phaser.Scene) {
-  const two = (key: string, fn: (f: number) => PC, rate: number) => {
-    addSheet(scene, key, [fn(0), fn(1)]);
-    addAnim(scene, key + '_move', key, [0, 1], rate);
+  /** 注册一种小怪的贴图和动画，连同二阶、三阶的重新着色版（key_t2、key_t3，动画同名加后缀） */
+  const mob = (key: string, el: El, frames: PC[], anims: [string, number[], number][]) => {
+    for (const tier of [1, 2, 3] as const) {
+      const k = tier === 1 ? key : `${key}_t${tier}`;
+      addSheet(scene, k, tier === 1 ? frames : frames.map((f) => tierFrame(f, tier, el)));
+      for (const [suffix, fr, rate] of anims) addAnim(scene, k + suffix, k, fr, rate);
+    }
   };
-  two('en_shiyong', shiyong, 4);
-  two('en_shiyong_moss', (f) => shiyong(f, 'moss'), 4);
-  two('en_shiyong_rock', (f) => shiyong(f, 'rock'), 4);
-  two('en_shiyong_lava', (f) => shiyong(f, 'lava'), 4);
-  two('en_shiyong_armor', (f) => shiyong(f, 'armor'), 4);
-  two('en_tengguai', tengguai, 5);
-  two('en_shuigui', shuigui, 4);
-  two('en_huoya', huoya, 8);
-  two('en_tiejia', tiejia, 5);
-  two('en_zhushe', zhushe, 6);
-  two('en_zhangchan', zhangchan, 3);
-  two('en_shanxiao', shanxiao, 5);
+  const two = (key: string, el: El, fn: (f: number) => PC, rate: number) => mob(key, el, [fn(0), fn(1)], [['_move', [0, 1], rate]]);
+  const boss = (key: string, frames: PC[], rate: number) => {
+    addSheet(scene, key, frames);
+    addAnim(scene, key + '_move', key, frames.map((_, i) => i), rate);
+  };
+  two('en_shiyong', 'earth', shiyong, 4);
+  two('en_shiyong_moss', 'earth', (f) => shiyong(f, 'moss'), 4);
+  two('en_shiyong_rock', 'earth', (f) => shiyong(f, 'rock'), 4);
+  two('en_shiyong_lava', 'earth', (f) => shiyong(f, 'lava'), 4);
+  two('en_shiyong_armor', 'earth', (f) => shiyong(f, 'armor'), 4);
+  two('en_tengguai', 'wood', tengguai, 5);
+  two('en_shuigui', 'water', shuigui, 4);
+  two('en_huoya', 'fire', huoya, 8);
+  two('en_tiejia', 'metal', tiejia, 5);
+  two('en_zhushe', 'wood', zhushe, 6);
+  two('en_zhangchan', 'earth', zhangchan, 3);
+  two('en_shanxiao', 'earth', shanxiao, 5);
   // 穿山甲：0、1 走路，2、3 钻地的土包
-  addSheet(scene, 'en_chuanshan', [0, 1, 2, 3].map(chuanshan));
-  addAnim(scene, 'en_chuanshan_move', 'en_chuanshan', [0, 1], 5);
-  addAnim(scene, 'en_chuanshan_dig', 'en_chuanshan', [2, 3], 8);
-  addSheet(scene, 'boss_langyao', [0, 1, 2, 3].map(langyao));
-  addAnim(scene, 'boss_langyao_move', 'boss_langyao', [0, 1, 2, 3], 8);
-  two('boss_shuyao', shuyao, 2);
-  addSheet(scene, 'boss_shanxiao', [0, 1, 2, 3].map(shanxiaoBoss));
-  addAnim(scene, 'boss_shanxiao_move', 'boss_shanxiao', [0, 1, 2, 3], 6);
-  two('en_chihu', chihu, 9);
-  two('en_huojing', huojing, 6);
-  two('en_feilian', feilian, 4);
+  mob('en_chuanshan', 'earth', [0, 1, 2, 3].map(chuanshan), [['_move', [0, 1], 5], ['_dig', [2, 3], 8]]);
+  boss('boss_langyao', [0, 1, 2, 3].map(langyao), 8);
+  boss('boss_shuyao', [0, 1].map(shuyao), 2);
+  boss('boss_shanxiao', [0, 1, 2, 3].map(shanxiaoBoss), 6);
+  two('en_chihu', 'fire', chihu, 9);
+  two('en_huojing', 'fire', huojing, 6);
+  two('en_feilian', 'metal', feilian, 4);
   // 残兵：0、1 走路，2 是倒地的尸骸
-  addSheet(scene, 'en_canbing', [0, 1, 2].map(canbing));
-  addAnim(scene, 'en_canbing_move', 'en_canbing', [0, 1], 4);
-  addSheet(scene, 'boss_bifang', [0, 1, 2, 3].map(bifang));
-  addAnim(scene, 'boss_bifang_move', 'boss_bifang', [0, 1, 2, 3], 8);
-  addSheet(scene, 'boss_xingtian', [0, 1, 2, 3].map(xingtian));
-  addAnim(scene, 'boss_xingtian_move', 'boss_xingtian', [0, 1, 2, 3], 5);
+  mob('en_canbing', 'metal', [0, 1, 2].map(canbing), [['_move', [0, 1], 4]]);
+  boss('boss_bifang', [0, 1, 2, 3].map(bifang), 8);
+  boss('boss_xingtian', [0, 1, 2, 3].map(xingtian), 5);
+  two('en_yuyao', 'water', yuyao, 4);
+  two('en_jiao', 'water', jiao, 6);
+  boss('boss_xiangliu', [0, 1, 2, 3].map(xiangliu), 4);
 }

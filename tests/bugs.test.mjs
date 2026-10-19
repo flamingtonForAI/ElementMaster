@@ -209,12 +209,12 @@ test('玄一星图从中宫开场，其他角色保留向本系外侧聚焦', ()
 
 test('默认选关取最高已解锁且开放的关卡，不再写死第二关', () => {
   reset();
-  const available = LEVELS[4].available;
-  LEVELS[4].available = true;
+  const available = LEVELS[5].available;
+  LEVELS[5].available = true;
   try {
     const save = loadSave();
-    // 第 6 关尚未开放，应落在第 5 关
-    save.unlocked = 6;
+    // 第 7 关尚未开放，应落在第 6 关
+    save.unlocked = 7;
     writeSave(save);
     const scene = new MenuScene();
     const chain = new Proxy({}, { get: () => () => chain });
@@ -222,9 +222,9 @@ test('默认选关取最高已解锁且开放的关卡，不再写死第二关',
     scene.input = { keyboard: { on() {} } };
     scene.render = () => {};
     scene.create();
-    assert.equal(LEVELS[scene.levelSel].id, 5);
+    assert.equal(LEVELS[scene.levelSel].id, 6);
   } finally {
-    LEVELS[4].available = available;
+    LEVELS[5].available = available;
   }
 });
 
@@ -597,8 +597,8 @@ test('刑天：第一次非火系击杀带 35% 生命复起并短暂无敌，第
 const { spotAt, ridgeDist, RIDGE_HALF } = await import('../src/game/terrain.ts');
 const { World } = await import('../src/game/World.ts');
 
-test('熔岩口、剑阵点位固定：离出生点够远、在地图内、不挨山脊，数量够用', () => {
-  for (const [id, key, salt] of [[4, 'lava', 1], [5, 'swordZones', 2]]) {
+test('熔岩口、剑阵、泥潭点位固定：离出生点够远、在地图内、不挨山脊，数量够用', () => {
+  for (const [id, key, salt] of [[4, 'lava', 1], [5, 'swordZones', 2], [6, 'mud', 3]]) {
     const level = LEVELS.find((l) => l.id === id);
     const def = level[key];
     const half = level.size / 2;
@@ -840,4 +840,301 @@ test('几率触发的震慑攒满 3 层才打晕', () => {
   } finally {
     Math.random = random;
   }
+});
+
+test('泥潭：玩家移速乘 0.65；非水系普通敌人被拖慢，水系、Boss 不受影响', () => {
+  const level = LEVELS.find((l) => l.id === 6);
+  const world = Object.assign(Object.create(World.prototype), { level, half: level.size / 2, spotCache: new Map() });
+  let spot = null;
+  for (let i = 1; i < 20 && !spot; i++) spot = world.spotsIn('mud', -i * 300, -i * 300, i * 300, i * 300)[0];
+  assert.ok(spot);
+  const [x, y] = spot;
+  const r = level.mud.radius;
+  assert.equal(world.inMud(x, y)?.player, 0.65);
+  assert.ok(world.inMud(x + r - 4, y));
+  // 纵向压扁：正下方 r 处已经出了泥潭
+  assert.equal(world.inMud(x, y + r * 0.8), null);
+  assert.equal(world.inMud(x + r + 4, y), null);
+  // 其他关没有泥潭
+  const w1 = Object.assign(Object.create(World.prototype), { level: LEVELS[0], half: 1800, spotCache: new Map() });
+  assert.equal(w1.inMud(x, y), null);
+});
+
+/** 跑 Hazards 的瘴雾用的场景桩 */
+async function fogScene() {
+  const { Hazards } = await import('../src/game/Hazards.ts');
+  const level = LEVELS.find((l) => l.id === 6);
+  const img = () => { const o = new Proxy({}, { get: (_t, k) => (k === 'destroy' ? () => {} : () => o) }); return o; };
+  const inflicts = [];
+  const env = [];
+  const list = [];
+  const g = {
+    levelDef: level, now: 0, elapsed: 0, over: false, player: { x: 0, y: 0 },
+    add: { image: img }, hud: { toast() {} }, dmgScale: () => 1,
+    status: { inflict: (f) => inflicts.push(f) },
+    envDamage: (e, v, el) => env.push([e.def.id, v, el]),
+    enemies: { inRadius: (_x, _y, _r, out) => { out.length = 0; out.push(...list); return out; } },
+    world: { spotsIn: () => [], inMud: () => null },
+  };
+  const hz = new Hazards(g);
+  return { g, hz, inflicts, env, list };
+}
+
+test('瘴雾：慢慢扩开，雾里玩家按 tick 中毒，非木系普通敌人掉血，木系和 Boss 不掉；到时散掉', async () => {
+  const { g, hz, inflicts, env, list } = await fogScene();
+  const random = Math.random;
+  Math.random = () => 0.5;
+  try {
+    hz.miasmaAt(0, 0, 80, 6, 16);
+    list.push(
+      { def: ENEMIES.shuigui, x: 10, y: 0, maxHp: 100, elite: false, boss: false },
+      { def: ENEMIES.tengguai, x: 10, y: 0, maxHp: 100, elite: false, boss: false },
+      { def: ENEMIES.xiangliu, x: 10, y: 0, maxHp: 1000, elite: false, boss: true },
+    );
+    // 刚冒出来还很小：离中心 40 的玩家不在雾里
+    g.player = { x: 40, y: 0 };
+    g.now = 0.5;
+    hz.update();
+    assert.equal(inflicts.length, 0);
+    // 扩开之后就罩住了
+    g.now = 4;
+    hz.update();
+    assert.equal(inflicts.length, 1);
+    assert.equal(inflicts[0].kind, 'poison');
+    g.now = 4.3;
+    hz.update();
+    assert.equal(inflicts.length, 1, '按 tick 结算，不是每帧');
+    assert.deepEqual(env.map((e) => e[0]), ['shuigui', 'shuigui']);
+    assert.equal(env[0][1], 5);
+    assert.equal(env[0][2], 'wood');
+    // 到时散掉，不再结算
+    g.now = 17;
+    hz.update();
+    const n = inflicts.length;
+    g.now = 18;
+    hz.update();
+    assert.equal(inflicts.length, n);
+  } finally {
+    Math.random = random;
+  }
+});
+
+test('瘴雾：远吼从玩家附近的泥潭里冒，已经在冒的泥潭不重复冒', async () => {
+  const { g, hz } = await fogScene();
+  g.world.spotsIn = () => [[100, 0], [-200, 50], [300, 100]];
+  assert.equal(hz.rise(2), 2);
+  assert.equal(hz.rise(2), 1);
+  assert.equal(hz.rise(2), 0);
+  const scene = runScene('xiao', 6);
+  const calls = [];
+  scene.enemies = { onRoar() {} };
+  scene.hazards = { rise: (n) => calls.push(n) };
+  scene.cameras = { main: { shake() {} } };
+  Object.defineProperty(scene, 'hud', { value: { toast() {} } });
+  scene.roar();
+  assert.deepEqual(calls, [2]);
+});
+
+const { TRICKS, AFFIXES } = await import('../src/config/enemies.ts');
+
+test('难度曲线：第 1–3 关敌人不带新手段、精英没有词缀；第 4 关起逐关加，配的敌人都在本关刷怪池里', async () => {
+  const { tricksOf } = await import('../src/config/levels.ts');
+  for (const l of LEVELS.filter((l) => l.available)) {
+    if (l.id <= 3) {
+      assert.equal(l.tricks, undefined, `第 ${l.id} 关不该有手段`);
+      assert.equal(l.eliteAffixes ?? 0, 0);
+      for (const e of l.enemies) assert.deepEqual(tricksOf(l, e.id), []);
+      continue;
+    }
+    assert.ok(Object.keys(l.tricks ?? {}).length >= 2, `第 ${l.id} 关手段太少`);
+    for (const id of Object.keys(l.tricks)) assert.ok(l.enemies.some((e) => e.id === id), `第 ${l.id} 关的 ${id} 不在刷怪池里`);
+    // 抛射只给会吐弹的
+    for (const [id, ts] of Object.entries(l.tricks)) if (ts.includes('lob')) assert.equal(ENEMIES[id].behavior, 'spit');
+  }
+  const aff = (id) => LEVELS.find((l) => l.id === id).eliteAffixes;
+  assert.ok(aff(4) >= 1 && aff(6) > aff(4), '精英词缀数逐关上升');
+  // 同一种石俑：第 1 关朴素，第 4 关会震地
+  assert.deepEqual(tricksOf(LEVELS[0], 'shiyong'), []);
+  assert.deepEqual(tricksOf(LEVELS[3], 'shiyong'), ['quake']);
+});
+
+/** 跑 EnemyManager 手段逻辑的场景桩 */
+function trickScene(level) {
+  const { g, mgr, spawned, run } = killScene();
+  const hurts = [];
+  const patches = [];
+  const fogs = [];
+  const inflicts = [];
+  const noop = new Proxy({}, { get: () => () => {} });
+  Object.assign(g, {
+    levelDef: LEVELS.find((l) => l.id === level), now: 10, player: { x: 0, y: 0, alive: true, moving: false, facing: { x: 0, y: 1 } }, pstats: { speed: 60 },
+    hurtPlayer: (v, el, o) => hurts.push([v, el, o?.inflict?.kind]), status: { inflict: (f) => inflicts.push(f.kind) },
+    hazards: { patch: (...a) => patches.push(a), miasmaAt: (...a) => fogs.push(a) },
+    world: { clampPt: (x, y) => [x, y] }, dmgScale: () => 1, fx: noop, hud: noop,
+  });
+  let lobbed = null;
+  g.proj = { enemyLob: (_t, _sx, _sy, tx, ty, _d, onLand) => (lobbed = () => onLand(tx, ty)) };
+  return { g, mgr, spawned, run, hurts, patches, fogs, inflicts, land: () => lobbed?.() };
+}
+const trickMob = (id, level, o = {}) => ({ ...mob(id), id: 7, dmg: 6, radius: 8, cdMul: 1, trailAdd: 0, stunUntil: 0, castUntil: 0, trickAt: 0, chanceAdd: 0, atkDps: 0, affixes: [], tricks: LEVELS.find((l) => l.id === level).tricks?.[id] ?? [], ...o });
+
+test('震地：贴近才开招，蓄力期间站住，落下时圈里的玩家攒一层震慑；被定身打断', () => {
+  const { g, mgr, run, hurts } = trickScene(4);
+  const e = trickMob('shiyong', 4, { x: 100, y: 0 });
+  mgr.tryTrick(e, 100);
+  assert.equal(e.castUntil, 0, '离得远不开招');
+  e.x = 30;
+  mgr.tryTrick(e, 30);
+  assert.equal(e.castUntil, g.now + TRICKS.quake.warn);
+  assert.ok(e.trickAt > g.now + 5);
+  run();
+  assert.deepEqual(hurts, [[6, 'earth', 'stun']]);
+  // 再开一次，蓄力中被定身就落空
+  e.trickAt = 0;
+  mgr.tryTrick(e, 30);
+  e.stunUntil = g.now + 1;
+  run();
+  assert.equal(hurts.length, 1);
+});
+
+test('抛射：火精落地留余火，鱼妖留水洼，落点里的玩家受伤；前几关的同种怪照旧直线吐弹', () => {
+  for (const [id, level, kind] of [['huojing', 4, undefined], ['yuyao', 6, 'water']]) {
+    const { mgr, hurts, patches, land } = trickScene(level);
+    mgr.lobShot(trickMob(id, level));
+    land();
+    assert.equal(hurts.length, 1);
+    assert.equal(patches.length, 1);
+    assert.equal(patches[0][5], kind);
+  }
+  assert.deepEqual(LEVELS.find((l) => l.id === 2).tricks?.zhangchan, undefined);
+});
+
+test('列阵、护词缀：周围的妖物护甲 +2（不含自己和 Boss），出圈后过期；护甲进伤害结算', () => {
+  const { g, mgr } = trickScene(5);
+  const leader = trickMob('tiejia', 5, { x: 0, y: 0 });
+  const near = trickMob('canbing', 5, { x: 20, y: 0, guardUntil: 0, guardArmor: 0 });
+  const far = trickMob('canbing', 5, { x: 300, y: 0, guardUntil: 0, guardArmor: 0 });
+  const boss = trickMob('xingtian', 5, { x: 10, y: 0, guardUntil: 0, guardArmor: 0 });
+  leader.aura = {};
+  mgr.list.push(leader, near, far, boss);
+  for (const e of mgr.list) mgr.grid.insert(e);
+  mgr.updateAuras(1);
+  assert.equal(near.guardArmor, 2);
+  assert.ok(near.guardUntil > g.now);
+  assert.equal(far.guardUntil, 0);
+  assert.equal(boss.guardUntil, 0);
+  assert.ok(!(leader.guardUntil > g.now), '列阵不给自己加');
+  // 伤害结算
+  const scene = comboScene({});
+  scene.dmgMult = () => 1;
+  const a = enemy('metal', { guardUntil: scene.now + 1, guardArmor: 2 });
+  const b = enemy('metal', { guardUntil: scene.now - 1, guardArmor: 2 });
+  scene.hitEnemy(a, 10, 'fire');
+  scene.hitEnemy(b, 10, 'fire');
+  assert.equal(a.hp, 92);
+  assert.equal(b.hp, 90);
+});
+
+test('精英词缀：按本关数量随机挑，不重复', () => {
+  const { mgr } = trickScene(6);
+  for (let i = 0; i < 30; i++) {
+    const a = mgr.rollAffixes(2);
+    assert.equal(a.length, 2);
+    assert.notEqual(a[0], a[1]);
+    for (const x of a) assert.ok(AFFIXES[x]);
+  }
+  assert.deepEqual(mgr.rollAffixes(0), []);
+});
+
+test('小怪升阶：第 1–2 关没有，之后逐关更早更多；占比从开始那秒线性涨到 Boss 现身，三阶先掷', async () => {
+  const { tierShare, rollTier } = await import('../src/config/levels.ts');
+  const L = (id) => LEVELS.find((l) => l.id === id);
+  for (const id of [1, 2]) assert.equal(L(id).tiers, undefined);
+  const late = (id, t) => tierShare(L(id), t, L(id).duration - 60);
+  assert.ok(late(3, 2) < late(4, 2) && late(4, 2) < late(5, 2) && late(5, 2) < late(6, 2), '凶的占比逐关上升');
+  assert.equal(late(4, 3), 0);
+  assert.ok(late(6, 3) > late(5, 3) && late(5, 3) > 0, '煞从第 5 关起');
+  const l6 = L(6);
+  const [from, max] = l6.tiers[2];
+  assert.equal(tierShare(l6, 2, from - 1), 0);
+  const mid = from + (l6.duration - 60 - from) / 2;
+  assert.ok(Math.abs(tierShare(l6, 2, mid) - max / 2) < 1e-9);
+  assert.equal(tierShare(l6, 2, l6.duration), max);
+  // 掷骰：第一个数先比三阶
+  const seq = (...v) => { let i = 0; return () => v[i++]; };
+  assert.equal(rollTier(l6, l6.duration, seq(0.01)), 3);
+  assert.equal(rollTier(l6, l6.duration, seq(0.99, 0.01)), 2);
+  assert.equal(rollTier(l6, l6.duration, seq(0.99, 0.99)), 1);
+  assert.equal(rollTier(L(1), 300, seq(0, 0)), 1);
+});
+
+test('小怪升阶：数值按阶加强、换同阶贴图；精英和 Boss 不升阶；复活的残兵保持原阶', () => {
+  const made = [];
+  const sp = () => {
+    const o = { scale: 1, key: '', setTexture(k) { o.key = k; return o; }, setVisible: () => o, setActive: () => o, setScale(v) { o.scale = v; return o; }, setAlpha: () => o, clearTint: () => o, setOrigin: () => o, play: () => o, anims: { stop() {} } };
+    made.push(o);
+    return o;
+  };
+  const noop = new Proxy({}, { get: () => () => {} });
+  const chain = new Proxy({}, { get: () => () => chain });
+  const g = { levelDef: LEVELS.find((l) => l.id === 4), now: 0, roarStacks: 0, dmgScale: () => 1, hud: noop, add: { sprite: sp, image: () => chain, text: () => chain }, anims: { exists: () => true } };
+  const mgr = new EnemyManager(g);
+  const base = mgr.spawn('shiyong', 0, 0, {});
+  const t3 = mgr.spawn('shiyong', 0, 0, { tier: 3 });
+  assert.equal(base.sprite.key, 'en_shiyong_lava');
+  assert.equal(t3.sprite.key, 'en_shiyong_lava_t3');
+  assert.equal(t3.maxHp, Math.round(base.maxHp * 2.6));
+  assert.equal(t3.armor, base.armor + 2);
+  assert.equal(t3.xp, base.xp * 3);
+  assert.ok(Math.abs(t3.dmg / base.dmg - 1.5) < 1e-9);
+  assert.equal(t3.sprite.scale, 1.2);
+  const elite = mgr.spawn('shiyong', 0, 0, { tier: 3, elite: true });
+  assert.equal(elite.tier, 1);
+  assert.equal(elite.sprite.key, 'en_shiyong_lava');
+  const boss = mgr.spawn('bifang', 0, 0, { tier: 2 });
+  assert.equal(boss.tier, 1);
+
+  // 残兵复活带着原来的阶
+  const { mgr: m2, spawned, run } = killScene();
+  m2.kill(mob('canbing', { lastEl: 'metal', tier: 2 }));
+  run();
+  assert.equal(spawned[0].o.tier, 2);
+});
+
+test('小怪的异常：已经挂着同一种时再中几率减半，迟缓时长 ×0.6；Boss 不受影响', async () => {
+  const { PlayerStatus } = await import('../src/game/Status.ts');
+  const { MOB_REPEAT, MOB_SLOW_DUR, ON_PLAYER } = await import('../src/config/status.ts');
+  const g = { now: 0, build: { mods: {}, benming: 'fire' }, player: { x: 0, y: 0 }, fx: { text() {} }, cameras: { main: { shake() {} } }, dbg: {} };
+  const st = new PlayerStatus(g);
+  const random = Math.random;
+  try {
+    // 水对火是克：几率 ×1.5。0.2 × 1.5 = 0.3
+    Math.random = () => 0.29;
+    st.inflict({ kind: 'slow', chance: 0.2, mob: true });
+    assert.ok(st.slowed);
+    // 小怪迟缓 2 × 0.6 秒（火本命被水克，强度不打折）
+    assert.ok(Math.abs(st.slowUntil - ON_PLAYER.slow.dur * MOB_SLOW_DUR) < 1e-9);
+    // 已经挂着：0.3 × 0.5 = 0.15，掷 0.2 不中
+    Math.random = () => 0.2;
+    const until = st.slowUntil;
+    g.now = 0.5;
+    st.inflict({ kind: 'slow', chance: 0.2, mob: true });
+    assert.equal(st.slowUntil, until);
+    assert.equal(MOB_REPEAT, 0.5);
+    // Boss 的不减半、不缩时长
+    st.inflict({ kind: 'slow', chance: 0.2 });
+    assert.ok(Math.abs(st.slowUntil - (0.5 + ON_PLAYER.slow.dur)) < 1e-9);
+  } finally {
+    Math.random = random;
+  }
+});
+
+test('震地、缠根全场共用最小间隔：一群藤怪同时冷却好，也只有一只能放', () => {
+  const { g, mgr } = trickScene(6);
+  const roots = [1, 2, 3].map((i) => trickMob('tengguai', 6, { id: i, x: 100, y: 0 }));
+  for (const e of roots) mgr.tryTrick(e, 100);
+  assert.equal(roots.filter((e) => e.castUntil > g.now).length, 1);
+  g.now += TRICKS.roots.gap;
+  for (const e of roots) mgr.tryTrick(e, 100);
+  assert.equal(roots.filter((e) => e.castUntil > 0).length, 2);
 });

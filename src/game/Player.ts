@@ -5,6 +5,8 @@ import { FROZEN, STATUS_INFO, type StatusId } from '../config/status';
 import { stick } from '../ui/touch';
 
 export const PLAYER_RADIUS = 7;
+/** 迟缓、泥潭叠在一起时移速最低保留的比例 */
+export const MIN_SLOW = 0.6;
 const PIP_ORDER: StatusId[] = ['stun', 'burn', 'poison', 'slow', 'bleed'];
 
 export class Player {
@@ -64,7 +66,10 @@ export class Player {
       const len = Math.hypot(mx, my);
       mx /= len;
       my /= len;
-      const sp = g.pstats.speed * speedK * st.speedMult * (g.now < g.dunUntil ? 1.4 : 1);
+      // 泥潭和迟缓叠乘时最低保留 MIN_SLOW，免得被拖到躲不开预警
+      const mud = g.world.inMud(this.x, this.y);
+      const drag = Math.max(MIN_SLOW, st.speedMult * (mud ? mud.player : 1));
+      const sp = g.pstats.speed * speedK * drag * (g.now < g.dunUntil ? 1.4 : 1);
       this.x += mx * sp * dt;
       this.y += my * sp * dt;
       this.facing.x = mx;

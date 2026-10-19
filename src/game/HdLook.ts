@@ -4,7 +4,7 @@ import { VIEW_W, VIEW_H } from '../config/view';
 import { EL_INFO, type El } from '../config/elements';
 
 /**
- * HD-2D 风格光影原型（第 1–5 关，每关一套氛围预设）：
+ * HD-2D 风格光影原型（第 1–6 关，每关一套氛围预设）：
  * - 光照图：只盖在地砖上（熔岩口贴图、影子、角色、敌人、装饰都不受影响）——环境光略压暗 + 上暗下亮的景深渐变 + 暗角，熔岩口、火焰、法术、火精、宝石把脚下一小圈地面照亮，光色取自贴图本身
  * - 泛光：只给火焰和法术叠一层加色光晕，敌人、宝石不加
  * - 脚下软影子、飘升的火星、镜头移轴模糊（上下边缘）和轻微调色
@@ -46,6 +46,9 @@ const LIGHTS: Record<string, Light> = {
   fx_spike: { r: 16, c: EL_INFO.earth.color, a: 0.3, g: 0 },
   // 煞气剑阵：阵里的地面泛一层暗红
   fx_zone: { r: 60, c: 0xc04a3a, a: 0.3, g: 0, scaled: true },
+  // 瘴雾：雾下的地面泛一层病黄绿；水弹带一点水光
+  fx_fog: { r: 26, c: 0x9ac860, a: 0.18, g: 0, scaled: true },
+  ep_water: { r: 16, c: EL_INFO.water.color, a: 0.3, g: 0.05 },
 };
 
 /** 拖尾小光点：贴图 key 前缀 → 颜色（不写取五行色）和每帧冒点的概率 */
@@ -61,7 +64,7 @@ const TRAILS: Record<string, { c?: number; p: number }> = {
 const MIST_N = 6;
 
 /** 站在地上、要画影子的东西 */
-const SHADOW_PREFIX = ['en_', 'boss_', 'hero_', 'pp_', 'dc_basalt', 'dc_deadtree', 'dc_scorch', 'dc_rock', 'chest', 'crate'];
+const SHADOW_PREFIX = ['en_', 'boss_', 'hero_', 'pp_', 'dc_basalt', 'dc_reed', 'dc_deadtree', 'dc_scorch', 'dc_rock', 'chest', 'crate'];
 
 interface Preset {
   /** 环境光：画面中下部的亮度 */
@@ -97,6 +100,8 @@ const PRESETS: Record<number, Preset> = {
   4: { ambient: 0xb8a09a, top: 0.9, corner: 0.8, motes: { tint: [0xffb050, 0xff7a2a, 0xffd890], speedX: [-10, 10], speedY: [-34, -12], alpha: 0.85, every: 70, glow: true } },
   // 兵冢古战场：昏黄的沙尘天，灰烬慢慢飘落
   5: { ambient: 0xc8bcac, top: 0.88, corner: 0.76, motes: { tint: [0xa8a098, 0x8c867e, 0xc0b8a8], speedX: [4, 14], speedY: [6, 14], alpha: 0.55, every: 120, glow: false } },
+  // 云梦泽：雾气压着的冷青色水泽，淡白的水雾贴地慢慢横飘
+  6: { ambient: 0xaebcb8, top: 0.84, corner: 0.74, motes: { tint: [0xc8d4cc, 0xb4c4bc, 0xd4dcd0], speedX: [3, 10], speedY: [-2, 2], alpha: 0.4, every: 180, glow: false } },
 };
 
 /** 光照图比画面四周多出的边，镜头跟随晚一帧时不露边 */

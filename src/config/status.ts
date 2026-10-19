@@ -19,13 +19,19 @@ export const STATUS_INFO: Record<StatusId, { name: string; el: El; css: string; 
 /** 寒意攒满后的冰冻：机制上就是定身，画成冰色 */
 export const FROZEN = { name: '冰冻', css: '#d8f0ff', tint: 0xc8ecff };
 
-/** 敌人攻击附带的异常：命中后按 chance 判定；dps 用于中毒和灼烧（每层），dur 不填用默认时长 */
+/** 敌人攻击附带的异常：命中后按 chance 判定；dps 用于中毒和灼烧（每层），dur 不填用默认时长；mob 表示来自小怪 */
 export interface Inflict {
   kind: StatusId;
   chance: number;
   dps?: number;
   dur?: number;
+  mob?: boolean;
 }
+
+/** 小怪的异常已经挂在身上时，再中的几率乘这个数：一群怪围着也不至于一直续上 */
+export const MOB_REPEAT = 0.5;
+/** 小怪挂的迟缓持续时间乘这个数：水系小怪多，2 秒的迟缓很容易连成一片 */
+export const MOB_SLOW_DUR = 0.6;
 
 /** 挂在敌人身上：中毒、灼烧的 k 是每秒伤害占本次命中伤害的比例 */
 export const ON_ENEMY = {

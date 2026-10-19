@@ -1046,6 +1046,144 @@ function pine(variant = 0): PC {
   return p;
 }
 
+/** 鱼妖、相柳吐的水弹：朝飞行方向（右）的水滴，后面拖两道细水痕 */
+function eWater(): PC {
+  const p = new PC(12, 9);
+  const B = 0x5a9ae8, H = 0xd8ecff, D = 0x3a64b0;
+  p.span(3, 1, 4, D);
+  p.span(5, 0, 4, D);
+  p.span(4, 2, 6, B);
+  p.circle(7.5, 4.5, 3.2, B);
+  p.span(6, 6, 9, D);
+  p.set(8, 3, H);
+  p.set(7, 3, H);
+  p.set(9, 4, H);
+  p.outline(0x1c2a52);
+  return p;
+}
+
+/** fx_puddle（2 种变体，蛟冲过留下的水洼）：半径 10 的扁水洼，边上一圈亮水光 */
+function puddle(v: number): PC {
+  const p = new PC(20, 12);
+  for (let y = 0; y < 12; y++)
+    for (let x = 0; x < 20; x++) {
+      const wob = v ? Math.sin(x * 0.9) * 0.08 : Math.cos(x * 0.7) * 0.08;
+      const d = Math.hypot((x + 0.5 - 10) / 10, (y + 0.5 - 6) / 6) + wob;
+      if (d > 1) continue;
+      p.set(x, y, d > 0.78 ? 0x6a9ad0 : 0x3a5e90, d > 0.78 ? 170 : 140);
+    }
+  p.span(4, 6, 9, 0xb8d8f8, 170);
+  p.set(13, 7, 0xb8d8f8, 150);
+  return p;
+}
+
+/** fx_fog（瘴雾的一团）：半径约 26 的柔边扁雾团，病恹恹的黄绿，中心厚、边缘散 */
+function fog(): PC {
+  const p = new PC(52, 36);
+  const R = rng(66);
+  for (let y = 0; y < 36; y++)
+    for (let x = 0; x < 52; x++) {
+      const d = Math.hypot((x + 0.5 - 26) / 26, (y + 0.5 - 18) / 18) + (R() - 0.5) * 0.12;
+      if (d >= 1) continue;
+      const a = Math.round(220 * (1 - d) ** 0.8);
+      if (a > 6) p.set(x, y, d < 0.45 ? 0xb4d478 : 0x96bc5c, a);
+    }
+  return p;
+}
+
+/** dc_mud（2 种变体，第 6 关泥潭，贴地）：半径 50 的扁泥沼，湿边略亮，中间一汪浑水泛着天光，冒两个泡 */
+function mudPool(v: number): PC {
+  const p = new PC(100, 62);
+  const R = rng(70 + v);
+  for (let y = 0; y < 62; y++)
+    for (let x = 0; x < 100; x++) {
+      const a = Math.atan2(y + 0.5 - 31, x + 0.5 - 50);
+      const wob = Math.sin(a * 3 + v * 2) * 0.05 + Math.sin(a * 7 + v) * 0.03;
+      const d = Math.hypot((x + 0.5 - 50) / 50, (y + 0.5 - 31) / 31) + wob;
+      if (d > 1) continue;
+      const n = R() < 0.06 ? 1 : 0;
+      p.set(x, y, d > 0.9 ? 0x4a4a32 : d > 0.7 ? (n ? 0x3a3a28 : 0x34342a) : d > 0.4 ? 0x2c3226 : (n ? 0x34403a : 0x2e3a34));
+    }
+  // 浑水上的天光
+  p.span(24, 38, 50, 0x46564e);
+  p.span(25, 42, 56, 0x3e4c46);
+  p.span(36, 54, 60, 0x3e4c46);
+  // 两个泥泡
+  for (const [x, y] of v ? [[34, 34], [62, 26]] : [[60, 36], [40, 22]]) {
+    p.circle(x, y, 1.6, 0x4e5a4a);
+    p.set(x - 1, y - 1, 0x6a7a68);
+  }
+  return p;
+}
+
+/** 芦苇调色：暗部、茎、受光茎、高光，穗子暗、穗子亮 */
+const REED = { D: 0x2e3422, S: 0x4e5a32, M: 0x6e7a42, H: 0x96985a, P0: 0x7a5a3a, P1: 0xb08e5e };
+
+/** dc_reed（3 种变体，第 6 关芦苇荡，有碰撞）：一大丛密芦苇，茎秆往两边微微摊开，顶上一片褐色苇穗 */
+function reed(v: number): PC {
+  const p = new PC(30, 30);
+  const R = rng(80 + v);
+  const { D, S, M, H, P0, P1 } = REED;
+  // 根部一团暗色
+  p.ellipse(15, 27, 11, 2.6, D);
+  const n = 11 + v;
+  for (let i = 0; i < n; i++) {
+    const bx = 5 + (i / (n - 1)) * 20 + (R() - 0.5) * 2;
+    const lean = (bx - 15) * 0.35 + (R() - 0.5) * 3;
+    const top = 4 + R() * 9;
+    const col = i % 3 === 0 ? S : i % 3 === 1 ? M : H;
+    p.strand([[bx, 27], [bx + lean * 0.5, 16], [bx + lean, top]], col, 1);
+    // 一半的茎秆顶着苇穗
+    if (R() < 0.6) {
+      p.strand([[bx + lean, top], [bx + lean + 1, top - 3]], P0, 2);
+      p.set(bx + lean, top - 2, P1);
+    }
+    // 叶子斜着耷拉下来
+    if (i % 2 === 0) p.strand([[bx + lean * 0.4, 18], [bx + lean * 0.4 + (lean >= 0 ? 4 : -4), 21]], S, 1);
+  }
+  p.selectiveOutline(0x2c2238, 0x1c1424);
+  p.under(15, 28, 12, 1.8, 0x12222b, 90);
+  return p;
+}
+
+/** dc_cattail（2 种变体）：一小丛香蒲，几根直茎顶着深褐的蒲棒 */
+function cattail(v: number): PC {
+  const p = new PC(14, 26);
+  const { D, S, M } = REED;
+  const stems = v ? [[4, 7], [7, 3], [10, 8]] : [[5, 5], [9, 4]];
+  for (const [x, top] of stems) {
+    p.line(x, top, x, 24, M);
+    p.line(x + 1, top + 6, x + 1, 24, S);
+    p.rect(x - 1, top + 2, 2, 5, 0x5a3a26);
+    p.set(x - 1, top + 2, 0x7a5236);
+    p.set(x, top, M);
+  }
+  p.strand([[6, 24], [2, 16]], S, 1);
+  p.strand([[8, 24], [12, 17]], M, 1);
+  p.ellipse(7, 24, 4, 1.4, D);
+  p.selectiveOutline(0x2c2238, 0x1c1424);
+  p.under(7, 24.5, 5, 1, 0x12222b, 80);
+  return p;
+}
+
+/** dc_lotus（2 种变体）：贴着水面的几片暗青荷叶，叶心一道缺口，偶尔一朵粉白花苞 */
+function lotus(v: number): PC {
+  const p = new PC(18, 10);
+  const L0 = 0x1e3a3c, L1 = 0x2a4e4c, L2 = 0x3a6260, PK = 0xd8a0b0, PW = 0xf0dce0;
+  const pads: [number, number, number][] = v ? [[5, 5, 4], [12, 6, 3.4]] : [[6, 6, 4.5], [13, 4, 3], [12, 8, 2.4]];
+  for (const [x, y, r] of pads) {
+    p.ellipse(x, y, r, r * 0.55, L1);
+    p.ellipse(x - 0.5, y - 0.4, r * 0.7, r * 0.35, L2);
+    p.line(x, y, x + r - 0.5, y, L0);
+  }
+  if (!v) {
+    p.ellipse(13, 3, 1.5, 1.8, PK);
+    p.set(13, 2, PW);
+  }
+  p.selectiveOutline(0x1c2a2c, 0x14181c);
+  return p;
+}
+
 export function buildFx(scene: Phaser.Scene) {
   const px = new PC(2, 2);
   px.rect(0, 0, 2, 2, 0xffffff);
@@ -1094,6 +1232,9 @@ export function buildFx(scene: Phaser.Scene) {
   addSheet(scene, 'fx_flame', [0, 1, 2].map(flame));
   addAnim(scene, 'fx_flame', 'fx_flame', [0, 1, 2], 10);
   single(scene, 'fx_zone', zone());
+  single(scene, 'ep_water', eWater());
+  addSheet(scene, 'fx_puddle', [0, 1].map(puddle));
+  single(scene, 'fx_fog', fog());
   single(scene, 'antidote', antidote());
 
   // 第 1 关·荒郊古道：保持苍凉低对比度的黄褐荒原基调（微冷褐暗部 -> 暖黄褐，无鲜花干扰拾取物）
@@ -1151,6 +1292,17 @@ export function buildFx(scene: Phaser.Scene) {
       [0x5c5840, 0x666046],
     ),
   );
+  // 第 6 关·云梦泽：发暗的青褐湿泥地，偏冷，水系敌人的蓝和泥潭都比它跳一点
+  single(
+    scene,
+    'ground_6',
+    ground(
+      67,
+      [0x2f382f, 0x333c32, 0x374035, 0x3b4438, 0x3f483b],
+      [0x2a3029, 0x4a5240, 0x535a46],
+      [0x46553a, 0x4e5e40],
+    ),
+  );
   addSheet(scene, 'dc_rock', [0, 1, 2].map(rock));
   addSheet(scene, 'dc_tuft', [0, 1, 2].map(tuft));
   addSheet(scene, 'dc_tablet', [0, 1, 2].map(tablet));
@@ -1168,4 +1320,8 @@ export function buildFx(scene: Phaser.Scene) {
   addSheet(scene, 'dc_scorch', [0, 1].map(scorch));
   addSheet(scene, 'dc_cinder', [0, 1].map(cinder));
   addSheet(scene, 'dc_barricade', [0, 1, 2].map(barricade));
+  addSheet(scene, 'dc_mud', [0, 1].map(mudPool));
+  addSheet(scene, 'dc_reed', [0, 1, 2].map(reed));
+  addSheet(scene, 'dc_cattail', [0, 1].map(cattail));
+  addSheet(scene, 'dc_lotus', [0, 1].map(lotus));
 }

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
-import { LEVELS, DIFF, enemyPool, type LevelDef } from '../config/levels';
-import { ENEMIES } from '../config/enemies';
+import { LEVELS, DIFF, enemyPool, rollTier, type LevelDef } from '../config/levels';
+import { ENEMIES, AFFIXES, type Affix } from '../config/enemies';
 import { ENEMY_CRIT, ENEMY_CRIT_DMG, FROZEN, ON_ENEMY, STATUS_INFO, STATUS_OF, statusChance, statusPower, type Inflict, type StatusId } from '../config/status';
 import { EL_INFO, GEN_ORDER, REL_MULT, relation, terrainMod, type El } from '../config/elements';
 import { SKILLS } from '../config/skills';
@@ -60,6 +60,18 @@ export interface RunResult {
   unlockedNext: boolean;
   /** 这个角色首通拿到的道点、传承点，没有就为空 */
   growth: string;
+}
+
+/** 精英词缀的说明 */
+const AFFIX_TEXT: Record<Affix, string> = {
+  miasma: '身边一圈瘴气，靠近会中毒',
+  guard: '周围的妖物护甲 +2，先杀它',
+  summon: '每隔一会儿唤来同类',
+};
+
+/** 精英提示里的词缀前缀，如“瘴·护 ” */
+function affixTag(e: Enemy) {
+  return e.affixes.length ? e.affixes.map((a) => AFFIXES[a].name).join('·') + ' ' : '';
 }
 
 export class GameScene extends Phaser.Scene {
@@ -149,6 +161,7 @@ export class GameScene extends Phaser.Scene {
     this.shield = 0;
     this.zhoutian = null;
     this.tasks = [];
+    this.affixSeen = new Set();
     this.terrainMods = Object.fromEntries(GEN_ORDER.map((e) => [e, terrainMod(e, this.levelDef.terrain)])) as Record<El, number>;
   }
 
@@ -382,7 +395,7 @@ export class GameScene extends Phaser.Scene {
       this.spawnAcc -= 1;
       if (this.enemies.count >= cap) continue;
       const [x, y] = this.ringPos(390);
-      this.enemies.spawn(this.pickEnemy(), x, y, { hpMult: this.hpScale() });
+      this.enemies.spawn(this.pickEnemy(), x, y, { hpMult: this.hpScale(), tier: rollTier(this.levelDef, this.elapsed) });
     }
   }
 
@@ -393,7 +406,7 @@ export class GameScene extends Phaser.Scene {
       const a = (i / n) * Math.PI * 2;
       let [x, y] = this.world.clampPt(this.player.x + Math.cos(a) * 230, this.player.y + Math.sin(a) * 150, 20);
       if (this.world.blocked(x, y)) [x, y] = this.ringPos(230);
-      this.enemies.spawn(id, x, y, { hpMult: this.hpScale() });
+      this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), tier: rollTier(this.levelDef, this.elapsed) });
     }
     audio.sfx('warn');
     this.hud.toast(`${ENEMIES[id].name}成群来袭！`, EL_INFO[ENEMIES[id].el].css);
@@ -424,6 +437,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(350, 0.004);
     if (r.event?.kind === 'rockfall') this.hazards.rain(r.event.count);
     else if (r.event?.kind === 'lava') this.hazards.erupt(r.event.count);
+    else if (r.event?.kind === 'miasma') this.hazards.rise(r.event.count);
   }
 
   /** Boss 狂暴（Enemies.enrage 调用）：最后一吼，全场小怪再叠一层，换狂暴 BGM */
@@ -441,23 +455,36 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** 词缀第一次出现时说明一句 */
+  private affixSeen = new Set<Affix>();
+  private affixHint(e: Enemy) {
+    for (const a of e.affixes) {
+      if (this.affixSeen.has(a)) continue;
+      this.affixSeen.add(a);
+      this.hud.toast(`词缀「${AFFIXES[a].name}」：${AFFIX_TEXT[a]}`, AFFIXES[a].css);
+    }
+  }
+
   /** 游荡精英掉铜匣，精英潮和 Boss 前的精英掉金宝箱 */
   spawnElite(chest: 'gold' | 'copper' = 'copper', id = this.pickEnemy()) {
     const [x, y] = this.ringPos(260);
-    this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), elite: true, chest });
+    const e = this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), elite: true, chest });
     audio.sfx('warn');
-    this.hud.toast(`精英 · ${ENEMIES[id].name} 出现，击败可得${chest === 'gold' ? '宝箱' : '铜匣'}`, chest === 'gold' ? '#ffd23f' : '#d89a5a');
+    this.hud.toast(`精英 · ${affixTag(e)}${ENEMIES[id].name} 出现，击败可得${chest === 'gold' ? '宝箱' : '铜匣'}`, chest === 'gold' ? '#ffd23f' : '#d89a5a');
+    this.affixHint(e);
   }
 
   /** 精英潮：同一种精英一次来 n 只 */
   private eliteWave(n: number) {
     const id = this.pickEnemy();
+    let last: Enemy | null = null;
     for (let i = 0; i < n; i++) {
       const [x, y] = this.ringPos(240 + i * 20);
-      this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), elite: true, chest: 'gold' });
+      last = this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), elite: true, chest: 'gold' });
     }
     audio.sfx('warn');
-    this.hud.toast(`精英潮 · ${n} 只${ENEMIES[id].name}来袭`, '#ffd23f');
+    this.hud.toast(`精英潮 · ${n} 只${ENEMIES[id].name}来袭${last?.affixes.length ? '（各带词缀）' : ''}`, '#ffd23f');
+    if (last) this.affixHint(last);
   }
 
   spawnBoss() {
@@ -502,7 +529,9 @@ export class GameScene extends Phaser.Scene {
   private armorOf(e: Enemy) {
     const m = this.build.mods;
     const zone = this.world?.zoneArmor(e.x, e.y) ?? 0;
-    const armor = e.armor + (zone && zone + (this.levelDef.roar?.zoneArmor ?? 0) * this.roarStacks);
+    // 列阵、护词缀罩着的加甲
+    const guard = this.now < e.guardUntil ? e.guardArmor : 0;
+    const armor = e.armor + guard + (zone && zone + (this.levelDef.roar?.zoneArmor ?? 0) * this.roarStacks);
     if (armor <= 0) return armor;
     if (m['hh.stunBreak'] && this.now < e.stunUntil) return 0;
     if (m['kx.fire'] && e.def.el === 'metal' && this.now < e.burnUntil) return 0;

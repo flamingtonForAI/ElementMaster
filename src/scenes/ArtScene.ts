@@ -57,5 +57,12 @@ export class ArtScene extends Phaser.Scene {
     this.add.image(480, 262, 'dc_lava', 0);
     const decor45 = ['dc_basalt', 'dc_scorch', 'dc_cinder', 'dc_barricade', 'dc_sword', 'dc_bones'];
     decor45.forEach((k, i) => this.add.image(520 + (i % 3) * 36, 250 + Math.floor(i / 3) * 34, k).setOrigin(0.5, 1));
+    // 第 6 关
+    ['en_yuyao', 'en_jiao'].forEach((k, i) => this.add.sprite(320 + i * 40, 334, k, 0).play(k + '_move'));
+    this.add.sprite(420, 330, 'boss_xiangliu', 0).play('boss_xiangliu_move');
+    ['ep_water', 'fx_puddle'].forEach((k, i) => this.add.image(470 + i * 18, 334, k));
+    this.add.image(540, 334, 'fx_fog');
+    const decor6 = ['dc_reed', 'dc_cattail', 'dc_lotus', 'dc_mud'];
+    decor6.forEach((k, i) => this.add.image(600 + (i % 2) * 40, 320 + Math.floor(i / 2) * 34, k).setOrigin(0.5, 1).setScale(k === 'dc_mud' ? 0.4 : 1));
   }
 }

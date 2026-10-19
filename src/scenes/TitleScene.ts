@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CHARACTERS } from '../config/characters';
 import { EL_INFO, SAY_ORDER } from '../config/elements';
-import { ENEMIES, type Behavior, type EnemyDef } from '../config/enemies';
+import { ENEMIES, type Behavior, type EnemyDef, type Trick } from '../config/enemies';
 import { LEVELS } from '../config/levels';
 import { STATUS_INFO } from '../config/status';
 import { SLOTS, activeSlot, deleteSlot, exportSlot, importSlot, listSlots, newSlot, useSlot, type Save } from '../game/save';
@@ -48,13 +48,29 @@ const BEHAVIOR: Record<Behavior, string> = {
   boss_ape: '跳砸、碎石环、投巨石，半血召落石雨',
   boss_bird: '扇形火球，俯冲留下火线，半血降火柱',
   boss_xingtian: '举斧劈砍、盾冲、舞干戚飞刃环',
+  boss_snake: '九首扇形齐吐水弹和毒涎，吐毒泽化成瘴雾，潜进泥水从脚下冒出',
 };
-const SHOT: Record<string, string> = { ep_rock: '隔着距离投石', ep_fire: '隔着距离吐火球', ep_blade: '隔着距离甩飞刃' };
+const SHOT: Record<string, string> = { ep_rock: '隔着距离投石', ep_fire: '隔着距离吐火球', ep_blade: '隔着距离甩飞刃', ep_water: '隔着距离吐水弹' };
+/** 后期关卡开的手段；抛射按元素说落地留下什么 */
+const TRICK_TEXT: Record<Trick, (d: EnemyDef) => string> = {
+  lob: (d) => `弹改为抛射，落地${d.el === 'fire' ? '留余火' : d.el === 'water' ? '留水洼' : '冒毒气'}`,
+  quake: () => '贴近时停下震地，攒震慑',
+  formation: () => '列阵：周围的妖物护甲 +2',
+  roots: () => '在你脚下催生缠根，踩上去迟缓',
+};
+/** 这种敌人的每种手段从第几关开始有 */
+function trickLevels(id: string) {
+  const out = new Map<Trick, number>();
+  for (const l of LEVELS) for (const t of l.tricks?.[id] ?? []) if (!out.has(t)) out.set(t, l.id);
+  return out;
+}
 function traits(d: EnemyDef) {
   const t = [d.behavior === 'spit' && d.shot ? SHOT[d.shot] ?? BEHAVIOR.spit : BEHAVIOR[d.behavior]];
   if (d.trail) t.push('冲刺时身后留火');
+  if (d.puddle) t.push('冲刺时身后留下水洼');
   if (d.revive) t.push(`死后 ${d.revive} 秒原地复活，火系击杀则不会`);
   if (d.rise) t.push('第一次被打倒会复起，火系击杀则不会');
+  for (const [k, lv] of trickLevels(d.id)) t.push(`第 ${lv} 关起${TRICK_TEXT[k](d)}`);
   if (d.inflict) t.push(`攻击 ${Math.round(d.inflict.chance * 100)}% 附带${STATUS_INFO[d.inflict.kind].name}`);
   return t.join('；');
 }

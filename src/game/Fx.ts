@@ -103,6 +103,17 @@ export class Fx {
     this.g.tweens.add({ targets: s, alpha: alpha * 1.8, duration: dur * 1000, ease: 'Linear', onComplete: () => s.destroy() });
   }
 
+  /**
+   * 落点预警：圆盘渐亮，外面一圈环从 2.2 倍半径往里收，收到圆盘边缘的那一刻就落地。
+   * 比单个圆盘好判断时机，暗地面上也更显眼
+   */
+  telegraph(x: number, y: number, radius: number, color: number, dur: number) {
+    this.disc(x, y, radius, color, 0.38, dur);
+    const k = radius / 31;
+    const s = this.g.add.image(x, y, 'fx_ring').setTint(color).setDepth(y - 39).setScale(k * 2.2, k * 2.2 * 0.6).setAlpha(0.5);
+    this.g.tweens.add({ targets: s, scaleX: k, scaleY: k * 0.6, alpha: 0.95, duration: dur * 1000, ease: 'Linear', onComplete: () => s.destroy() });
+  }
+
   /** 预警直线 */
   line(x: number, y: number, angle: number, len: number, color: number, dur: number, width = 6) {
     const s = this.g.add.image(x, y, 'px').setOrigin(0, 0.5).setTint(color).setAlpha(0.35).setRotation(angle).setScale(len / 2, width / 2).setDepth(y - 40);

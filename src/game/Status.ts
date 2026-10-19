@@ -1,9 +1,10 @@
-import { FROZEN, ON_PLAYER, STATUS_INFO, statusChance, statusPower, type Inflict } from '../config/status';
+import { FROZEN, MOB_REPEAT, MOB_SLOW_DUR, ON_PLAYER, STATUS_INFO, statusChance, statusPower, type Inflict, type StatusId } from '../config/status';
 import type { GameScene } from '../scenes/GameScene';
 
 /**
  * 玩家身上的异常，和敌人同一套规则。中毒单层，取更强的伤害和更晚的结束时间；灼烧、流血叠层，每叠一层刷新时间，流血叠满撕裂；
- * 迟缓攒寒意、震慑攒层数，攒满冰冻或定身，之后免疫一段时间。星图的御 X 降低对应异常的几率（sres.<异常>）
+ * 迟缓攒寒意、震慑攒层数，攒满冰冻或定身，之后免疫一段时间。星图的御 X 降低对应异常的几率（sres.<异常>）；
+ * 小怪的异常已经挂着时，再中的几率乘 MOB_REPEAT
  */
 export class PlayerStatus {
   slowUntil = 0;
@@ -57,6 +58,11 @@ export class PlayerStatus {
     return this.chillBuild / ON_PLAYER.chill.need;
   }
 
+  /** 身上是否挂着这种异常 */
+  has(kind: StatusId) {
+    return kind === 'slow' ? this.slowed : kind === 'poison' ? this.poisoned : kind === 'burn' ? this.burning : kind === 'bleed' ? this.bleeding : this.stunned;
+  }
+
   get speedMult() {
     return this.slowed ? ON_PLAYER.slow.f : 1;
   }
@@ -67,7 +73,8 @@ export class PlayerStatus {
   inflict(f: Inflict) {
     const g = this.g;
     const sres = g.build.mods[`sres.${f.kind}`] ?? 0;
-    if (Math.random() >= f.chance * statusChance(f.kind, g.build.benming) * Math.max(0, 1 - sres)) return;
+    const again = f.mob && this.has(f.kind) ? MOB_REPEAT : 1;
+    if (Math.random() >= f.chance * again * statusChance(f.kind, g.build.benming) * Math.max(0, 1 - sres)) return;
     // 本命和异常同系、或克这个异常时，异常也变弱
     const k = statusPower(f.kind, g.build.benming);
     const now = g.now;
@@ -77,7 +84,7 @@ export class PlayerStatus {
     switch (f.kind) {
       case 'slow': {
         shown = !this.slowed;
-        this.slowUntil = Math.max(this.slowUntil, now + (f.dur ?? ON_PLAYER.slow.dur) * k);
+        this.slowUntil = Math.max(this.slowUntil, now + (f.dur ?? ON_PLAYER.slow.dur) * k * (f.mob ? MOB_SLOW_DUR : 1));
         const C = ON_PLAYER.chill;
         if (this.stunned || now < this.chillImmuneUntil || Math.random() >= k) break;
         if (now - this.lastChill > C.window) this.chillBuild = 0;

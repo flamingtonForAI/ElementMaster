@@ -139,7 +139,7 @@ function pngChunk(type, data) {
   return Buffer.concat([len, t, data, crc]);
 }
 
-function encodePng(w, h, rgba) {
+export function encodePng(w, h, rgba) {
   const raw = Buffer.alloc((w * 4 + 1) * h);
   for (let y = 0; y < h; y++) {
     const rowStart = y * (w * 4 + 1);
@@ -162,7 +162,7 @@ function encodePng(w, h, rgba) {
 
 // ---------- 提取图集帧像素 ----------
 
-function captureTextures() {
+export function captureTextures() {
   const store = new Map();
   const mockScene = {
     textures: {
@@ -233,7 +233,7 @@ function summarizeLabs(labs) {
 
 // ---------- 合成 640×360 样本图 + 灰度图 + 高斯模糊图 ----------
 
-function blitFrame(dst, dw, dh, frame, ox, oy) {
+export function blitFrame(dst, dw, dh, frame, ox, oy) {
   const { w, h, data } = frame;
   for (let y = 0; y < h; y++) {
     const dy = oy + y;
@@ -344,6 +344,8 @@ export function runReadabilityCheck({ writeImages = true } = {}) {
     // 检查敌人、Boss 与三种宝石的可读性
     const targets = [
       ...level.enemies.map((e) => enemyTex(level, e.id, ENEMIES[e.id].tex)),
+      // 本关会出现的升阶贴图（凶 _t2、煞 _t3）
+      ...Object.keys(level.tiers ?? {}).flatMap((t) => level.enemies.map((e) => `${enemyTex(level, e.id, ENEMIES[e.id].tex)}_t${t}`)),
       ENEMIES[level.boss].tex,
       'gem_s',
       'gem_m',

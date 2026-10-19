@@ -69,7 +69,7 @@ export interface FireOpts {
 }
 
 /** 有朝向的敌方弹丸（贴图朝右画），按飞行方向转；其余敌弹原地翻滚 */
-const AIMED_SHOTS = new Set(['ep_fire', 'ep_poison', 'ep_wind']);
+const AIMED_SHOTS = new Set(['ep_fire', 'ep_poison', 'ep_wind', 'ep_water']);
 
 export class ProjectileManager {
   private list: Proj[] = [];
@@ -135,6 +135,26 @@ export class ProjectileManager {
     p.arc = arc;
     p.life = dur + 1;
     p.sprite.play(anim);
+    return p;
+  }
+
+  /** 敌人的抛射弹：飞 dur 秒落到 (tx, ty)，落地只调 onLand（伤害和留下的东西都在回调里），途中翻滚、不碰人 */
+  enemyLob(tex: string, sx: number, sy: number, tx: number, ty: number, dur: number, onLand: (x: number, y: number) => void, arc = 40) {
+    const p = this.take(tex);
+    p.kind = 'lob';
+    p.sx = p.x = sx;
+    p.sy = p.y = sy;
+    p.tx = tx;
+    p.ty = ty;
+    p.t = 0;
+    p.dur = dur;
+    p.dmg = 0;
+    p.aoe = 0;
+    p.onLand = onLand;
+    p.stick = false;
+    p.proc = 0;
+    p.arc = arc;
+    p.life = dur + 1;
     return p;
   }
 

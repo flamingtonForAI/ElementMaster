@@ -4,15 +4,41 @@ import type { Enemy } from './Enemies';
 import { PLAYER_RADIUS } from './Player';
 import { audio } from '../audio/Audio';
 
-/** 地上的余火：玩家站在上面每隔一会儿受一次火伤并可能灼烧 */
+/** 地上的余火（fire）、水洼（water）或缠根（roots） */
+export type PatchKind = 'fire' | 'water' | 'roots';
+
+/** 余火：玩家站在上面每隔一会儿受一次火伤并可能灼烧；水洼：不伤人，踩上去可能迟缓 */
 interface Patch {
+  kind: PatchKind;
   x: number;
   y: number;
   r: number;
   until: number;
   dmg: number;
-  flames: Phaser.GameObjects.Sprite[];
+  flames: (Phaser.GameObjects.Sprite | Phaser.GameObjects.Image)[];
 }
+
+/** 瘴雾：从小慢慢扩到 R，存在到 until；puffs 是一圈慢慢转的雾团 */
+interface Fog {
+  x: number;
+  y: number;
+  R: number;
+  r: number;
+  born: number;
+  grow: number;
+  until: number;
+  spin: number;
+  puffs: Phaser.GameObjects.Image[];
+}
+
+/** 同时存在的瘴雾上限，超了先散最早的 */
+const FOG_MAX = 10;
+/** 瘴雾是贴地的椭圆，纵向压扁 */
+const FOG_SQUASH = 0.7;
+/** 每片瘴雾的雾团数 */
+const FOG_PUFFS = 7;
+/** 瘴雾里的普通敌人掉血的结算间隔（秒） */
+const FOG_ENEMY_TICK = 0.5;
 
 /** 同时存在的余火上限，超了先灭最早的 */
 const PATCH_MAX = 48;
@@ -25,6 +51,9 @@ const PATCH_TICK = 0.6;
  * - 熔岩口（第 4 关赤焰谷）：固定在地图上，周期挑玩家附近的几个喷发，先发光预警，喷完留一会儿余火；同样会烧掉非火系的普通敌人。
  * - 余火：熔岩、赤狐冲刺、毕方俯冲都会留下，也给 Boss 用。
  * - 煞气剑阵（第 5 关兵冢）只改护甲，由 World.zoneArmor 判定，这里只负责第一次靠近时的提示。
+ * - 泥潭（第 6 关云梦泽）只改移速，由 World.inMud 判定，这里只负责第一次踩进去的提示。
+ * - 瘴雾（第 6 关）：周期从玩家附近的泥潭里冒出，慢慢扩散开，雾里玩家会中毒，非木系的普通敌人持续掉血；相柳吐的毒泽也化成瘴雾。
+ * - 水洼：蛟冲刺、鱼妖的抛射水弹留下，踩上去可能迟缓；缠根（后期关卡的藤怪催生）同理。
  */
 export class Hazards {
   private nextAt: number;
@@ -34,16 +63,28 @@ export class Hazards {
   private zoneHinted = false;
   private patches: Patch[] = [];
   private patchTickAt = 0;
+  private wetTickAt = 0;
+  private mudHinted = false;
+  private fogs: Fog[] = [];
+  private fogAt: number;
+  private fogWarned = false;
+  private fogTickAt = 0;
+  private fogEnemyAt = 0;
+  private tmp: Enemy[] = [];
 
   constructor(private g: GameScene) {
     this.nextAt = g.levelDef.rockfall?.start ?? Infinity;
     this.lavaAt = g.levelDef.lava?.start ?? Infinity;
+    this.fogAt = g.levelDef.miasma?.start ?? Infinity;
   }
 
   update() {
     this.updatePatches();
     this.updateLava();
     this.updateZoneHint();
+    this.updateMudHint();
+    this.updateMiasma();
+    this.updateFogs();
     this.updateRockfall();
   }
 
@@ -175,10 +216,28 @@ export class Hazards {
 
   // ---------- 余火 ----------
 
-  /** 在 (x, y) 留一片半径 r、持续 dur 秒的余火，每次烫玩家 dmg（再乘伤害成长） */
-  patch(x: number, y: number, r: number, dur: number, dmg: number) {
+  /** 在 (x, y) 留一片半径 r、持续 dur 秒的余火，每次烫玩家 dmg（再乘伤害成长）；kind 为 water 时是一汪水洼 */
+  patch(x: number, y: number, r: number, dur: number, dmg: number, kind: PatchKind = 'fire') {
     const g = this.g;
     if (this.patches.length >= PATCH_MAX) this.remove(this.patches.shift()!);
+    if (kind === 'water') {
+      const img = g.add.image(x, y, 'fx_puddle', Math.floor(Math.random() * 2)).setDepth(-9e4).setScale(r / 10).setFlipX(Math.random() < 0.5).setAlpha(0.85);
+      this.patches.push({ kind, x, y, r, until: g.now + dur, dmg, flames: [img] });
+      return;
+    }
+    if (kind === 'roots') {
+      // 一圈从地里钻出的藤蔓，颜色压暗一档，和玩家的藤缚区分开
+      const vines: Phaser.GameObjects.Image[] = [];
+      const off = Math.random() * Math.PI;
+      for (let i = 0; i < 4; i++) {
+        const a = off + (i / 4) * Math.PI * 2;
+        const vx = x + Math.cos(a) * r * 0.55;
+        const vy = y + Math.sin(a) * r * 0.55 * 0.6;
+        vines.push(g.add.image(vx, vy, 'fx_vine').setOrigin(0.5, 0.9).setDepth(vy).setTint(0x8aa86a).setFlipX(i % 2 === 0));
+      }
+      this.patches.push({ kind, x, y, r, until: g.now + dur, dmg, flames: vines });
+      return;
+    }
     const n = r < 14 ? 1 : 3;
     const flames: Phaser.GameObjects.Sprite[] = [];
     for (let i = 0; i < n; i++) {
@@ -190,7 +249,7 @@ export class Hazards {
       s.anims.play({ key: 'fx_flame', startFrame: Math.floor(Math.random() * 3) });
       flames.push(s);
     }
-    this.patches.push({ x, y, r, until: g.now + dur, dmg, flames });
+    this.patches.push({ kind, x, y, r, until: g.now + dur, dmg, flames });
   }
 
   private remove(pt: Patch) {
@@ -203,6 +262,7 @@ export class Hazards {
     const now = g.now;
     const p = g.player;
     let hit: Patch | null = null;
+    let wet = false;
     for (let i = this.patches.length - 1; i >= 0; i--) {
       const pt = this.patches[i];
       const left = pt.until - now;
@@ -213,7 +273,14 @@ export class Hazards {
       }
       // 最后半秒淡出
       if (left < 0.5) for (const s of pt.flames) s.setAlpha(left * 1.8);
-      if (!hit && Math.hypot(p.x - pt.x, (p.y - pt.y) / 0.6) < pt.r + PLAYER_RADIUS * 0.5) hit = pt;
+      if (Math.hypot(p.x - pt.x, (p.y - pt.y) / 0.6) >= pt.r + PLAYER_RADIUS * 0.5) continue;
+      if (pt.kind === 'water' || pt.kind === 'roots') wet = true;
+      else hit ??= pt;
+    }
+    // 水洼、缠根（小怪留下的）：每 0.6 秒 25% 迟缓（会攒寒意）
+    if (wet && now >= this.wetTickAt && !g.over) {
+      this.wetTickAt = now + PATCH_TICK;
+      g.status.inflict({ kind: 'slow', chance: 0.25, mob: true });
     }
     if (hit && now >= this.patchTickAt && !g.over) {
       this.patchTickAt = now + PATCH_TICK;
@@ -231,6 +298,112 @@ export class Hazards {
     if (g.world.zoneArmor(p.x, p.y) || g.world.zoneArmor(p.x + p.facing.x * 60, p.y + p.facing.y * 60)) {
       this.zoneHinted = true;
       g.hud.toast(`煞气剑阵：阵中的敌人护甲 +${g.levelDef.swordZones.armor}，把它们引出来打`, '#e06a5a');
+    }
+  }
+
+  // ---------- 泥潭 ----------
+
+  private updateMudHint() {
+    const g = this.g;
+    if (this.mudHinted || !g.levelDef.mud) return;
+    const p = g.player;
+    if (!g.world.inMud(p.x, p.y)) return;
+    this.mudHinted = true;
+    g.hud.toast('陷进泥潭了：走得慢，非水系的妖物也一样', '#b8a878');
+  }
+
+  // ---------- 瘴雾 ----------
+
+  private updateMiasma() {
+    const g = this.g;
+    const m = g.levelDef.miasma;
+    if (!m || g.over || g.elapsed < this.fogAt) return;
+    const k = Math.min(1, g.elapsed / g.levelDef.duration);
+    const every = m.every[0] + (m.every[1] - m.every[0]) * k;
+    this.fogAt = g.elapsed + every * (0.85 + Math.random() * 0.3);
+    const n = this.rise(Math.round(m.count[0] + (m.count[1] - m.count[0]) * k));
+    if (n && !this.fogWarned) {
+      this.fogWarned = true;
+      g.hud.toast('泥潭里冒出了瘴雾！雾里会中毒，把怪引进去', '#8fe06a');
+    }
+  }
+
+  /** 从玩家附近（屏幕内外扩一点）的 n 个泥潭里冒瘴雾，已经在冒的跳过，离得近的优先；返回冒了几处。远吼也用这个 */
+  rise(n: number) {
+    const g = this.g;
+    const m = g.levelDef.miasma;
+    if (!m || n <= 0) return 0;
+    const p = g.player;
+    const pools = g.world.spotsIn('mud', p.x - 360, p.y - 220, p.x + 360, p.y + 220)
+      .filter(([x, y]) => !this.fogs.some((f) => Math.hypot(f.x - x, f.y - y) < 20))
+      .map(([x, y]) => ({ x, y, d: Math.hypot(x - p.x, y - p.y) + Math.random() * 120 }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, n);
+    for (const v of pools) this.miasmaAt(v.x, v.y, m.radius, m.grow, m.life);
+    return pools.length;
+  }
+
+  /** 在 (x, y) 冒一片瘴雾：grow 秒内从小扩到半径 R，life 秒后散掉 */
+  miasmaAt(x: number, y: number, R: number, grow: number, life: number) {
+    const g = this.g;
+    if (this.fogs.length >= FOG_MAX) this.dropFog(this.fogs.shift()!);
+    const puffs: Phaser.GameObjects.Image[] = [];
+    for (let i = 0; i < FOG_PUFFS; i++) {
+      // 中间一团压在人物下面，外圈几团飘在人物上面，半透明不挡视线
+      puffs.push(g.add.image(x, y, 'fx_fog').setDepth(i === 0 ? -9e4 : 1e5).setAlpha(0).setFlipX(Math.random() < 0.5));
+    }
+    audio.sfx('charge', { rate: 0.4, vol: 0.25 });
+    this.fogs.push({ x, y, R, r: 4, born: g.now, grow, until: g.now + life, spin: Math.random() * Math.PI * 2, puffs });
+  }
+
+  private dropFog(f: Fog) {
+    for (const s of f.puffs) s.destroy();
+  }
+
+  /** 这片雾当前在 (x, y) 处是否笼罩着 */
+  private covers(f: Fog, x: number, y: number, pad = 0) {
+    return Math.hypot(x - f.x, (y - f.y) / FOG_SQUASH) < f.r + pad;
+  }
+
+  private updateFogs() {
+    const g = this.g;
+    if (!this.fogs.length) return;
+    const now = g.now;
+    const p = g.player;
+    const m = g.levelDef.miasma ?? { tick: 0.7, chance: 0.6, dps: 2, enemy: 0.05 };
+    let onPlayer = false;
+    for (let i = this.fogs.length - 1; i >= 0; i--) {
+      const f = this.fogs[i];
+      const left = f.until - now;
+      if (left <= 0) {
+        this.dropFog(f);
+        this.fogs.splice(i, 1);
+        continue;
+      }
+      // 慢慢扩开：先快后慢；最后 2 秒淡出
+      const k = Math.min(1, (now - f.born) / f.grow);
+      f.r = Math.max(4, f.R * (1 - (1 - k) * (1 - k)));
+      const fade = Math.min(1, left / 2, (now - f.born) / 0.6);
+      f.spin += 0.0035;
+      f.puffs.forEach((s, j) => {
+        const a = f.spin + (j / (FOG_PUFFS - 1)) * Math.PI * 2;
+        const d = j === 0 ? 0 : f.r * 0.55;
+        const px = f.x + Math.cos(a) * d;
+        const py = f.y + Math.sin(a) * d * FOG_SQUASH;
+        s.setPosition(px, py).setScale((f.r / 26) * (j === 0 ? 1.05 : 0.6)).setAlpha((j === 0 ? 0.7 : 0.42) * fade);
+      });
+      if (!onPlayer && this.covers(f, p.x, p.y)) onPlayer = true;
+    }
+    if (onPlayer && now >= this.fogTickAt && !g.over) {
+      this.fogTickAt = now + m.tick;
+      g.status.inflict({ kind: 'poison', chance: m.chance, dps: m.dps * g.dmgScale(), dur: 3 });
+    }
+    // 雾里非木系的普通敌人掉血：引怪进雾是正当打法
+    if (now >= this.fogEnemyAt && !g.over) {
+      this.fogEnemyAt = now + FOG_ENEMY_TICK;
+      for (const f of this.fogs)
+        for (const e of g.enemies.inRadius(f.x, f.y, f.r, this.tmp))
+          if (!e.boss && e.def.el !== 'wood' && this.covers(f, e.x, e.y)) g.envDamage(e, e.maxHp * m.enemy * (e.elite ? 0.25 : 1), 'wood');
     }
   }
 }

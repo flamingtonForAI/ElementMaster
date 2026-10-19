@@ -19,19 +19,22 @@ interface Solid {
 const SOLID_MAX = 16;
 
 function isLargeDecor(tex: string): boolean {
-  return tex === 'dc_deadtree' || tex === 'dc_bamboo' || tex === 'dc_tablet' || tex === 'dc_pine' || tex === 'dc_scorch';
+  return tex === 'dc_deadtree' || tex === 'dc_bamboo' || tex === 'dc_tablet' || tex === 'dc_pine' || tex === 'dc_scorch' || tex === 'dc_cattail';
 }
 
 function isSmallDecor(tex: string): boolean {
-  return tex === 'dc_tuft' || tex === 'dc_shoot' || tex === 'dc_fern' || tex === 'dc_cinder' || tex === 'dc_bones' || tex === 'dc_sword';
+  return tex === 'dc_tuft' || tex === 'dc_shoot' || tex === 'dc_fern' || tex === 'dc_cinder' || tex === 'dc_bones' || tex === 'dc_sword' || tex === 'dc_lotus';
 }
 
-/** 地图上的固定点位种类：熔岩口、煞气剑阵 */
-export type SpotKind = 'lava' | 'zone';
-const SPOT_SALT: Record<SpotKind, number> = { lava: 1, zone: 2 };
+/** 地图上的固定点位种类：熔岩口、煞气剑阵、泥潭 */
+export type SpotKind = 'lava' | 'zone' | 'mud';
+const SPOT_SALT: Record<SpotKind, number> = { lava: 1, zone: 2, mud: 3 };
+const SPOT_KINDS: SpotKind[] = ['lava', 'zone', 'mud'];
 
 /** 剑阵是贴地的椭圆，纵向压扁到这个比例 */
 export const ZONE_SQUASH = 0.72;
+/** 泥潭更扁一些 */
+export const MUD_SQUASH = 0.62;
 
 /** 地图缩略贴图每个像素对应的世界像素 */
 export const MAP_TEXEL = 12;
@@ -72,8 +75,8 @@ export class World {
   /** 绕岩壁的距离场，没有山脊的关卡为 null */
   readonly nav: NavGrid | null;
   private navAcc = Infinity;
-  /** 点位按格子缓存，键为 kind:ix,iy */
-  private spotCache = new Map<string, [number, number] | null>();
+  /** 点位按格子缓存，键由 kind、ix、iy 拼成一个数（泥潭每帧给每只怪查一次，不拼字符串） */
+  private spotCache = new Map<number, [number, number] | null>();
 
   /** reserved：兴趣点位置，周围不放装饰和岩壁 */
   constructor(private scene: Phaser.Scene, private level: LevelDef, private reserved: { x: number; y: number }[] = []) {
@@ -98,11 +101,11 @@ export class World {
   }
 
   private spotDef(kind: SpotKind): SpotDef | undefined {
-    return kind === 'lava' ? this.level.lava : this.level.swordZones;
+    return kind === 'lava' ? this.level.lava : kind === 'zone' ? this.level.swordZones : this.level.mud;
   }
 
   private spot(kind: SpotKind, ix: number, iy: number): [number, number] | null {
-    const k = `${kind}:${ix},${iy}`;
+    const k = (SPOT_SALT[kind] * 4096 + ix + 2048) * 4096 + iy + 2048;
     let v = this.spotCache.get(k);
     if (v === undefined) {
       v = spotAt(ix, iy, this.level.id, SPOT_SALT[kind], this.spotDef(kind)!, this.half, this.level.ridges);
@@ -138,9 +141,23 @@ export class World {
     return 0;
   }
 
-  /** 离熔岩口、剑阵太近，不放装饰 */
+  /** 这里在不在泥潭里：在就返回泥潭的配置，否则 null */
+  inMud(x: number, y: number) {
+    const def = this.level.mud;
+    if (!def) return null;
+    const ix = Math.floor(x / def.cell);
+    const iy = Math.floor(y / def.cell);
+    for (let j = iy - 1; j <= iy + 1; j++)
+      for (let i = ix - 1; i <= ix + 1; i++) {
+        const p = this.spot('mud', i, j);
+        if (p && Math.hypot(x - p[0], (y - p[1]) / MUD_SQUASH) < def.radius) return def;
+      }
+    return null;
+  }
+
+  /** 离熔岩口、剑阵、泥潭太近，不放装饰 */
   private nearSpot(x: number, y: number): boolean {
-    for (const kind of ['lava', 'zone'] as const) {
+    for (const kind of SPOT_KINDS) {
       const def = this.spotDef(kind);
       if (!def) continue;
       const r = def.radius + 10;
@@ -214,6 +231,12 @@ export class World {
     const h = this.half;
     for (const [x, y] of this.spotsIn('lava', -h, -h, h, h))
       for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) dot(x + dx * MAP_TEXEL, y + dy * MAP_TEXEL, [226, 104, 48]);
+    // 泥潭画成暗绿褐的扁椭圆块
+    const mr = this.level.mud?.radius ?? 0;
+    for (const [x, y] of this.spotsIn('mud', -h, -h, h, h))
+      for (let dy = -mr * MUD_SQUASH; dy <= mr * MUD_SQUASH; dy += MAP_TEXEL)
+        for (let dx = -mr; dx <= mr; dx += MAP_TEXEL)
+          if (Math.hypot(dx, dy / MUD_SQUASH) < mr) dot(x + dx, y + dy, [52, 58, 40]);
     const zr = this.level.swordZones?.radius ?? 0;
     for (const [x, y] of this.spotsIn('zone', -h, -h, h, h))
       for (let a = 0; a < 24; a++) dot(x + Math.cos((a / 24) * Math.PI * 2) * zr, y + Math.sin((a / 24) * Math.PI * 2) * zr * ZONE_SQUASH, [170, 60, 56]);
@@ -358,7 +381,7 @@ export class World {
     this.chunks.set(k, list);
   }
 
-  /** 区块里的熔岩口（贴地的熔岩壳）和煞气剑阵（暗红阵纹 + 一圈插地的残剑） */
+  /** 区块里的熔岩口（贴地的熔岩壳）、煞气剑阵（暗红阵纹 + 一圈插地的残剑）和泥潭（贴地的泥沼 + 边上几丛芦苇） */
   private buildSpots(x: number, y: number, R: () => number, list: Phaser.GameObjects.Image[]) {
     const x0 = x * CHUNK;
     const y0 = y * CHUNK;
@@ -369,6 +392,18 @@ export class World {
     for (const [px, py] of this.spotsIn('lava', x0, y0, x0 + CHUNK, y0 + CHUNK)) {
       const r = this.level.lava!.radius;
       add(this.scene.add.image(Math.round(px), Math.round(py), 'dc_lava', Math.floor(R() * 2)).setScale(r / 20).setDepth(-1e5).setFlipX(R() < 0.5));
+    }
+    const mud = this.level.mud;
+    for (const [px, py] of this.spotsIn('mud', x0, y0, x0 + CHUNK, y0 + CHUNK)) {
+      const r = mud!.radius;
+      add(this.scene.add.image(Math.round(px), Math.round(py), 'dc_mud', Math.floor(R() * 2)).setScale(r / 50).setDepth(-1e5).setFlipX(R() < 0.5));
+      const n = 2 + Math.floor(R() * 2);
+      for (let i = 0; i < n; i++) {
+        const a = R() * Math.PI * 2;
+        const sx = px + Math.cos(a) * (r + 6);
+        const sy = py + Math.sin(a) * (r + 6) * MUD_SQUASH;
+        add(this.scene.add.image(Math.round(sx), Math.round(sy), 'dc_cattail', 0).setOrigin(0.5, 0.92).setDepth(sy).setFlipX(R() < 0.5));
+      }
     }
     const def = this.level.swordZones;
     for (const [px, py] of this.spotsIn('zone', x0, y0, x0 + CHUNK, y0 + CHUNK)) {

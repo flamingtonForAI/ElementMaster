@@ -1,4 +1,5 @@
 import type { El, Terrain } from './elements';
+import type { Tier, Trick } from './enemies';
 import type { RidgeDef, SpotDef } from '../game/terrain';
 
 export interface LevelDef {
@@ -40,6 +41,22 @@ export interface LevelDef {
   lava?: SpotDef & { start: number; every: [number, number]; count: [number, number]; warn: number; dmg: number; burn: number };
   /** 煞气剑阵：按格子稀疏摆放，站在阵里的敌人护甲 +armor */
   swordZones?: SpotDef & { armor: number };
+  /** 泥潭：按格子稀疏摆放的贴地椭圆，玩家移速乘 player，非水系的普通敌人移速乘 enemy */
+  mud?: SpotDef & { player: number; enemy: number };
+  /**
+   * 瘴雾：start 秒后周期从玩家附近的 count 个泥潭里冒出，grow 秒内从小慢慢扩到半径 radius，共存在 life 秒。
+   * 雾里的玩家每 tick 秒按 chance 中毒（每秒 dps，乘伤害成长），非木系的普通敌人每次掉 enemy 比例的生命。间隔和个数从开局到结束线性插值
+   */
+  miasma?: { start: number; every: [number, number]; count: [number, number]; radius: number; grow: number; life: number; tick: number; chance: number; dps: number; enemy: number };
+  /** 本关给哪些敌人开哪些手段（见 config/enemies.ts 的 Trick）；前几关不配，敌人保持最朴素的打法 */
+  tricks?: Record<string, Trick[]>;
+  /** 本关精英随机带几个词缀（见 Affix），不配为 0 */
+  eliteAffixes?: number;
+  /**
+   * 小怪升阶：[第几秒开始出现, Boss 现身时的占比]，中间线性涨。先按三阶的占比掷，没中再掷二阶。
+   * 只管普通刷怪和成群来袭，新怪亮相、精英、召唤物都是一阶
+   */
+  tiers?: Partial<Record<2 | 3, [number, number]>>;
   /** Boss 现身前的远吼：每吼一次全场叠一层加成，见 RoarDef */
   roar?: RoarDef;
   lesson: string;
@@ -70,7 +87,7 @@ export interface RoarBuff {
 /**
  * Boss 远吼：times 秒各吼一次，加成对场上已有和之后刷出的普通怪、精英都生效，Boss 自己不吃。
  * buffs 先按元素取（没写的元素用 other），再叠上按敌人 id 写的那条。
- * event：吼的同时在玩家附近触发一次小范围地形事件（落石、熔岩），zoneArmor 让剑阵每层再加护甲
+ * event：吼的同时在玩家附近触发一次小范围地形事件（落石、熔岩、瘴雾），zoneArmor 让剑阵每层再加护甲
  */
 export interface RoarDef {
   name: string;
@@ -80,7 +97,7 @@ export interface RoarDef {
   /** 第二行说明：哪些怪变强了 */
   detail: string;
   buffs: Partial<Record<El | 'other', RoarBuff>> & Record<string, RoarBuff | undefined>;
-  event?: { kind: 'rockfall' | 'lava'; count: number };
+  event?: { kind: 'rockfall' | 'lava' | 'miasma'; count: number };
   zoneArmor?: number;
 }
 
@@ -159,11 +176,13 @@ export const LEVELS: LevelDef[] = [
     // 两道岩壁，比竹林密，但山道缺口宽、隔得不远
     ridges: { tex: 'dc_cliff', radius: 11, bands: [0.4, 0.6], scale: 560, gap: 0.56 },
     rockfall: { start: 20, every: [7, 3.5], count: [1, 3], radius: 20, warn: 1.1, dmg: 12 },
+    // 后半程才零星出现凶
+    tiers: { 2: [240, 0.12] },
     roar: {
       name: '山吼', times: [120, 260, 360],
       lines: ['山那边传来捶胸的闷响……', '山吼震得碎石直落……', '群山都在回应山魈王……'],
       detail: '土系妖物更硬、投石钻地更勤、更容易震慑，其余更凶',
-      buffs: { earth: { armor: 1, cd: 0.15, chance: 0.1 }, other: { dmg: 0.08 } },
+      buffs: { earth: { armor: 1, cd: 0.15, chance: 0.05 }, other: { dmg: 0.08 } },
       event: { kind: 'rockfall', count: 3 },
     },
     lesson: '顺地气：土生金，金很舒服；山道窄，留意头顶落石',
@@ -184,12 +203,16 @@ export const LEVELS: LevelDef[] = [
     // 两道玄武岩壁夹出谷道，缺口比山林多一点：熔岩已经够逼走位
     ridges: { tex: 'dc_basalt', radius: 11, bands: [0.4, 0.6], scale: 600, gap: 0.6 },
     lava: { cell: 340, chance: 0.55, radius: 30, start: 20, every: [8, 4], count: [1, 3], warn: 1.3, dmg: 14, burn: 3 },
+    // 从这关起敌人开始有花样：火精的火球落地留余火，熔壳石俑贴身震地；精英带一个词缀
+    tricks: { huojing: ['lob'], shiyong: ['quake'] },
+    eliteAffixes: 1,
+    tiers: { 2: [150, 0.25] },
     roar: {
       name: '凤鸣', times: [150, 320, 450],
       lines: ['谷中传来一声凤鸣……', '凤鸣声越来越近……', '整座赤焰谷都烧了起来……'],
       detail: '火系妖物爆得更大、留火更久、吐火更勤，熔壳石俑更硬',
       // 火生土：熔壳石俑越烧越硬
-      buffs: { fire: { blast: 0.2, trail: 1, cd: 0.15, chance: 0.1 }, other: { dmg: 0.08 }, shiyong: { armor: 2 } },
+      buffs: { fire: { blast: 0.2, trail: 1, cd: 0.15, chance: 0.05 }, other: { dmg: 0.08 }, shiyong: { armor: 2 } },
       event: { kind: 'lava', count: 2 },
     },
     lesson: '逆风关：火克金，剑客要补水或土；熔岩口发亮就快走',
@@ -210,6 +233,10 @@ export const LEVELS: LevelDef[] = [
     // 一道拒马残垒
     ridges: { tex: 'dc_barricade', radius: 9, bands: [0.5], scale: 560, gap: 0.55 },
     swordZones: { cell: 420, chance: 0.5, radius: 64, armor: 3 },
+    // 铁甲兵列阵给周围加护甲，石俑照样震地
+    tricks: { tiejia: ['formation'], shiyong: ['quake'] },
+    eliteAffixes: 1,
+    tiers: { 2: [120, 0.3], 3: [420, 0.08] },
     roar: {
       name: '战鼓', times: [150, 320, 450],
       lines: ['古战场深处擂起了战鼓……', '鼓声更急了……', '干戚相击，战鼓如雷……'],
@@ -220,9 +247,38 @@ export const LEVELS: LevelDef[] = [
     lesson: '用火终结复活的残兵；煞气剑阵里的敌人护甲 +3，引出来打',
     available: true,
   },
+  {
+    id: 6, name: '云梦泽', duration: 600,
+    terrain: T({ water: 0.7, earth: 0.2, wood: 0.1 }),
+    // 水 70%、木 30%：水生木，水系一多木系也跟着旺；剑客、符师、海贼都打不顺，要补土或木
+    enemies: [{ id: 'shuigui', w: 3 }, { id: 'yuyao', w: 2 }, { id: 'jiao', w: 2 }, { id: 'tengguai', w: 2 }, { id: 'zhushe', w: 1 }],
+    spawn: [[0, 1.3, 55], [90, 2.5, 130], [200, 3.8, 205], [340, 5.2, 285], [480, 6.6, 365], [540, 4.0, 365]],
+    hpMult: 2.8, boss: 'xiangliu', bossName: '相柳', bgm: 'level6',
+    ground: 'ground_6',
+    decor: [{ tex: 'dc_cattail', w: 4 }, { tex: 'dc_lotus', w: 4 }, { tex: 'dc_deadtree', w: 2 }, { tex: 'dc_mossrock', w: 2 }, { tex: 'dc_fern', w: 2 }],
+    decorPerChunk: 6,
+    size: 4800, edge: 'dc_reed', elites: { first: 60, every: [60, 30] },
+    // 一道芦苇荡，缺口不少：泥潭和瘴雾已经够逼走位
+    ridges: { tex: 'dc_reed', radius: 9, bands: [0.5], scale: 600, gap: 0.56 },
+    mud: { cell: 300, chance: 0.6, radius: 48, player: 0.65, enemy: 0.6 },
+    miasma: { start: 30, every: [14, 8], count: [1, 2], radius: 80, grow: 6, life: 16, tick: 0.7, chance: 0.6, dps: 2, enemy: 0.05 },
+    // 鱼妖的水弹落地留水洼，藤怪在玩家脚下催生缠根；精英带两个词缀
+    tricks: { yuyao: ['lob'], tengguai: ['roots'] },
+    eliteAffixes: 2,
+    tiers: { 2: [90, 0.35], 3: [300, 0.15] },
+    roar: {
+      name: '泽啸', times: [150, 320, 450],
+      lines: ['大泽深处传来九声嘶鸣……', '雾里九个脑袋若隐若现……', '整片云梦泽都翻涌起来……'],
+      detail: '水系妖物吐得更勤、更快、更容易迟缓，蛟的水洼更久，木系更耐打，其余更凶',
+      // 水生木：木系越泡越壮
+      buffs: { water: { cd: 0.15, speed: 0.08, chance: 0.05, trail: 1 }, wood: { hp: 0.12 }, other: { dmg: 0.08 } },
+      event: { kind: 'miasma', count: 2 },
+    },
+    lesson: '三个初始角色都打不顺：补土或木；别站泥潭，把怪引进瘴雾',
+    available: true,
+  },
   // 以下关卡在后续阶段开放，先占位用于选关界面。第 7 关起混合元素
   ...([
-    [6, '云梦泽', 600, T({ water: 0.7, earth: 0.2, wood: 0.1 }), '相柳', '三个角色都打不顺'],
     [7, '寒江', 720, T({ water: 0.55, metal: 0.35, earth: 0.1 }), '玄冥', '冰面滑行'],
     [8, '大漠', 720, T({ earth: 0.6, metal: 0.3, fire: 0.1 }), '旱魃', '双修：一种元素顾不过来'],
     [9, '东海归墟', 720, T({ water: 0.5, fire: 0.3, earth: 0.2 }), '九婴', '答案是土'],
@@ -246,6 +302,28 @@ export function roarBuff(level: Pick<LevelDef, 'roar'>, defId: string, el: El): 
   const b = level.roar?.buffs;
   if (!b) return null;
   return { ...(b[el] ?? b.other), ...b[defId] };
+}
+
+/** t 秒时这一阶的占比：from 前为 0，到 Boss 现身（duration − 60）时涨到 max，之后保持 */
+export function tierShare(level: Pick<LevelDef, 'tiers' | 'duration'>, tier: 2 | 3, t: number): number {
+  const c = level.tiers?.[tier];
+  if (!c || t < c[0]) return 0;
+  const end = Math.max(c[0] + 1, level.duration - 60);
+  return c[1] * Math.min(1, (t - c[0]) / (end - c[0]));
+}
+
+/** 掷这只新刷的小怪是几阶 */
+export function rollTier(level: Pick<LevelDef, 'tiers' | 'duration'>, t: number, R: () => number = Math.random): Tier {
+  if (R() < tierShare(level, 3, t)) return 3;
+  if (R() < tierShare(level, 2, t)) return 2;
+  return 1;
+}
+
+const NO_TRICKS: Trick[] = [];
+
+/** 本关这种敌人开了哪些手段 */
+export function tricksOf(level: Pick<LevelDef, 'tricks'>, defId: string): Trick[] {
+  return level.tricks?.[defId] ?? NO_TRICKS;
 }
 
 /** 本关该用的敌人贴图：配了地域外观就用它，否则用敌人默认贴图 */
