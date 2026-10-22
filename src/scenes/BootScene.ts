@@ -7,6 +7,7 @@ import { buildHeroMoheng } from '../art/heroMoheng';
 import { buildHeroXuanyi } from '../art/heroXuanyi';
 import { buildPuppetArt } from '../art/puppetArt';
 import { buildEnemies } from '../art/enemyArt';
+import { preloadEnemySheets } from '../art/enemySheets';
 import { buildPortraits, PORTRAITS } from '../art/portraits';
 import { buildFx } from '../art/fxArt';
 import { TOD_LIST, buildVista, getVistaTextureKey } from '../art/vistaArt';
@@ -18,6 +19,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
+    preloadEnemySheets(this);
     for (const id of Object.keys(PORTRAITS)) {
       this.load.image(`portrait_${id}`, `assets/portraits/${id}.png`);
     }

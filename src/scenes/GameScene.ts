@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
-import { LEVELS, DIFF, enemyPool, rollTier, type LevelDef } from '../config/levels';
+import { phaseTerrain, LEVELS, DIFF, enemyPool, rollTier, type LevelDef } from '../config/levels';
 import { ENEMIES, AFFIXES, type Affix } from '../config/enemies';
 import { ENEMY_CRIT, ENEMY_CRIT_DMG, FROZEN, ON_ENEMY, STATUS_INFO, STATUS_OF, statusChance, statusPower, type Inflict, type StatusId } from '../config/status';
 import { EL_INFO, GEN_ORDER, REL_MULT, relation, terrainMod, type El } from '../config/elements';
@@ -67,6 +67,7 @@ const AFFIX_TEXT: Record<Affix, string> = {
   miasma: '身边一圈瘴气，靠近会中毒',
   guard: '周围的妖物护甲 +2，先杀它',
   summon: '每隔一会儿唤来同类',
+  frost: '身边一圈寒气，靠近会迟缓',
 };
 
 /** 精英提示里的词缀前缀，如“瘴·护 ” */
@@ -366,10 +367,41 @@ export class GameScene extends Phaser.Scene {
 
   private pickEnemy(): string {
     const list = enemyPool(this.levelDef, this.elapsed);
-    const total = list.reduce((s, e) => s + e.w, 0);
+    // 相位轮转：当相元素的妖物刷得更多
+    const cycle = this.levelDef.cycle;
+    const phase = this.hazards?.phaseEl;
+    const w = (e: { id: string; w: number }) => e.w * (cycle && ENEMIES[e.id].el === phase ? cycle.weight : 1);
+    const total = list.reduce((s, e) => s + w(e), 0);
     let r = Math.random() * total;
-    for (const e of list) if ((r -= e.w) <= 0) return e.id;
+    for (const e of list) if ((r -= w(e)) <= 0) return e.id;
     return list[0].id;
+  }
+
+  /**
+   * 换相（Hazards.turnPhase 调用）：地气（伤害修正和升级加权）换成这一相的那套，带相位的点位跟着显隐，随相的 Boss 换元素，HUD 的地气行跟着刷新；
+   * cycle.banner 的关卡全屏预警。quiet 为开局定相，不提示
+   */
+  setPhase(el: El, quiet = false) {
+    const c = this.levelDef.cycle;
+    if (!c) return;
+    const terrain = phaseTerrain(this.levelDef, el);
+    this.terrainMods = Object.fromEntries(GEN_ORDER.map((e) => [e, terrainMod(e, terrain)])) as Record<El, number>;
+    // 升级三选一也按当前地气加权
+    this.build.terrain = terrain;
+    this.world.setPhase(el);
+    this.enemies.rephase(el);
+    // HUD 还没建好（开局定相）时由它自己在 create 里按当前相画
+    if (this.scene.isActive('hud')) this.hud.showTerrain(terrain, c.note[el]);
+    if (quiet) return;
+    audio.sfx('charge', { rate: 0.45 + GEN_ORDER.indexOf(el) * 0.08, vol: 0.45 });
+    this.cameras.main.shake(250, 0.003);
+    if (c.banner) {
+      const col = EL_INFO[el].color;
+      this.cameras.main.flash(500, (col >> 16) & 255, (col >> 8) & 255, col & 255);
+      this.hud.banner(c.note[el] ?? EL_INFO[el].name, EL_INFO[el].css);
+    }
+    const t = c.start[el];
+    if (t) this.hud.toast(t, EL_INFO[el].css);
   }
 
   /** 玩家周围 r 处的随机点；贴着地图边缘或落在岩壁上时换个方向，实在不行夹回地图内 */
@@ -438,12 +470,16 @@ export class GameScene extends Phaser.Scene {
     if (r.event?.kind === 'rockfall') this.hazards.rain(r.event.count);
     else if (r.event?.kind === 'lava') this.hazards.erupt(r.event.count);
     else if (r.event?.kind === 'miasma') this.hazards.rise(r.event.count);
+    else if (r.event?.kind === 'storm') this.hazards.storm(r.event.count);
+    else if (r.event?.kind === 'phase' && this.hazards.phaseEl) this.hazards.turnPhase(this.hazards.nextPhase());
   }
 
   /** Boss 狂暴（Enemies.enrage 调用）：最后一吼，全场小怪再叠一层，换狂暴 BGM */
   onBossRage(e: Enemy) {
     const r = this.levelDef.roar;
     this.hud.toast(`${e.def.name}狂暴了！`, EL_INFO[e.def.el].css);
+    // 有风暴的关卡：狂暴时立刻刮一场
+    if (this.levelDef.storm) this.hazards.storm(12);
     if (r) {
       const n = ++this.roarStacks;
       this.enemies.onRoar(n);
@@ -491,6 +527,8 @@ export class GameScene extends Phaser.Scene {
     if (this.boss) return;
     const [x, y] = this.ringPos(250);
     this.boss = this.enemies.spawn(this.levelDef.boss, x, y, { hpMult: this.levelDef.hpMult });
+    // 随相换元素的 Boss（九婴）一出来就跟上当前的相
+    if (this.hazards.phaseEl) this.enemies.rephase(this.hazards.phaseEl);
     this.hud.toast(`${this.levelDef.bossName} 现身！`, '#ff6a5a');
     audio.sfx('boss');
     audio.music('boss', 0.6);
@@ -499,11 +537,12 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- 战斗 ----------
 
-  /** 玩家一方打这个敌人的伤害倍率：五行、地气、本命、星图、周天，以及护盾、蚀骨这类条件加成 */
+  /** 玩家一方打这个敌人的伤害倍率：五行、地气（含沙暴的金系加成）、本命、星图、周天，以及护盾、蚀骨这类条件加成 */
   dmgMult(e: Enemy, el: El) {
     const ps = this.pstats;
     const m = this.build.mods;
-    let k = REL_MULT[relation(el, e.def.el)] * this.terrainMods[el] * (this.build.benming === el ? 1.25 : 1) * ps.dmgMult * ps.elDmg[el] * ps.vsEl[e.def.el];
+    // 风暴（沙暴里金气更盛）按强度给这一系加伤
+    let k = REL_MULT[relation(el, e.def.el)] * this.terrainMods[el] * (this.hazards?.boost(el) ?? 1) * (this.build.benming === el ? 1.25 : 1) * ps.dmgMult * ps.elDmg[el] * ps.vsEl[e.def.el];
     if (el === this.zhoutian) k *= 1.25 + (m['xuan.bonus'] ?? 0);
     if (this.shield > 0 && m['qing.shieldDmg']) k *= 1 + m['qing.shieldDmg'];
     if (m['qing.vuln'] && this.now < e.poisonUntil) k *= 1 + m['qing.vuln'];

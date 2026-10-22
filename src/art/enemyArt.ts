@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { PC, addSheet, addAnim, OUTLINE, OUTLINE_LIT } from './painter';
 import { EL_INFO, type El } from '../config/elements';
+import { ENEMY_SHEETS, readEnemySheet } from './enemySheets';
 
-// 敌人只画朝右，朝左翻转。脚下的元素色底座烘焙进贴图，不只靠颜色区分时再配合名字/字形。
+// 敌人只画朝右，朝左翻转。下方程序画保留为缺图回退（含元素色底座）；PNG 造型从 enemySheets 加载。
 // 采用冷暖色相偏移（Hue-Shifted Ramp）+ selectiveOutline + 偏青蓝定向投影。
 
 function finish(p: PC, el: El, cx: number, cy: number, rx: number, ry: number) {
@@ -1125,6 +1126,442 @@ function xiangliu(f: number): PC {
   return p;
 }
 
+// 冰蚕（水）：胖乎乎的冰白大蚕，五节身子一拱一拱往前蠕，背上一排冰棱，节间透着冰蓝，黑豆眼
+// （冰白 → 灰蓝暗部，冰棱冰蓝）
+function bingcan(f: number): PC {
+  const p = new PC(24, 24);
+  const B = 0xc8d8e8, S = 0x8aa0b8, D = 0x5a6c88, H = 0xf0f6fc, IC = 0x9fd8ff, ICD = 0x5a9ac8, M = 0x1c1424;
+  // 五节身子，从尾到头；奇数帧中间几节拱起来
+  const segs: [number, number, number][] = [];
+  for (let i = 0; i < 5; i++) {
+    const hump = f === 1 ? [0, 1, 2, 1, 0][i] : [0, 0, 1, 0, 0][i];
+    segs.push([5 + i * 3.4 + (f === 1 ? 0 : i * 0.2), 16 - hump, i === 4 ? 4 : 3.4 + i * 0.15]);
+  }
+  for (const [x, y, r] of segs) {
+    p.ellipse(x, y + 0.6, r, r * 0.9, S);
+    p.ellipse(x - 0.3, y, r * 0.86, r * 0.76, B);
+    p.span(Math.round(y - r * 0.5), x - 1, x + 0.5, H);
+  }
+  // 节间的冰蓝和腹下的短足
+  for (let i = 0; i < 4; i++) {
+    const [x, y, r] = segs[i];
+    p.line(x + r * 0.7, y - 1, x + r * 0.7, y + 2, ICD);
+    p.set(x, y + r * 0.9 + 1, D);
+  }
+  // 背上的冰棱
+  for (let i = 0; i < 4; i++) {
+    const [x, y, r] = segs[i];
+    p.tri([x - 1, y - r * 0.7], [x + 1, y - r * 0.7], [x, y - r * 0.7 - 3], IC);
+    p.set(x, y - r * 0.7 - 1, H);
+  }
+  // 头：圆脑袋、黑豆眼、一对短触须
+  const [hx, hy] = segs[4];
+  p.set(hx + 1.5, hy - 1, M);
+  p.set(hx + 2.5, hy + 1, D);
+  p.strand([[hx + 1, hy - 3], [hx + 3, hy - 6]], D, 1);
+  p.strand([[hx - 1, hy - 3], [hx, hy - 6]], S, 1);
+  finish(p, 'water', 12, 21, 8, 1.6);
+  return p;
+}
+
+// 铁螯蟹（金）：铁灰甲壳的大江蟹，宽扁的壳、一大一小两只铁螯举在身前，四对细腿交替错步，
+// 壳缘一圈暗金；侧着身子挪（铁灰 → 墨灰暗部，暗金壳缘，螯尖亮银）
+function aoxie(f: number): PC {
+  const p = new PC(26, 22);
+  const B = 0x8a92a2, S = 0x5c6474, D = 0x3a404e, H = 0xc4ccd8, GD = 0xb89848, TIP = 0xe8eef6, EY = 0xffe45c, M = 0x1c1424;
+  const t = f === 1 ? 1 : -1;
+  // 四对细腿：左右各四条，交替抬起
+  for (let i = 0; i < 4; i++) {
+    const up = (i % 2 === 0 ? t : -t) > 0 ? 1 : 0;
+    const x = 7 + i * 3;
+    p.strand([[x, 15], [x - 2, 18 - up], [x - 3, 20 - up]], i % 2 ? S : D, 1);
+    p.strand([[x + 1, 15], [x + 3, 18 - (1 - up)], [x + 4, 20 - (1 - up)]], i % 2 ? D : S, 1);
+  }
+  // 宽扁的壳
+  p.ellipse(13, 13, 9, 5, S);
+  p.ellipse(12.5, 12, 8, 4, B);
+  p.span(9, 7, 17, H);
+  p.span(10, 6, 9, H);
+  p.span(16, 6, 19, GD);
+  p.set(4, 13, GD);
+  p.set(22, 13, GD);
+  for (const x of [9, 13, 17]) p.set(x, 13, D);
+  // 眼柄
+  p.line(15, 8, 15, 6, D);
+  p.line(18, 8, 18, 6, D);
+  p.set(15, 5, EY);
+  p.set(18, 5, EY);
+  p.set(15, 6, M);
+  // 大螯在前（右），小螯在后，随步子一开一合
+  const o = f === 1 ? 1 : 0;
+  p.strand([[20, 12], [22, 9]], S, 2);
+  p.ellipse(23, 7, 2.6, 2.2, B);
+  p.tri([24, 5 - o], [26, 4 - o], [25, 7], TIP);
+  p.tri([24, 8 + o], [26, 9 + o], [25, 7], H);
+  p.strand([[6, 11], [4, 8]], D, 2);
+  p.ellipse(3.5, 6.5, 2, 1.7, S);
+  p.set(2, 5 - o, TIP);
+  finish(p, 'metal', 13, 20, 9, 1.6);
+  return p;
+}
+
+// 玄冥（水，Boss）：北方水神，人面鸟身，珥两青蛇、践两青蛇。玄黑羽身展开一对大翼，翼尖结霜；
+// 苍白人面、黑发束顶、冰蓝眼；两耳各垂一条青蛇，爪下踩着两条青蛇（玄黑 → 墨蓝暗部，霜白翼尖，青蛇）
+function xuanming(f: number): PC {
+  const p = new PC(56, 56);
+  const B = 0x4a5c80, S = 0x303c56, D = 0x1a2232, H = 0x7890b8, FR = 0xb8d4ec, FRH = 0xeef6ff;
+  const FACE = 0xdcd6c8, FACS = 0xa8a294, HAIR = 0x14141c, EY = 0x9fe0ff, M = 0x1c1424;
+  const SN = 0x3a8a5a, SND = 0x24603e, SNH = 0x6ac080, CL = 0xd8c88a;
+  const s = Math.sin((f / 4) * Math.PI * 2);
+  // 爪下踩着的两条青蛇
+  for (const [x0, dir] of [[14, 1], [42, -1]] as const) {
+    const pts: [number, number][] = [];
+    for (let i = 0; i <= 6; i++) pts.push([x0 + dir * i * 2.4, 50 + Math.sin(i * 1.2 + f) * 1.4]);
+    p.strand(pts, SND, 3);
+    p.strand(pts, SN, 2);
+    const [hx, hy] = pts[0];
+    p.ellipse(hx - dir * 1.2, hy - 0.5, 2.2, 1.6, SN);
+    p.set(hx - dir * 2, hy - 1, EY);
+    p.set(hx - dir * 3, hy, 0xe05a5a);
+  }
+  // 尾羽
+  p.tri([24, 40], [32, 40], [28, 50], S);
+  p.tri([22, 40], [26, 40], [20, 49], D);
+  p.tri([30, 40], [34, 40], [36, 49], D);
+  // 两翼：后翼暗、前翼亮，翼尖随帧上下扇
+  const wing = (side: 1 | -1, col: number, edge: number) => {
+    const sx = 28 + side * 6;
+    const sy = 26;
+    const tipX = 28 + side * 26;
+    const tipY = 14 + s * 9;
+    const midY = 30 + s * 4;
+    p.tri([sx, sy], [tipX, tipY], [tipX - side * 4, midY + 6], col);
+    p.tri([sx, sy], [tipX - side * 4, midY + 6], [sx + side * 4, sy + 14], col);
+    // 一排飞羽，羽尖结霜
+    for (let i = 0; i < 5; i++) {
+      const k = i / 4;
+      const fx = sx + (tipX - sx) * (0.35 + k * 0.65);
+      const fy = sy + (tipY - sy) * (0.35 + k * 0.65) + 3;
+      p.strand([[fx, fy], [fx - side * 1, fy + 7 - k * 2]], edge, 1);
+      p.set(fx - side * 1, fy + 8 - k * 2, FR);
+    }
+    // 翼的外三分之一结了霜
+    p.tri([sx + (tipX - sx) * 0.62, sy + (tipY - sy) * 0.62], [tipX, tipY], [tipX - side * 3, tipY + 7], FR);
+    p.strand([[sx, sy], [tipX, tipY]], edge, 1);
+    p.set(tipX, tipY, FRH);
+    p.set(tipX - side, tipY + 1, FR);
+  };
+  wing(-1, S, B);
+  // 身子
+  p.ellipse(28, 33, 8.5, 10, S);
+  p.ellipse(27.5, 32, 7, 8.5, B);
+  p.ellipse(29, 34, 4, 5.5, H);
+  for (const [x, y] of [[26, 30], [29, 37], [31, 31]]) p.set(x, y, D);
+  // 爪
+  p.strand([[25, 42], [24, 48]], CL, 1);
+  p.strand([[31, 42], [32, 48]], CL, 1);
+  wing(1, B, H);
+  // 人面：黑发束顶，苍白的脸，冰蓝眼
+  p.ellipse(29, 17, 6, 6.5, HAIR);
+  p.rect(27, 8, 4, 3, HAIR);
+  p.set(29, 7, FR);
+  p.ellipse(30, 19, 4.5, 4.6, FACE);
+  p.span(22, 27, 33, FACS);
+  p.set(28, 18, EY);
+  p.set(32, 18, EY);
+  p.span(21, 30, 31, M);
+  // 两耳各垂一条青蛇
+  for (const [ex, dir] of [[24, -1], [35, 1]] as const) {
+    const pts: [number, number][] = [[ex, 18], [ex + dir * 2, 21], [ex + dir * 0.5, 24], [ex + dir * 2.5, 27 + (f % 2)]];
+    p.strand(pts, SN, 2);
+    p.strand(pts.slice(0, 2), SNH, 1);
+    const [hx, hy] = pts[3];
+    p.ellipse(hx, hy + 1, 1.8, 1.5, SN);
+    p.set(hx + dir, hy + 1, EY);
+  }
+  finish(p, 'water', 28, 51, 18, 3.5);
+  return p;
+}
+
+// 沙蝎（土）：沙黄甲壳的大蝎，一对钳子朝前，五节尾巴高高翘过背，尾针乌黑、针尖发红；四对细腿交替
+// （沙黄 → 赭褐暗部，钳尖、尾针深色）
+function shaxie(f: number): PC {
+  const p = new PC(26, 22);
+  const B = 0xc89a5a, S = 0x8e6438, D = 0x5a3e28, H = 0xf0ce86, ST = 0x2e2018, TIP = 0xe05a4a, EY = 0x1c1424;
+  const t = f === 1 ? 1 : -1;
+  // 腿
+  for (let i = 0; i < 4; i++) {
+    const up = (i % 2 === 0 ? t : -t) > 0 ? 1 : 0;
+    const x = 9 + i * 2.5;
+    p.strand([[x, 16], [x - 2, 19 - up], [x - 3, 21 - up]], D, 1);
+    p.strand([[x + 1, 16], [x + 3, 19 - (1 - up)]], S, 1);
+  }
+  // 身子：扁长的几节
+  p.ellipse(13, 15, 6.5, 3.2, S);
+  p.ellipse(12.5, 14.2, 5.8, 2.5, B);
+  p.span(12, 9, 15, H);
+  for (const x of [10, 13, 16]) p.line(x, 13, x, 16, D);
+  // 尾巴：从后往上翘过背，尾针朝前
+  const sway = f === 1 ? 1 : 0;
+  const tail: [number, number][] = [[7, 14], [4, 10], [5, 5], [9, 2 + sway], [13, 3 + sway]];
+  p.strand(tail, S, 3);
+  p.strand(tail, B, 2);
+  for (const [x, y] of tail.slice(1)) p.set(x, y - 1, H);
+  p.strand([[13, 3 + sway], [16, 5 + sway]], ST, 2);
+  p.set(17, 6 + sway, TIP);
+  // 钳子
+  p.strand([[18, 14], [21, 12]], S, 2);
+  p.ellipse(22.5, 11, 2.4, 1.8, B);
+  p.set(24, 10 - sway, D);
+  p.set(24, 12 + sway, D);
+  p.strand([[18, 16], [21, 17]], D, 2);
+  p.ellipse(22.5, 17, 2, 1.4, S);
+  p.set(18, 13, EY);
+  finish(p, 'earth', 13, 20, 9, 1.6);
+  return p;
+}
+
+// 金蜣（金）：金壳的大蜣螂，圆鼓鼓的鞘翅一道中缝，头上一只短角，六条带刺的腿交替（金黄 → 赭金暗部，高光近白）
+function jinqiang(f: number): PC {
+  const p = new PC(22, 20);
+  const B = 0xd8b048, S = 0xa07a28, D = 0x5a4418, H = 0xfff0a0, L = 0x3a2c14, EY = 0xff6a4a;
+  const t = f === 1 ? 1 : -1;
+  for (let i = 0; i < 3; i++) {
+    const up = (i % 2 === 0 ? t : -t) > 0 ? 1 : 0;
+    const x = 7 + i * 3.5;
+    p.strand([[x, 13], [x - 2, 16 - up], [x - 2, 18 - up]], L, 1);
+    p.strand([[x + 1, 13], [x + 3, 16 - (1 - up)], [x + 4, 18 - (1 - up)]], L, 1);
+  }
+  // 鞘翅
+  p.ellipse(10, 10, 7, 5.5, S);
+  p.ellipse(9.5, 9.2, 6.2, 4.6, B);
+  p.line(10, 5, 10, 14, D);
+  p.ellipse(7.5, 7.5, 2.4, 1.6, H);
+  p.set(12, 7, H);
+  // 头和角
+  p.ellipse(17, 10, 3, 2.6, S);
+  p.span(9, 15, 18, B);
+  p.strand([[18, 8], [20, 5 - (f === 1 ? 1 : 0)]], D, 1);
+  p.set(18, 10, EY);
+  finish(p, 'metal', 11, 18, 8, 1.4);
+  return p;
+}
+
+// 旱魃（土 → 火，Boss）：「人身，长二三尺，裸形，目在顶上，走行如风」。干瘦的人形，枯发乱张，独目长在头顶，
+// 长臂垂到膝下、指如钩爪，身上龟裂。土相是干裂的赭黄皮、灰白枯发；火相通身焦红、裂纹透火、头发烧成火苗
+function hanba(f: number, fire = false): PC {
+  const p = new PC(48, 52);
+  const B = fire ? 0x9a3e2a : 0xb08a58, S = fire ? 0x62241c : 0x7a5a38, D = fire ? 0x2e1416 : 0x4a3424, H = fire ? 0xe0784a : 0xd8b880;
+  const HAIR = fire ? 0xff7a2a : 0x9a9282, HAIRH = fire ? 0xffd05a : 0xc8c0b0, CR = fire ? 0xffb050 : 0x4a3424, EY = fire ? 0xfff6c8 : 0xffe254;
+  const RAG = fire ? 0x3a1a18 : 0x6a5a48;
+  const step = [0, 2, 0, -2][f];
+  const bob = f % 2;
+  // 腿：瘦长，大步走
+  p.strand([[22, 34], [20 - step, 42], [19 - step * 1.5, 49]], S, 2);
+  p.strand([[26, 34], [28 + step, 42], [29 + step * 1.5, 49]], B, 2);
+  p.span(49, 17 - step * 1.5, 21 - step * 1.5, D);
+  p.span(49, 28 + step * 1.5, 32 + step * 1.5, S);
+  p.oy = -bob;
+  // 腰间破布
+  p.tri([19, 31], [29, 31], [24, 38], RAG);
+  // 干瘦的身子和肋骨
+  p.ellipse(24, 26, 6, 8, B);
+  p.ellipse(25.5, 27, 3.5, 6.5, S);
+  for (const y of [23, 26, 29]) p.span(y, 21, 25, D);
+  p.span(20, 21, 24, H);
+  // 长臂垂到膝下，钩爪
+  const sw = step * 0.6;
+  p.strand([[19, 21], [15, 29], [13 + sw, 37]], S, 2);
+  p.strand([[29, 21], [34, 28], [36 - sw, 36]], B, 2);
+  for (const [x, y, dir] of [[13 + sw, 37, -1], [36 - sw, 36, 1]] as const) {
+    p.line(x, y, x + dir * 2, y + 3, D);
+    p.line(x, y, x, y + 3, D);
+    p.line(x, y, x - dir, y + 3, D);
+  }
+  // 龟裂
+  p.line(22, 24, 24, 29, CR);
+  p.line(26, 21, 27, 25, CR);
+  p.line(14, 30, 15, 33, CR);
+  // 头：小脸、阔嘴、独目在头顶
+  p.ellipse(24, 13, 5, 5, B);
+  p.ellipse(25.5, 14, 3, 3.5, S);
+  p.span(16, 22, 28, D);
+  p.set(23, 17, D);
+  p.set(26, 17, D);
+  // 枯发 / 火发：往上往外乱张，随帧摆
+  const hairs: [number, number][][] = [
+    [[20, 10], [15, 6 - bob], [13, 2]],
+    [[22, 8], [20, 3], [21, 0 + bob]],
+    [[26, 8], [29, 3 - bob], [31, 0]],
+    [[28, 10], [33, 7], [36, 4 + bob]],
+    [[19, 13], [14, 12 + bob]],
+    [[29, 13], [34, 12 - bob]],
+  ];
+  hairs.forEach((h, i) => p.strand(h, i % 2 ? HAIR : HAIRH, i < 4 ? 2 : 1));
+  // 目在顶上
+  p.ellipse(24, 8.5, 2.6, 1.8, 0xf4eee0);
+  p.circle(24.5, 8.5, 1.2, EY);
+  p.set(25, 8, D);
+  p.oy = 0;
+  finish(p, fire ? 'fire' : 'earth', 24, 49, 13, 2.6);
+  return p;
+}
+
+// 夜叉（水）：佝偻的海夜叉，青蓝皮、一头乱白发、两根獠牙，手持三叉戟，弓着背随时要扑
+// （青蓝 → 深海蓝暗部，白发，金色戟头）
+function yecha(f: number): PC {
+  const p = new PC(24, 24);
+  const B = 0x4a7aa8, S = 0x2e5480, D = 0x1e3458, H = 0x8ab8e0, HAIR = 0xe0e4e0, HAIRS = 0xa8b0b8, TR = 0xd8b860, TRS = 0x8a7038, EY = 0xffe45c, M = 0x1c1424;
+  const w = f === 1 ? 1 : 0;
+  // 腿：蹲着
+  p.strand([[9, 16], [7 - w, 19], [8 - w, 22]], D, 2);
+  p.strand([[13, 16], [15 + w, 19], [14 + w, 22]], S, 2);
+  p.oy = -w;
+  // 三叉戟斜着握在身前
+  p.line(4, 21, 19, 4, TRS);
+  p.line(17, 4, 21, 2, TR);
+  p.line(19, 6, 22, 5, TR);
+  p.line(18, 2, 19, 0, TR);
+  // 弓着的身子
+  p.ellipse(11, 13, 4.5, 4.5, B);
+  p.ellipse(12, 14, 2.6, 3.4, S);
+  p.span(10, 8, 11, H);
+  // 手臂握戟
+  p.strand([[9, 12], [12, 14]], S, 2);
+  p.strand([[14, 11], [16, 8]], B, 2);
+  // 头：獠牙、黄眼、乱白发
+  p.ellipse(15, 7, 3.6, 3.2, B);
+  p.set(16, 6, EY);
+  p.set(18, 7, EY);
+  p.span(9, 15, 18, M);
+  p.set(15, 10, HAIR);
+  p.set(18, 10, HAIR);
+  p.strand([[13, 4], [9, 2], [7, 4]], HAIR, 1);
+  p.strand([[14, 4], [12, 1]], HAIRS, 1);
+  p.strand([[12, 6], [8, 7], [6, 9]], HAIRS, 1);
+  p.oy = 0;
+  finish(p, 'water', 11, 22, 6, 1.6);
+  return p;
+}
+
+// 焰蛸（火）：通红的章鱼，圆鼓鼓的头顶一圈火光，一只发亮的大眼，六条腕足卷着，腕尖燃着小火苗
+// （赤红 → 暗红暗部，腕尖金黄）
+function yanshao(f: number): PC {
+  const p = new PC(22, 22);
+  const B = 0xe05a3a, S = 0xa03a28, D = 0x5a1e1a, H = 0xff9a60, TIP = 0xffd05a, EY = 0xfff6c8, M = 0x1c1424;
+  const s = f === 1 ? 1 : -1;
+  // 六条腕足
+  for (let i = 0; i < 6; i++) {
+    const x = 5 + i * 2.4;
+    const curl = (i % 2 ? s : -s) * 2;
+    p.strand([[x + 1, 12], [x - 1 + curl, 16], [x + curl, 19], [x + 2 + curl, 20]], i % 2 ? S : B, 2);
+    p.set(x + 2 + curl, 20, TIP);
+  }
+  // 头
+  p.ellipse(11, 8, 6, 5.5, S);
+  p.ellipse(10.5, 7.5, 5.2, 4.6, B);
+  p.span(4, 8, 12, H);
+  for (const [x, y] of [[7, 9], [13, 6], [9, 11]]) p.set(x, y, D);
+  // 头顶的火光
+  p.strand([[9, 3], [10, 0 + (f % 2)]], TIP, 1);
+  p.strand([[12, 3], [13, 1 - (f % 2)]], H, 1);
+  // 大眼
+  p.circle(14, 9, 1.8, EY);
+  p.set(14.5, 9, M);
+  finish(p, 'fire', 11, 20, 7, 1.6);
+  return p;
+}
+
+// 九婴（水 / 火，Boss）：水火之怪，九首婴啼。盘着的海兽长身压在地上，背上扇形伸出九条短颈，
+// 每颗头是一张圆圆的婴儿脸，蓝红相间（水首、火首）；水相身子深海蓝，火相身子焦红、眼光转红
+function jiuying(f: number, fire = false): PC {
+  const p = new PC(56, 56);
+  const B = fire ? 0x7a2e26 : 0x3a6e94, S = fire ? 0x4e1c1a : 0x264c6c, D = fire ? 0x2a1012 : 0x163048, H = fire ? 0xc05a3a : 0x62a0c8;
+  const BL = 0xc8b890, FACE = 0xe8d8c8, FACS = 0xb8a898, WH = 0x5a9ae8, FH = 0xe8603a, M = 0x1c1424;
+  const EY = fire ? 0xffd05a : 0x9fe0ff;
+  const s = Math.sin((f / 4) * Math.PI * 2);
+  // 盘着的长身：下圈、上圈
+  p.strand([[10, 48], [4, 46], [3, 42], [7, 40]], S, 3);
+  p.ellipse(28, 46, 20, 7, S);
+  p.ellipse(28, 45, 18, 5.5, B);
+  p.span(41, 14, 40, H);
+  p.span(49, 18, 40, BL);
+  p.ellipse(28, 38, 13, 5, S);
+  p.ellipse(28, 37, 11.5, 4, B);
+  p.span(34, 20, 34, H);
+  // 九条短颈，扇形，随帧轻摆；头是婴儿脸，蓝红相间
+  const heads: [number, number, boolean, number][] = [];
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI * (1.12 + (i / 8) * 0.76);
+    const len = [14, 18, 21, 24, 26, 24, 21, 18, 14][i];
+    const bx = 20 + i * 2;
+    const by = 35;
+    const sway = s * (i % 2 ? 1.2 : -1.2);
+    const hx = bx + Math.cos(a) * len + sway;
+    const hy = by + Math.sin(a) * len;
+    p.strand([[bx, by], [bx + Math.cos(a) * len * 0.5 + sway * 0.5, by + Math.sin(a) * len * 0.5], [hx, hy]], i % 2 ? S : B, 3);
+    heads.push([hx, hy, i % 2 === 0, i === 4 ? 4 : 3]);
+  }
+  for (const [hx, hy, wet, r] of heads) {
+    p.circle(hx, hy, r + 0.6, wet ? WH : FH);
+    p.circle(hx, hy + 0.4, r * 0.75, FACE);
+    p.span(Math.round(hy + r * 0.6), hx - 1, hx + 1, FACS);
+    p.set(hx - 1, hy, M);
+    p.set(hx + 1, hy, M);
+    // 啼哭张开的小嘴
+    p.set(hx, hy + r * 0.5 + (f % 2), M);
+  }
+  for (const [x, y] of [[22, 44], [30, 46], [36, 43], [26, 37], [32, 36]]) p.set(x, y, D);
+  // 身上一对发光的眼
+  p.set(36, 40, EY);
+  p.set(39, 40, EY);
+  finish(p, fire ? 'fire' : 'water', 28, 50, 20, 3.5);
+  return p;
+}
+
+// 帝江（混沌，Boss）：「如黄囊，赤如丹火，六足四翼，浑敦无面目，是识歌舞」。一只圆滚滚的大囊，没有脸，
+// 腹下透着丹火般的红光，两对翅膀上下扇，六条细腿踏着舞步；五相换五种颜色（土相黄囊，金银、水蓝、木青、火赤）
+const DIJIANG_PAL: Record<El, [number, number, number, number]> = {
+  earth: [0xd8a848, 0xa07028, 0x5a3a18, 0xf8d888],
+  metal: [0xc8ccd8, 0x8a90a0, 0x4a5060, 0xf4f6fa],
+  water: [0x4a8ad0, 0x2e5a98, 0x1a3060, 0x9ac8f0],
+  wood: [0x5aa868, 0x387a48, 0x1e4a2c, 0x9ad8a0],
+  fire: [0xe05a3a, 0xa03424, 0x5a1a16, 0xff9a6a],
+};
+function dijiang(f: number, el: El): PC {
+  const p = new PC(56, 56);
+  const [B, S, D, H] = DIJIANG_PAL[el];
+  const GLOW = 0xff6a3a, GLOWH = 0xffc070, LEG = 0x3a2a24, WING = 0xe8e0d0, WINGS = 0xb0a898;
+  const s = Math.sin((f / 4) * Math.PI * 2);
+  // 六条细腿，三三交替踏步
+  for (let i = 0; i < 6; i++) {
+    const x = 16 + i * 4.8;
+    const up = (i % 2 === 0 ? 1 : -1) * (f % 2 ? 1 : -1) > 0 ? 2 : 0;
+    p.strand([[x, 38], [x + (i < 3 ? -2 : 2), 44 - up], [x + (i < 3 ? -3 : 3), 50 - up]], LEG, 2);
+  }
+  // 两对翅膀：后一对暗、前一对亮，上下扇
+  const wing = (side: 1 | -1, y: number, col: number, len: number) => {
+    const tipY = y - 10 - s * 7;
+    p.tri([28 + side * 8, y], [28 + side * (8 + len), tipY], [28 + side * (6 + len * 0.7), y + 8], col);
+    p.strand([[28 + side * 8, y], [28 + side * (8 + len), tipY]], WINGS, 1);
+  };
+  wing(-1, 24, WINGS, 18);
+  wing(1, 24, WINGS, 18);
+  // 圆滚滚的大囊
+  p.ellipse(28, 30, 15, 12, S);
+  p.ellipse(27, 28.5, 13.5, 10.5, B);
+  p.ellipse(23, 24, 6, 4, H);
+  p.set(20, 22, 0xffffff);
+  // 腹下丹火般的红光
+  p.ellipse(29, 36, 8, 3.5, GLOW);
+  p.ellipse(29, 35.5, 5, 2, GLOWH);
+  for (const [x, y] of [[34, 26], [36, 31], [31, 22]]) p.set(x, y, D);
+  wing(-1, 30, WING, 14);
+  wing(1, 30, WING, 14);
+  finish(p, el, 28, 51, 18, 3.5);
+  return p;
+}
+
 /** 0xRRGGBB → [h 0–1, s, v] */
 function hsv(c: number): [number, number, number] {
   const r = ((c >> 16) & 255) / 255, g = ((c >> 8) & 255) / 255, b = (c & 255) / 255;
@@ -1149,13 +1586,16 @@ function mixCol(a: number, b: number, k: number): number {
 /**
  * 升阶重新着色（只动不透明的身体像素，半透明的影子和元素底座不动，色相不变）：
  * 二阶「凶」往本元素色里混（水更蓝、火更红、土更金），明度基本不变，阴影一侧的描边换成本元素暗色；
- * 三阶「煞」身体压到很暗，黑描边整圈换成本元素的亮色。两阶都保留白色高光和黄色火光（眼睛、火核、刃口）
+ * 三阶「煞」身体压暗到约六成（保留中间调），黑描边整圈换成本元素的亮色（金系这类近白的色混一半暗色）。两阶都保留白色高光和黄色火光（眼睛、火核、刃口）
  */
 export function tierFrame(src: PC, tier: 2 | 3, el: El): PC {
   const p = new PC(src.w, src.h);
   p.c.set(src.c);
   p.a.set(src.a);
-  const rim = mixCol(EL_INFO[el].color, EL_INFO[el].dark, 0.25);
+  // 本色接近白的（金）描边往暗色多混一些，免得身体一暗只剩一圈白骨架似的亮边
+  const [, , lit] = hsv(EL_INFO[el].color);
+  const pale = hsv(EL_INFO[el].color)[1] < 0.2 && lit > 0.8;
+  const rim = mixCol(EL_INFO[el].color, EL_INFO[el].dark, pale ? 0.5 : 0.25);
   const low = mixCol(EL_INFO[el].dark, OUTLINE, 0.25);
   for (let i = 0; i < p.c.length; i++) {
     const c = p.c[i];
@@ -1175,24 +1615,34 @@ export function tierFrame(src: PC, tier: 2 | 3, el: El): PC {
       const [h2, s2, v2] = hsv(mixCol(c, EL_INFO[el].color, 0.35));
       p.c[i] = rgb(h2, Math.min(1, s2 * 1.15 + 0.04), v2 * 0.92);
     }
-    else p.c[i] = rgb(h, Math.min(1, sat * 1.1 + 0.05), v * 0.45);
+    // 煞：压暗但保留中间调，大块身体还认得出是什么怪
+    else p.c[i] = rgb(h, Math.min(1, sat * 1.1 + 0.05), v * 0.6);
   }
   return p;
 }
 
-export function buildEnemies(scene: Phaser.Scene) {
+export function buildEnemies(scene: Phaser.Scene, readSheet: (key: string) => PC[] | undefined = (key) => readEnemySheet(scene, key)) {
   /** 注册一种小怪的贴图和动画，连同二阶、三阶的重新着色版（key_t2、key_t3，动画同名加后缀） */
   const mob = (key: string, el: El, frames: PC[], anims: [string, number[], number][]) => {
+    const painted = readSheet(key);
+    const motion = painted && ENEMY_SHEETS[key as keyof typeof ENEMY_SHEETS];
+    frames = painted ?? frames;
     for (const tier of [1, 2, 3] as const) {
       const k = tier === 1 ? key : `${key}_t${tier}`;
       addSheet(scene, k, tier === 1 ? frames : frames.map((f) => tierFrame(f, tier, el)));
-      for (const [suffix, fr, rate] of anims) addAnim(scene, k + suffix, k, fr, rate);
+      for (const [suffix, fr, rate] of anims) {
+        const walk = suffix === '_move' && motion;
+        addAnim(scene, k + suffix, k, walk ? walk.move : fr, walk ? walk.rate : rate);
+      }
     }
   };
   const two = (key: string, el: El, fn: (f: number) => PC, rate: number) => mob(key, el, [fn(0), fn(1)], [['_move', [0, 1], rate]]);
   const boss = (key: string, frames: PC[], rate: number) => {
+    const painted = readSheet(key);
+    const motion = painted && ENEMY_SHEETS[key as keyof typeof ENEMY_SHEETS];
+    frames = painted ?? frames;
     addSheet(scene, key, frames);
-    addAnim(scene, key + '_move', key, frames.map((_, i) => i), rate);
+    addAnim(scene, key + '_move', key, motion ? motion.move : frames.map((_, i) => i), motion ? motion.rate : rate);
   };
   two('en_shiyong', 'earth', shiyong, 4);
   two('en_shiyong_moss', 'earth', (f) => shiyong(f, 'moss'), 4);
@@ -1221,4 +1671,22 @@ export function buildEnemies(scene: Phaser.Scene) {
   two('en_yuyao', 'water', yuyao, 4);
   two('en_jiao', 'water', jiao, 6);
   boss('boss_xiangliu', [0, 1, 2, 3].map(xiangliu), 4);
+  two('en_bingcan', 'water', bingcan, 3);
+  two('en_aoxie', 'metal', aoxie, 6);
+  boss('boss_xuanming', [0, 1, 2, 3].map(xuanming), 6);
+  two('en_shaxie', 'earth', shaxie, 6);
+  two('en_jinqiang', 'metal', jinqiang, 6);
+  boss('boss_hanba', [0, 1, 2, 3].map((f) => hanba(f)), 7);
+  boss('boss_hanba_fire', [0, 1, 2, 3].map((f) => hanba(f, true)), 8);
+  two('en_yecha', 'water', yecha, 5);
+  two('en_yanshao', 'fire', yanshao, 4);
+  boss('boss_jiuying', [0, 1, 2, 3].map((f) => jiuying(f)), 5);
+  boss('boss_jiuying_fire', [0, 1, 2, 3].map((f) => jiuying(f, true)), 5);
+  for (const el of ['earth', 'metal', 'water', 'wood', 'fire'] as const) boss(el === 'earth' ? 'boss_dijiang' : `boss_dijiang_${el}`, [0, 1, 2, 3].map((f) => dijiang(f, el)), 7);
+  // 后续关卡共用怪的原画皮肤；第一关继续使用原贴图。
+  two('en_tengguai_grove', 'wood', tengguai, 5);
+  two('en_huoya_ember', 'fire', huoya, 8);
+  two('en_tiejia_battle', 'metal', tiejia, 5);
+  two('en_shuigui_marsh', 'water', shuigui, 4);
+  mob('en_chuanshan_armor', 'earth', [0, 1, 2, 3].map(chuanshan), [['_move', [0, 1], 5], ['_dig', [2, 3], 8]]);
 }

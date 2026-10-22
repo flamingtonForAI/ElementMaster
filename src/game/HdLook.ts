@@ -4,7 +4,7 @@ import { VIEW_W, VIEW_H } from '../config/view';
 import { EL_INFO, type El } from '../config/elements';
 
 /**
- * HD-2D 风格光影原型（第 1–6 关，每关一套氛围预设）：
+ * HD-2D 风格光影原型（第 1–10 关，每关一套氛围预设）：
  * - 光照图：只盖在地砖上（熔岩口贴图、影子、角色、敌人、装饰都不受影响）——环境光略压暗 + 上暗下亮的景深渐变 + 暗角，熔岩口、火焰、法术、火精、宝石把脚下一小圈地面照亮，光色取自贴图本身
  * - 泛光：只给火焰和法术叠一层加色光晕，敌人、宝石不加
  * - 脚下软影子、飘升的火星、镜头移轴模糊（上下边缘）和轻微调色
@@ -49,6 +49,7 @@ const LIGHTS: Record<string, Light> = {
   // 瘴雾：雾下的地面泛一层病黄绿；水弹带一点水光
   fx_fog: { r: 26, c: 0x9ac860, a: 0.18, g: 0, scaled: true },
   ep_water: { r: 16, c: EL_INFO.water.color, a: 0.3, g: 0.05 },
+  ep_ice: { r: 16, c: 0x9fd8ff, a: 0.35, g: 0.05 },
 };
 
 /** 拖尾小光点：贴图 key 前缀 → 颜色（不写取五行色）和每帧冒点的概率 */
@@ -64,7 +65,7 @@ const TRAILS: Record<string, { c?: number; p: number }> = {
 const MIST_N = 6;
 
 /** 站在地上、要画影子的东西 */
-const SHADOW_PREFIX = ['en_', 'boss_', 'hero_', 'pp_', 'dc_basalt', 'dc_reed', 'dc_deadtree', 'dc_scorch', 'dc_rock', 'chest', 'crate'];
+const SHADOW_PREFIX = ['en_', 'boss_', 'hero_', 'pp_', 'dc_basalt', 'dc_reed', 'dc_icecliff', 'dc_snowpine', 'dc_yardang', 'dc_poplar', 'dc_coral', 'dc_kunlun', 'dc_deadtree', 'dc_scorch', 'dc_rock', 'chest', 'crate'];
 
 interface Preset {
   /** 环境光：画面中下部的亮度 */
@@ -102,6 +103,14 @@ const PRESETS: Record<number, Preset> = {
   5: { ambient: 0xc8bcac, top: 0.88, corner: 0.76, motes: { tint: [0xa8a098, 0x8c867e, 0xc0b8a8], speedX: [4, 14], speedY: [6, 14], alpha: 0.55, every: 120, glow: false } },
   // 云梦泽：雾气压着的冷青色水泽，淡白的水雾贴地慢慢横飘
   6: { ambient: 0xaebcb8, top: 0.84, corner: 0.74, motes: { tint: [0xc8d4cc, 0xb4c4bc, 0xd4dcd0], speedX: [3, 10], speedY: [-2, 2], alpha: 0.4, every: 180, glow: false } },
+  // 寒江：冷蓝的雪夜，斜飘的细雪
+  7: { ambient: 0xb0bcd0, top: 0.84, corner: 0.72, motes: { tint: [0xe8f0f8, 0xd0dce8, 0xffffff], speedX: [8, 22], speedY: [10, 26], alpha: 0.6, every: 110, glow: false } },
+  // 大漠：昏黄燥热的午后，细沙贴地横着刮
+  8: { ambient: 0xd4c0a0, top: 0.88, corner: 0.76, motes: { tint: [0xd8c090, 0xc8a870, 0xe8d4a8], speedX: [18, 40], speedY: [-2, 3], alpha: 0.5, every: 90, glow: false } },
+  // 东海归墟：幽暗的海底蓝，细小的气泡慢慢往上浮
+  9: { ambient: 0x9ab0c4, top: 0.8, corner: 0.7, motes: { tint: [0xc8e0f0, 0xa8c8e0, 0xe0f0f8], speedX: [-3, 3], speedY: [-18, -6], alpha: 0.45, every: 150, glow: false } },
+  // 昆仑：清冷的高山晨光，几点淡金的灵气慢慢往上飘
+  10: { ambient: 0xc8c4d8, top: 0.86, corner: 0.74, motes: { tint: [0xffe8a0, 0xf0f0ff, 0xffd890], speedX: [-4, 4], speedY: [-14, -4], alpha: 0.55, every: 140, glow: true } },
 };
 
 /** 光照图比画面四周多出的边，镜头跟随晚一帧时不露边 */

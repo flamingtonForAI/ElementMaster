@@ -1184,6 +1184,365 @@ function lotus(v: number): PC {
   return p;
 }
 
+/** 第 7 关冰崖：冷石青灰岩体，顶上一层积雪；受光面压成灰白，不和蓝宝石撞色 */
+const ICE_PAL = [0x262c38, 0x3e4656, 0x5a6474, 0x848c98, 0xc4ccd4, 0xc8d0d8, 0xe8eef2];
+
+/** dc_ice（2 种变体，第 7 关冰面，贴地）：半径 50 的扁冰面，灰青冰色，边上一圈薄雪，几道裂纹和反光 */
+function iceSheet(v: number): PC {
+  const p = new PC(100, 62);
+  const R = rng(90 + v);
+  for (let y = 0; y < 62; y++)
+    for (let x = 0; x < 100; x++) {
+      const a = Math.atan2(y + 0.5 - 31, x + 0.5 - 50);
+      const wob = Math.sin(a * 3 + v * 2) * 0.04 + Math.sin(a * 6 + v) * 0.03;
+      const d = Math.hypot((x + 0.5 - 50) / 50, (y + 0.5 - 31) / 31) + wob;
+      if (d > 1) continue;
+      const n = R() < 0.05 ? 1 : 0;
+      p.set(x, y, d > 0.9 ? 0x7a8490 : d > 0.75 ? 0x4e5a68 : d > 0.4 ? (n ? 0x56636e : 0x4a5664) : n ? 0x5a6874 : 0x52606c);
+    }
+  // 裂纹
+  const cracks: [number, number][][] = v
+    ? [[[30, 22], [42, 30], [40, 40]], [[42, 30], [60, 27], [70, 35]]]
+    : [[[24, 30], [38, 26], [52, 34]], [[52, 34], [64, 24]], [[52, 34], [58, 44]]];
+  for (const c of cracks) p.strand(c, 0x3a4450, 1);
+  // 冰面反光
+  p.span(18, 36, 48, 0x8a96a2);
+  p.span(19, 40, 52, 0x6a7682);
+  p.span(40, 58, 64, 0x6a7682);
+  return p;
+}
+
+/** dc_icecliff（3 种变体，第 7 关冰崖，有碰撞）：岩形同 dc_cliff，换成积雪的冷青灰 */
+function iceCliff(v: number): PC {
+  return cliff(v, ICE_PAL);
+}
+
+/** dc_snowpine（2 种变体）：压着雪的山松，针叶比第 3 关更暗更冷，每层顶上一道积雪 */
+function snowPine(variant = 0): PC {
+  const p = new PC(28, 50);
+  const T = 0x4a3a30, TS = 0x302420, TH = 0x6e5848;
+  const N0 = 0x14262a, N1 = 0x1e3436, N2 = 0x2a4444, SN = 0xc8d0d8, SNH = 0xe8eef2;
+  const lean = variant === 1 ? 1 : 0;
+  p.rect(13, 30, 3, 18, T);
+  p.line(13, 30, 13, 47, TH);
+  p.line(15, 30, 15, 47, TS);
+  p.span(47, 10, 18, TS);
+  const tiers: [number, number][] = variant === 0 ? [[34, 12], [26, 10], [18, 8], [10, 5]] : [[33, 11], [24, 10], [15, 7], [8, 4]];
+  for (const [i, [y, hw]] of tiers.entries()) {
+    const cx = 14 + lean * (3 - i);
+    for (let dy = 0; dy < 8; dy++) {
+      const w = Math.round(hw * (0.35 + dy / 10));
+      p.span(y + dy - 4, cx - w, cx + w, dy < 5 ? N2 : N1);
+      p.span(y + dy - 4, cx + Math.round(w * 0.4), cx + w, dy < 5 ? N1 : N0);
+    }
+    // 积雪压在每层的受光一侧
+    const sw = Math.round(hw * 0.75);
+    p.span(y - 1, cx - sw, cx + Math.round(sw * 0.3), SN);
+    p.span(y - 2, cx - Math.round(sw * 0.6), cx, SNH);
+  }
+  p.set(14 + lean * 3, 3, SNH);
+  p.selectiveOutline(0x1e2a34, 0x10181e);
+  p.under(14, 47, 9, 2, 0x12222b, 85);
+  return p;
+}
+
+/** dc_icerock（2 种变体）：半埋雪里的石头，顶上一层雪 */
+function iceRock(v: number): PC {
+  const p = new PC(20, 16);
+  const D = 0x2e3440, S = 0x48505e, M = 0x66707e, SN = 0xc8d0d8, SNH = 0xe8eef2;
+  if (v === 0) {
+    p.ellipse(9, 10, 7, 4.5, S);
+    p.span(13, 3, 14, D);
+    p.ellipse(8, 9, 5.5, 3.2, M);
+    p.ellipse(8, 6.5, 5.5, 2, SN);
+    p.span(5, 6, 10, SNH);
+    p.ellipse(15, 12, 3, 2, S);
+    p.span(10, 14, 16, SN);
+  } else {
+    p.rect(5, 6, 9, 7, S);
+    p.rect(5, 6, 3, 7, M);
+    p.span(12, 5, 13, D);
+    p.span(5, 5, 13, SN);
+    p.span(4, 6, 11, SNH);
+    p.set(14, 9, D);
+  }
+  // 根部的积雪
+  p.ellipse(10, 13.5, 8, 1.6, 0xa8b2bc);
+  p.selectiveOutline(0x2e3440, 0x1a1e26);
+  p.under(10.5, 14, 8, 1.6, 0x12222b, 80);
+  return p;
+}
+
+/** dc_snowtuft（2 种变体）：一小堆雪，探出几根冻僵的枯草 */
+function snowTuft(v: number): PC {
+  const p = new PC(14, 12);
+  const G0 = 0x4a4a42, G1 = 0x6a685a;
+  if (v) {
+    p.strand([[5, 9], [3, 4]], G0, 1);
+    p.strand([[8, 9], [10, 3]], G1, 1);
+  } else {
+    p.strand([[6, 9], [5, 3]], G1, 1);
+    p.strand([[9, 9], [11, 5]], G0, 1);
+    p.strand([[4, 9], [2, 6]], G0, 1);
+  }
+  p.ellipse(7, 9.5, 5.5, 2.2, 0xa8b2bc);
+  p.ellipse(6.5, 9, 4, 1.4, 0xc8d0d8);
+  p.span(8, 5, 7, 0xe8eef2);
+  p.selectiveOutline(0x3a4250, 0x1e2430);
+  return p;
+}
+
+/** 玄冥的冰羽：朝飞行方向（右）的一片冰棱，尾部拖一点霜 */
+function eIce(): PC {
+  const p = new PC(13, 7);
+  const B = 0x9fd8ff, H = 0xf0faff, D = 0x5a8ab8;
+  p.span(3, 0, 3, D, 160);
+  p.tri([3, 1], [3, 5], [12, 3], B);
+  p.span(3, 4, 10, H);
+  p.span(4, 4, 8, D);
+  p.outline(0x1c2a52);
+  return p;
+}
+
+/** fx_icicle（玄冥的冰锥，从天而降）：尖朝下的长冰锥 */
+function icicle(): PC {
+  const p = new PC(9, 20);
+  const B = 0x9fd8ff, H = 0xf0faff, D = 0x5a8ab8;
+  for (let y = 0; y < 18; y++) {
+    const hw = Math.max(0, Math.round(3.5 * (1 - y / 18)));
+    p.span(y, 4 - hw, 4 + hw, y < 4 ? D : B);
+    p.set(4 - Math.max(0, hw - 1), y, H);
+  }
+  p.set(4, 18, H);
+  p.outline(0x1c2a52);
+  return p;
+}
+
+/** fx_snowflake：暴风雪里的一道雪痕，朝右画、按风向转 */
+function snowflake(): PC {
+  const p = new PC(5, 1);
+  p.span(0, 0, 1, 0xe8f0f8, 90);
+  p.span(0, 2, 4, 0xffffff, 220);
+  return p;
+}
+
+/** fx_frost（寒词缀的脚下一圈霜，半径 30）：淡蓝的霜环，环上几颗冰晶 */
+function frostRing(): PC {
+  const p = new PC(60, 60);
+  for (let y = 0; y < 60; y++)
+    for (let x = 0; x < 60; x++) {
+      const d = Math.hypot(x + 0.5 - 30, y + 0.5 - 30) / 30;
+      if (d > 1 || d < 0.72) continue;
+      p.set(x, y, 0xc8ecff, Math.round(170 * (1 - Math.abs(d - 0.88) / 0.16)));
+    }
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const x = 30 + Math.cos(a) * 26;
+    const y = 30 + Math.sin(a) * 26;
+    p.set(x, y, 0xffffff);
+    p.set(x - 1, y, 0xd8f0ff, 200);
+    p.set(x + 1, y, 0xd8f0ff, 200);
+    p.set(x, y - 1, 0xd8f0ff, 200);
+    p.set(x, y + 1, 0xd8f0ff, 200);
+  }
+  return p;
+}
+
+/** 第 8 关雅丹土台：风蚀的赭红土崖，顶上一层浅沙壳 */
+const YARDANG_PAL = [0x3a2a22, 0x5a4232, 0x7a5a40, 0x9a7a56, 0xc8a878, 0x8a7450, 0xa89068];
+
+/** dc_yardang（3 种变体，第 8 关雅丹，有碰撞）：岩形同 dc_cliff，换成风蚀的赭红土 */
+function yardang(v: number): PC {
+  return cliff(v, YARDANG_PAL);
+}
+
+/** dc_quicksand（2 种变体，第 8 关流沙，贴地）：半径 50 的扁沙涡，一圈圈往中心旋，中间发暗下陷 */
+function quicksand(v: number): PC {
+  const p = new PC(100, 62);
+  for (let y = 0; y < 62; y++)
+    for (let x = 0; x < 100; x++) {
+      const dx = (x + 0.5 - 50) / 50;
+      const dy = (y + 0.5 - 31) / 31;
+      const a = Math.atan2(dy, dx);
+      const wob = Math.sin(a * 3 + v * 2) * 0.04;
+      const d = Math.hypot(dx, dy) + wob;
+      if (d > 1) continue;
+      // 螺旋纹：角度和半径一起转
+      const band = Math.sin(d * 18 - a * 2 * (v ? -1 : 1));
+      const col = d < 0.22 ? 0x4a3c28 : d < 0.4 ? (band > 0 ? 0x6a5638 : 0x5e4c32) : band > 0.3 ? 0x8a7248 : band < -0.3 ? 0x6e5a3a : 0x7c6642;
+      p.set(x, y, col, d > 0.9 ? 200 : 255);
+    }
+  return p;
+}
+
+/** dc_poplar（2 种变体）：枯死的胡杨，扭着的粗干、几根断枝，枝头挂着几簇干黄的叶 */
+function poplar(v: number): PC {
+  const p = new PC(30, 42);
+  const T = 0x6a4a32, TS = 0x46301f, TH = 0x9a7650, LF = 0xc8a040, LFD = 0x9a7a30;
+  const lean = v ? -1 : 1;
+  p.strand([[15, 40], [15 + lean, 30], [14 - lean, 20], [15, 14]], T, 4);
+  p.strand([[16, 40], [16 + lean, 30], [15 - lean, 20]], TS, 2);
+  p.strand([[14, 38], [14 + lean, 28]], TH, 1);
+  p.span(40, 10, 20, TS);
+  // 断枝
+  const branches: [number, number][][] = v
+    ? [[[14, 20], [6, 12], [4, 8]], [[15, 16], [22, 9], [25, 6]], [[15, 26], [23, 22]]]
+    : [[[14, 18], [7, 10], [6, 6]], [[15, 14], [21, 7]], [[14, 26], [6, 22]], [[16, 22], [25, 15]]];
+  for (const b of branches) p.strand(b, T, 2);
+  for (const b of branches) {
+    const [x, y] = b[b.length - 1];
+    p.ellipse(x, y, 2.6, 1.8, LFD);
+    p.ellipse(x - 0.5, y - 0.5, 1.8, 1.2, LF);
+  }
+  p.selectiveOutline(0x3a2a22, 0x1c1424);
+  p.under(15, 40, 8, 1.8, 0x12222b, 85);
+  return p;
+}
+
+/** dc_sandrock（2 种变体）：风蚀的小土石，顶上积着沙 */
+function sandRock(v: number): PC {
+  const p = new PC(20, 16);
+  const D = 0x4a3428, S = 0x6e5038, M = 0x8e6c4a, H = 0xb8966a;
+  if (v === 0) {
+    p.ellipse(10, 10, 7, 4.5, S);
+    p.ellipse(9, 8.5, 5.5, 3.2, M);
+    p.span(6, 6, 11, H);
+    p.span(12, 4, 15, D);
+    p.line(12, 7, 14, 11, D);
+  } else {
+    // 蘑菇形的风蚀石：上大下小
+    p.rect(8, 9, 4, 5, S);
+    p.ellipse(10, 7, 6.5, 3, M);
+    p.span(5, 6, 13, H);
+    p.span(9, 5, 15, D);
+  }
+  p.ellipse(10, 13.5, 7, 1.4, 0x7a6444);
+  p.selectiveOutline(0x4a3428, 0x1c1424);
+  p.under(10.5, 14, 8, 1.6, 0x12222b, 80);
+  return p;
+}
+
+/** dc_camelthorn（2 种变体）：一小丛骆驼刺，干枯的灰橄榄色细枝 */
+function camelthorn(v: number): PC {
+  const p = new PC(14, 12);
+  const B0 = 0x4a4230, B1 = 0x6a5e3e, B2 = 0x847448;
+  p.span(10, 3, 10, B0);
+  const twigs: [number, number][][] = v
+    ? [[[6, 10], [3, 5]], [[7, 10], [8, 3]], [[8, 10], [12, 6]]]
+    : [[[5, 10], [2, 6]], [[7, 10], [6, 4]], [[8, 10], [11, 4]], [[9, 10], [12, 8]]];
+  twigs.forEach((t, i) => p.strand(t, i % 2 ? B1 : B2, 1));
+  p.set(4, 6, B2);
+  p.set(10, 5, B2);
+  p.selectiveOutline(0x3a3224, 0x1c1424);
+  return p;
+}
+
+/** 金蜣滚出的金丸：沙团裹着几点金光，原地翻滚 */
+function sandBall(): PC {
+  const p = new PC(10, 10);
+  p.circle(5, 5, 4.2, 0x9a7a48);
+  p.circle(4.4, 4.4, 3, 0xb8945a);
+  for (const [x, y] of [[3, 3], [6, 5], [4, 7], [7, 3]]) p.set(x, y, 0xf0d070);
+  p.set(3, 2, 0xfff0b0);
+  p.outline(0x3a2a18);
+  return p;
+}
+
+/** fx_sandgrain：沙暴里贴地刮的一道沙痕，朝右画、按风向转 */
+function sandgrain(): PC {
+  const p = new PC(6, 1);
+  p.span(0, 0, 1, 0xb89868, 90);
+  p.span(0, 2, 5, 0xe0c890, 210);
+  return p;
+}
+
+/** dc_coral（3 种变体，第 9 关珊瑚礁，有碰撞）：灰黑礁石上长着暗珊瑚红的枝状珊瑚，颜色压暗，不和红宝石撞色 */
+function coral(v: number): PC {
+  const p = new PC(30, 28);
+  const R = rng(120 + v);
+  const RK = 0x3a4448, RKS = 0x2a3236, RKH = 0x5a666a, C0 = 0x7a3e3a, C1 = 0xa65a4e, C2 = 0xc88a72;
+  // 礁石底座
+  p.ellipse(15, 22, 13, 5.5, RKS);
+  p.ellipse(14, 20.5, 11.5, 4.5, RK);
+  p.span(17, 7, 16, RKH);
+  // 枝状珊瑚：几根主枝分叉向上
+  const n = 3 + v;
+  for (let i = 0; i < n; i++) {
+    const bx = 6 + (i / (n - 1)) * 18 + (R() - 0.5) * 2;
+    const top = 4 + R() * 8;
+    const lean = (R() - 0.5) * 6;
+    const col = i % 2 ? C0 : C1;
+    p.strand([[bx, 20], [bx + lean * 0.5, 14], [bx + lean, top]], col, 2);
+    p.strand([[bx + lean * 0.5, 14], [bx + lean * 0.5 + (lean >= 0 ? 4 : -4), 10]], C0, 1);
+    p.set(bx + lean, top, C2);
+  }
+  if (v === 2) {
+    // 一团扇形珊瑚
+    p.ellipse(20, 12, 5, 4, C0);
+    p.ellipse(19.5, 11.5, 3.5, 2.8, C1);
+  }
+  p.selectiveOutline(0x2c2238, 0x1c1424);
+  p.under(15, 26, 13, 2.2, 0x12222b, 90);
+  return p;
+}
+
+/** dc_tidepool（2 种变体，第 9 关浅滩，贴地）：半径 50 的扁浅水，边上一圈湿沙，水面几道波纹 */
+function tidepool(v: number): PC {
+  const p = new PC(100, 62);
+  for (let y = 0; y < 62; y++)
+    for (let x = 0; x < 100; x++) {
+      const a = Math.atan2(y + 0.5 - 31, x + 0.5 - 50);
+      const wob = Math.sin(a * 3 + v * 2) * 0.05 + Math.sin(a * 5 + v) * 0.03;
+      const d = Math.hypot((x + 0.5 - 50) / 50, (y + 0.5 - 31) / 31) + wob;
+      if (d > 1) continue;
+      p.set(x, y, d > 0.88 ? 0x4a5a58 : d > 0.6 ? 0x2e4c58 : 0x284452);
+    }
+  for (const [y, x0, x1] of v ? [[20, 34, 50], [34, 52, 68], [42, 30, 40]] : [[22, 40, 58], [36, 28, 44], [30, 60, 72]]) p.span(y, x0, x1, 0x5a8090);
+  return p;
+}
+
+/** dc_kelp（2 种变体）：几根暗青的海草，从沙里长出来微微弯 */
+function kelp(v: number): PC {
+  const p = new PC(14, 30);
+  const K0 = 0x1e3a32, K1 = 0x2e5244, K2 = 0x3e6a50;
+  const stems = v ? [[4, 6, -1], [8, 2, 1], [11, 9, 1]] : [[5, 4, 1], [9, 7, -1]];
+  stems.forEach(([x, top, dir], i) => {
+    p.strand([[x, 28], [x + dir * 2, 20], [x - dir, 12], [x + dir, top]], i % 2 ? K1 : K2, 2);
+    p.strand([[x, 28], [x + dir * 2, 20]], K0, 1);
+  });
+  p.ellipse(7, 28, 5, 1.4, 0x24302e);
+  p.selectiveOutline(0x1c2a2c, 0x10181a);
+  return p;
+}
+
+/** dc_shell（2 种变体）：沙里的几枚贝壳，或一只暗橘的海星 */
+function shell(v: number): PC {
+  const p = new PC(12, 9);
+  if (v) {
+    const O = 0xb86a42, OH = 0xd89a62;
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI / 2 + (i / 5) * Math.PI * 2;
+      p.strand([[6, 5], [6 + Math.cos(a) * 4.5, 5 + Math.sin(a) * 3.5]], O, 2);
+    }
+    p.set(6, 4, OH);
+  } else {
+    p.ellipse(4, 5, 3, 2.4, 0xc8b898);
+    p.line(4, 3, 4, 7, 0x9a8a70);
+    p.line(2, 4, 3, 7, 0x9a8a70);
+    p.ellipse(9, 6, 2, 1.6, 0xb8a888);
+  }
+  p.selectiveOutline(0x3a3430, 0x1c1424);
+  return p;
+}
+
+/** 第 10 关昆仑玉崖：青玉色的岩体，顶上积雪；玉色压灰，不和绿宝石撞色 */
+const KUNLUN_PAL = [0x22302e, 0x34504a, 0x4a6a62, 0x6a8a80, 0xa8c0b4, 0xc8d0d8, 0xe8eef2];
+
+/** dc_kunlun（3 种变体，第 10 关玉崖，有碰撞）：岩形同 dc_cliff，换成积雪的青玉 */
+function kunlun(v: number): PC {
+  return cliff(v, KUNLUN_PAL);
+}
+
 export function buildFx(scene: Phaser.Scene) {
   const px = new PC(2, 2);
   px.rect(0, 0, 2, 2, 0xffffff);
@@ -1235,6 +1594,12 @@ export function buildFx(scene: Phaser.Scene) {
   single(scene, 'ep_water', eWater());
   addSheet(scene, 'fx_puddle', [0, 1].map(puddle));
   single(scene, 'fx_fog', fog());
+  single(scene, 'ep_ice', eIce());
+  single(scene, 'fx_icicle', icicle());
+  single(scene, 'fx_snowflake', snowflake());
+  single(scene, 'fx_frost', frostRing());
+  single(scene, 'ep_sandball', sandBall());
+  single(scene, 'fx_sandgrain', sandgrain());
   single(scene, 'antidote', antidote());
 
   // 第 1 关·荒郊古道：保持苍凉低对比度的黄褐荒原基调（微冷褐暗部 -> 暖黄褐，无鲜花干扰拾取物）
@@ -1320,8 +1685,67 @@ export function buildFx(scene: Phaser.Scene) {
   addSheet(scene, 'dc_scorch', [0, 1].map(scorch));
   addSheet(scene, 'dc_cinder', [0, 1].map(cinder));
   addSheet(scene, 'dc_barricade', [0, 1, 2].map(barricade));
+  // 第 7 关·寒江：雪夜江岸，冷石板青灰的冻土夹着薄雪，压低明度，冰面、宝石和敌人都比它亮
+  single(
+    scene,
+    'ground_7',
+    ground(
+      79,
+      [0x343a46, 0x383e4a, 0x3c424e, 0x404652, 0x444a56],
+      [0x2e323c, 0x505662, 0x5a606c],
+      [0x5a5a52, 0x666458],
+    ),
+  );
+  // 第 8 关·大漠：压暗的赭黄沙地，偏暖，土系敌人的土黄和流沙比它亮一档
+  single(
+    scene,
+    'ground_8',
+    ground(
+      83,
+      [0x443828, 0x493c2b, 0x4e402e, 0x534431, 0x584834],
+      [0x3c3024, 0x64523a, 0x6c5840],
+      [0x6a5a38, 0x76643e],
+    ),
+  );
+  // 第 9 关·东海归墟：暗青灰的海底沙地，冷而沉，水火两系的蓝和橘都比它跳
+  single(
+    scene,
+    'ground_9',
+    ground(
+      97,
+      [0x283639, 0x2c3a3d, 0x303e41, 0x344245, 0x384649],
+      [0x222e31, 0x46545a, 0x4e5c60],
+      [0x34503f, 0x3c5844],
+    ),
+  );
+  // 第 10 关·昆仑：冷灰紫的玉石台地，五系敌人的颜色都比它跳
+  single(
+    scene,
+    'ground_10',
+    ground(
+      101,
+      [0x33313c, 0x373540, 0x3b3944, 0x3f3d48, 0x43414c],
+      [0x2d2b35, 0x585664, 0x605e6c],
+      [0x4a5848, 0x52604e],
+    ),
+  );
   addSheet(scene, 'dc_mud', [0, 1].map(mudPool));
   addSheet(scene, 'dc_reed', [0, 1, 2].map(reed));
   addSheet(scene, 'dc_cattail', [0, 1].map(cattail));
   addSheet(scene, 'dc_lotus', [0, 1].map(lotus));
+  addSheet(scene, 'dc_ice', [0, 1].map(iceSheet));
+  addSheet(scene, 'dc_icecliff', [0, 1, 2].map(iceCliff));
+  addSheet(scene, 'dc_snowpine', [0, 1].map(snowPine));
+  addSheet(scene, 'dc_icerock', [0, 1].map(iceRock));
+  addSheet(scene, 'dc_snowtuft', [0, 1].map(snowTuft));
+  addSheet(scene, 'dc_quicksand', [0, 1].map(quicksand));
+  addSheet(scene, 'dc_yardang', [0, 1, 2].map(yardang));
+  addSheet(scene, 'dc_poplar', [0, 1].map(poplar));
+  addSheet(scene, 'dc_sandrock', [0, 1].map(sandRock));
+  addSheet(scene, 'dc_camelthorn', [0, 1].map(camelthorn));
+  addSheet(scene, 'dc_coral', [0, 1, 2].map(coral));
+  addSheet(scene, 'dc_tidepool', [0, 1].map(tidepool));
+  addSheet(scene, 'dc_kelp', [0, 1].map(kelp));
+  addSheet(scene, 'dc_shell', [0, 1].map(shell));
+  addSheet(scene, 'dc_kunlun', [0, 1, 2].map(kunlun));
 }

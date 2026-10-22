@@ -1,4 +1,4 @@
-import { GEN_ORDER, relation, type El, type Rel } from '../config/elements';
+import { GEN_ORDER, relation, type El, type Rel, type Terrain } from '../config/elements';
 import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS, type SkillId, type PassiveId, type PassiveDef } from '../config/skills';
 import { ON_ENEMY } from '../config/status';
 import type { CharacterDef } from '../config/characters';
@@ -89,9 +89,12 @@ export class Build {
   /** 斩缘封禁的选项，本局不再出现 */
   banned = new Set<string>();
   private lastLeveled: El;
+  /** 升级三选一按这套地气加权：开局是关卡地气，有相位轮转的关卡换相时由 GameScene.setPhase 换成当前那套 */
+  terrain: Terrain;
 
   /** mods：星图与传承加成，见 talents.ts */
   constructor(readonly char: CharacterDef, readonly levelDef: LevelDef, readonly meta: MetaLevels = {}, readonly mods: Mods = {}) {
+    this.terrain = levelDef.terrain;
     this.skills.set(char.startSkill, 1);
     this.benming = char.el;
     this.lastLeveled = char.el;
@@ -210,7 +213,7 @@ export class Build {
     const elW = (el: El | null) => {
       if (!el) return 1;
       const aff = this.char.balanced ? 1 : AFFINITY_W[relation(this.char.el, el)];
-      return aff * (1 + 2 * this.levelDef.terrain[el]);
+      return aff * (1 + 2 * this.terrain[el]);
     };
     for (const def of Object.values(SKILLS)) {
       if (def.exclusive && def.exclusive !== this.char.id) continue;

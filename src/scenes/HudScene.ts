@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { EL_INFO, GEN_ORDER, counters, counteredBy, type El } from '../config/elements';
+import { EL_INFO, GEN_ORDER, counters, counteredBy, type El, type Terrain } from '../config/elements';
 import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS } from '../config/skills';
-import { LEVELS } from '../config/levels';
+import { LEVELS, phaseTerrain } from '../config/levels';
 import { ENEMIES } from '../config/enemies';
 import { optionKey, type Option } from '../game/Build';
 import { label, hex } from '../ui/text';
@@ -95,6 +95,35 @@ export class HudScene extends Phaser.Scene {
     super('hud');
   }
 
+  /** 左下角的地气说明（潮汐换潮时重画） */
+  private terrainLabels: Phaser.GameObjects.Text[] = [];
+
+  /** 画地气说明：「地气 水70 火10 土20」，note 跟在后面（如“涨潮”） */
+  showTerrain(terrain: Terrain, note?: string) {
+    for (const t of this.terrainLabels) t.destroy();
+    this.terrainLabels = [];
+    let x = 6;
+    const put = (s: string, css: string) => {
+      const t = label(this, x, 343, s, css);
+      this.terrainLabels.push(t);
+      x += t.width + 6;
+    };
+    put('地气', '#8a8494');
+    for (const el of GEN_ORDER) {
+      const v = Math.round(terrain[el] * 100);
+      if (v) put(`${EL_INFO[el].name}${v}`, hex(EL_INFO[el].color));
+    }
+    if (note) put(`· ${note}`, '#b8aec8');
+  }
+
+  /** 全屏预警：屏幕正中一行大字，放大淡入后停一会儿再淡出（昆仑换相） */
+  banner(s: string, css: string) {
+    if (!this.gfx) return;
+    const t = label(this, 320, 250, s, css, 36).setOrigin(0.5).setAlpha(0).setScale(1.4).setDepth(90);
+    this.tweens.add({ targets: t, alpha: 1, scale: 1, duration: 350, ease: 'Back.out' });
+    this.tweens.add({ targets: t, alpha: 0, delay: 1900, duration: 600, onComplete: () => t.destroy() });
+  }
+
   create() {
     this.g = this.scene.get('game') as GameScene;
     this.mode = 'play';
@@ -128,16 +157,9 @@ export class HudScene extends Phaser.Scene {
     this.passiveLvs = [];
     for (let i = 0; i < PASSIVE_SLOTS; i++) this.passiveLvs.push(label(this, 6 + i * 23 + 9, 75, '').setOrigin(0.5, 0));
 
-    // 地气说明
-    let x = 6;
-    const t0 = label(this, x, 343, '地气', '#8a8494');
-    x += t0.width + 6;
-    for (const el of GEN_ORDER) {
-      const v = Math.round(L.terrain[el] * 100);
-      if (!v) continue;
-      const t = label(this, x, 343, `${EL_INFO[el].name}${v}`, hex(EL_INFO[el].color));
-      x += t.width + 6;
-    }
+    this.terrainLabels = [];
+    const phase = L.cycle && this.g.hazards?.phaseEl;
+    this.showTerrain(phase ? phaseTerrain(L, phase) : L.terrain, phase ? L.cycle!.note[phase] : undefined);
 
     // 暂停按钮（触屏和鼠标都能点）
     const pb = this.add.rectangle(358, 5, 20, 18, PANEL, 1).setOrigin(0).setStrokeStyle(1, LINE);

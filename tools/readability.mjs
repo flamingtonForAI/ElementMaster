@@ -3,6 +3,7 @@ import { registerHooks, stripTypeScriptTypes } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
+import { execFileSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -72,7 +73,8 @@ globalThis.document = {
 
 const { buildFx } = await import('../src/art/fxArt.ts');
 const { buildEnemies } = await import('../src/art/enemyArt.ts');
-const { OUTLINE, OUTLINE_LIT, rng } = await import('../src/art/painter.ts');
+const { OUTLINE, OUTLINE_LIT, rng, PC } = await import('../src/art/painter.ts');
+const { ENEMY_SHEETS } = await import('../src/art/enemySheets.ts');
 const { LEVELS, enemyTex } = await import('../src/config/levels.ts');
 const { ENEMIES } = await import('../src/config/enemies.ts');
 
@@ -162,8 +164,9 @@ export function encodePng(w, h, rgba) {
 
 // ---------- 提取图集帧像素 ----------
 
-export function captureTextures() {
+export function captureTextures({ raster = true } = {}) {
   const store = new Map();
+  store.animations = new Map();
   const mockScene = {
     textures: {
       exists: (k) => store.has(k),
@@ -189,10 +192,35 @@ export function captureTextures() {
         };
       },
     },
-    anims: { create() {} },
+    anims: { create(config) { store.animations.set(config.key, config); } },
   };
   buildFx(mockScene);
-  buildEnemies(mockScene);
+  // Inspect the same production PNGs as BootScene, not the procedural fallback.
+  // Pillow is also the dependency of tools/art/build_enemy_sheets.py.
+  const images = raster ? JSON.parse(execFileSync('python3', ['-c', `
+import base64, json, sys
+from pathlib import Path
+from PIL import Image
+folder = Path(sys.argv[1])
+manifest = json.loads(Path(sys.argv[2]).read_text())
+out = {}
+for key, spec in manifest.items():
+    im = Image.open(folder / (key + '.png')).convert('RGBA')
+    assert im.size == (spec['width'] * spec['frames'], spec['height']), key
+    out[key] = [base64.b64encode(im.crop((i * spec['width'], 0, (i+1) * spec['width'], spec['height'])).tobytes()).decode() for i in range(spec['frames'])]
+print(json.dumps(out))
+`, resolve(ROOT, 'public/assets/enemies'), resolve(ROOT, 'src/art/enemySheets.json')], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })) : {};
+  buildEnemies(mockScene, (key) => images[key]?.map((encoded) => {
+    const spec = ENEMY_SHEETS[key];
+    const p = new PC(spec.width, spec.height);
+    const rgba = Buffer.from(encoded, 'base64');
+    for (let i = 0; i < p.c.length; i++) {
+      if (!rgba[i * 4 + 3]) continue;
+      p.c[i] = (rgba[i * 4] << 16) | (rgba[i * 4 + 1] << 8) | rgba[i * 4 + 2];
+      p.a[i] = rgba[i * 4 + 3];
+    }
+    return p;
+  }));
   return store;
 }
 

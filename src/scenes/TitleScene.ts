@@ -49,14 +49,23 @@ const BEHAVIOR: Record<Behavior, string> = {
   boss_bird: '扇形火球，俯冲留下火线，半血降火柱',
   boss_xingtian: '举斧劈砍、盾冲、舞干戚飞刃环',
   boss_snake: '九首扇形齐吐水弹和毒涎，吐毒泽化成瘴雾，潜进泥水从脚下冒出',
+  sidestep: '横着错步逼近，贴近了直扑',
+  boss_xuanming: '扇形冰羽，冰锥落地结冰，吸寒把人往身边拉后冰爆，狂暴时刮起暴风雪',
+  sting: '贴近后停下预警，尾针直刺身前一条线',
+  boss_hanba: '土相裂地、陷流沙、跺地；半血焚身化为火系，走过留火、火环、焚风火柱',
+  leap: '预警后跳到你脚下砸地',
+  boss_jiuying: '随潮汐在水火两系间切换；九首旋喷水火弹，涨潮招水柱、退潮引火山，婴啼唤来同系小怪',
+  boss_dijiang: '按相生轮转五系，每系一套招（毒刺、火环、落石、飞刃、冰锥），歌舞时边转边喷五色弹',
 };
-const SHOT: Record<string, string> = { ep_rock: '隔着距离投石', ep_fire: '隔着距离吐火球', ep_blade: '隔着距离甩飞刃', ep_water: '隔着距离吐水弹' };
+const SHOT: Record<string, string> = { ep_rock: '隔着距离投石', ep_fire: '隔着距离吐火球', ep_blade: '隔着距离甩飞刃', ep_water: '隔着距离吐水弹', ep_sandball: '隔着距离滚金丸' };
 /** 后期关卡开的手段；抛射按元素说落地留下什么 */
 const TRICK_TEXT: Record<Trick, (d: EnemyDef) => string> = {
   lob: (d) => `弹改为抛射，落地${d.el === 'fire' ? '留余火' : d.el === 'water' ? '留水洼' : '冒毒气'}`,
   quake: () => '贴近时停下震地，攒震慑',
   formation: () => '列阵：周围的妖物护甲 +2',
   roots: () => '在你脚下催生缠根，踩上去迟缓',
+  boomerang: () => '甩出的飞刃会折回来',
+  sinkhole: () => '破土处陷出一片流沙',
 };
 /** 这种敌人的每种手段从第几关开始有 */
 function trickLevels(id: string) {
@@ -65,9 +74,10 @@ function trickLevels(id: string) {
   return out;
 }
 function traits(d: EnemyDef) {
-  const t = [d.behavior === 'spit' && d.shot ? SHOT[d.shot] ?? BEHAVIOR.spit : BEHAVIOR[d.behavior]];
+  const t = [d.behavior === 'spit' && d.shot ? SHOT[d.shot] ?? BEHAVIOR.spit : d.behavior === 'explode' && d.el === 'water' ? '死后原地冰爆，圈里迟缓' : BEHAVIOR[d.behavior]];
   if (d.trail) t.push('冲刺时身后留火');
   if (d.puddle) t.push('冲刺时身后留下水洼');
+  if (d.spread) t.push(`一次扇形吐 ${d.spread} 道`);
   if (d.revive) t.push(`死后 ${d.revive} 秒原地复活，火系击杀则不会`);
   if (d.rise) t.push('第一次被打倒会复起，火系击杀则不会');
   for (const [k, lv] of trickLevels(d.id)) t.push(`第 ${lv} 关起${TRICK_TEXT[k](d)}`);

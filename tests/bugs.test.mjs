@@ -209,23 +209,19 @@ test('玄一星图从中宫开场，其他角色保留向本系外侧聚焦', ()
 
 test('默认选关取最高已解锁且开放的关卡，不再写死第二关', () => {
   reset();
-  const available = LEVELS[5].available;
-  LEVELS[5].available = true;
-  try {
-    const save = loadSave();
-    // 第 7 关尚未开放，应落在第 6 关
-    save.unlocked = 7;
-    writeSave(save);
-    const scene = new MenuScene();
-    const chain = new Proxy({}, { get: () => () => chain });
-    scene.add = { tileSprite: () => chain, rectangle: () => chain, text: () => chain, container: () => chain };
-    scene.input = { keyboard: { on() {} } };
-    scene.render = () => {};
-    scene.create();
-    assert.equal(LEVELS[scene.levelSel].id, 6);
-  } finally {
-    LEVELS[5].available = available;
-  }
+  // 存档解锁到下一关（尚未开放），应落在最后一个开放的关卡
+  const last = Math.max(...LEVELS.filter((l) => l.available).map((l) => l.id));
+  const save = loadSave();
+  save.unlocked = last + 1;
+  writeSave(save);
+  const scene = new MenuScene();
+  const chain = new Proxy({}, { get: () => () => chain });
+  scene.add = { tileSprite: () => chain, rectangle: () => chain, text: () => chain, container: () => chain };
+  scene.input = { keyboard: { on() {} } };
+  scene.render = () => {};
+  scene.create();
+  assert.equal(LEVELS[scene.levelSel].id, last);
+  assert.ok(!LEVELS.find((l) => l.id === last + 1)?.available);
 });
 
 const { itemSpot, ITEM_SPAWN } = await import('../src/config/map.ts');
@@ -483,7 +479,7 @@ test('相克奇穴：伐木斩杀残血木系敌人，Boss 和别系不受影响
   }
 });
 
-const { EnemyManager } = await import('../src/game/Enemies.ts');
+const { EnemyManager, Enemy } = await import('../src/game/Enemies.ts');
 const { ENEMIES } = await import('../src/config/enemies.ts');
 
 /** 只够跑 EnemyManager.kill 的场景桩；later 的回调攒起来手动执行 */
@@ -597,8 +593,8 @@ test('刑天：第一次非火系击杀带 35% 生命复起并短暂无敌，第
 const { spotAt, ridgeDist, RIDGE_HALF } = await import('../src/game/terrain.ts');
 const { World } = await import('../src/game/World.ts');
 
-test('熔岩口、剑阵、泥潭点位固定：离出生点够远、在地图内、不挨山脊，数量够用', () => {
-  for (const [id, key, salt] of [[4, 'lava', 1], [5, 'swordZones', 2], [6, 'mud', 3]]) {
+test('熔岩口、剑阵、泥潭、冰面、流沙点位固定：离出生点够远、在地图内、不挨山脊，数量够用', () => {
+  for (const [id, key, salt] of [[4, 'lava', 1], [5, 'swordZones', 2], [6, 'mud', 3], [7, 'ice', 4], [8, 'quicksand', 5]]) {
     const level = LEVELS.find((l) => l.id === id);
     const def = level[key];
     const half = level.size / 2;
@@ -1101,6 +1097,32 @@ test('小怪升阶：数值按阶加强、换同阶贴图；精英和 Boss 不�
   assert.equal(spawned[0].o.tier, 2);
 });
 
+test('地面怪步态随速度变化，停下落脚；飞行、第一关和钻地动作不受影响', () => {
+  const mgr = new EnemyManager({});
+  const a = {
+    currentAnim: { key: 'en_zhushe_move', frames: [0, 1, 2, 3] },
+    isPaused: false, timeScale: 1,
+    pause(frame) { this.isPaused = true; this.frame = frame; },
+    resume() { this.isPaused = false; },
+  };
+  const e = { walkWithSpeed: true, tex: 'en_zhushe', def: { speed: 58 }, sprite: { anims: a } };
+  mgr.syncWalk(e, 29);
+  assert.equal(a.timeScale, .5);
+  mgr.syncWalk(e, 0);
+  assert.equal(a.isPaused, true);
+  assert.equal(a.frame, 0);
+  mgr.syncWalk(e, 170);
+  assert.equal(a.isPaused, false);
+  assert.equal(a.timeScale, 2.5);
+  e.walkWithSpeed = false;
+  mgr.syncWalk(e, 0);
+  assert.equal(a.isPaused, false, '飞行和第一关原动画保持播放');
+  e.walkWithSpeed = true;
+  a.currentAnim.key = 'en_zhushe_dig';
+  mgr.syncWalk(e, 0);
+  assert.equal(a.isPaused, false, '特殊动作不能被步态暂停');
+});
+
 test('小怪的异常：已经挂着同一种时再中几率减半，迟缓时长 ×0.6；Boss 不受影响', async () => {
   const { PlayerStatus } = await import('../src/game/Status.ts');
   const { MOB_REPEAT, MOB_SLOW_DUR, ON_PLAYER } = await import('../src/config/status.ts');
@@ -1137,4 +1159,627 @@ test('震地、缠根全场共用最小间隔：一群藤怪同时冷却好，�
   g.now += TRICKS.roots.gap;
   for (const e of roots) mgr.tryTrick(e, 100);
   assert.equal(roots.filter((e) => e.castUntil > 0).length, 2);
+});
+
+const L7 = LEVELS.find((l) => l.id === 7);
+
+/** 只跑 Player.update 移动部分用的玩家桩：按住 dir 方向键，ice 为脚下的冰面配置（null 是平地） */
+async function slidePlayer(ice) {
+  const { Player } = await import('../src/game/Player.ts');
+  const chain = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => chain) });
+  const keys = Object.fromEntries(['UP', 'DOWN', 'LEFT', 'RIGHT', 'W', 'A', 'S', 'D'].map((k) => [k, { isDown: false }]));
+  const g = {
+    now: 0, dunUntil: 0, shield: 0, char: { id: 'ruan' }, pstats: { speed: 60, maxHp: 100, regen: 0 },
+    status: { stunned: false, speedMult: 1, regenMult: 1, stunMeter: 0, chillMeter: 0 },
+    world: { inMud: () => null, push: () => false, hitNx: 0, hitNy: 0 },
+    hazards: { onIce: () => ice, drift: () => [0, 0], sandAt: () => null },
+    regenPlayer() {},
+  };
+  const p = Object.assign(Object.create(Player.prototype), {
+    g, keys, x: 0, y: 0, vx: 0, vy: 0, facing: { x: 0, y: 1 }, alive: true, dir: 's', flip: false, animKey: '', atkUntil: 0, hurtUntil: 0,
+    sprite: chain, hpBg: chain, hpFill: chain, stunBar: chain, shieldBar: chain, pips: new Proxy({}, { get: () => chain }),
+  });
+  const step = (sec) => {
+    for (let t = 0; t < sec - 1e-9; t += 0.02) p.update(0.02);
+  };
+  return { p, keys, step };
+}
+
+test('冰面：点位固定、纵向压扁；在冰上玩家有惯性（起步慢、松手还滑一段），平地上照旧说走就走说停就停', async () => {
+  const world = Object.assign(Object.create(World.prototype), { level: L7, half: L7.size / 2, spotCache: new Map() });
+  let spot = null;
+  for (let i = 1; i < 20 && !spot; i++) spot = world.spotsIn('ice', -i * 320, -i * 320, i * 320, i * 320)[0];
+  assert.ok(spot);
+  const [x, y] = spot;
+  assert.equal(world.onIce(x, y), L7.ice);
+  assert.equal(world.onIce(x, y + L7.ice.radius * 0.8), null);
+  const w6 = Object.assign(Object.create(World.prototype), { level: LEVELS[5], half: 2400, spotCache: new Map() });
+  assert.equal(w6.onIce(x, y), null);
+
+  const flat = await slidePlayer(null);
+  const ice = await slidePlayer(L7.ice);
+  for (const s of [flat, ice]) s.keys.RIGHT.isDown = true;
+  flat.step(0.5);
+  ice.step(0.5);
+  assert.ok(Math.abs(flat.p.x - 30) < 0.5, `平地 0.5 秒走 30，实际 ${flat.p.x}`);
+  assert.ok(ice.p.x < flat.p.x * 0.6, '冰上起步慢');
+  // 滑起来最快到 boost 倍
+  ice.step(4);
+  assert.ok(Math.abs(ice.p.vx - 60 * L7.ice.boost) < 1);
+  // 松手：平地立刻停，冰上还滑一段
+  for (const s of [flat, ice]) s.keys.RIGHT.isDown = false;
+  const fx = flat.p.x;
+  const ix = ice.p.x;
+  flat.step(0.5);
+  ice.step(0.5);
+  assert.equal(flat.p.x, fx);
+  assert.ok(ice.p.x - ix > 15, '冰上松手还往前滑');
+});
+
+test('暴风雪：到点先预警再刮，起落渐变，北风推玩家；正刮着再刮就延长；吸寒的外力指向 Boss', async () => {
+  const { Hazards } = await import('../src/game/Hazards.ts');
+  const img = () => { const o = new Proxy({}, { get: (_t, k) => (k === 'destroy' ? () => {} : () => o) }); return o; };
+  const g = {
+    levelDef: L7, now: 0, elapsed: 0, over: false, player: { x: 0, y: 0 }, add: { image: img }, hud: { toast() {} }, later() {},
+    world: { spotsIn: () => [], inMud: () => null, onIce: () => null }, status: { inflict() {} }, dmgScale: () => 1,
+    enemies: { inRadius: (_x, _y, _r, out) => ((out.length = 0), out) },
+  };
+  const hz = new Hazards(g);
+  const B = L7.storm;
+  g.now = g.elapsed = B.start - 1;
+  hz.update();
+  assert.equal(hz.storming(), 0);
+  g.now = g.elapsed = B.start;
+  hz.update();
+  assert.equal(hz.storming(), 0, '先预警');
+  assert.equal(hz.stormFrom, B.start + B.warn);
+  g.now = hz.stormFrom + 0.75;
+  assert.ok(Math.abs(hz.storming() - 0.5) < 1e-6, '起风渐变');
+  g.now = hz.stormFrom + 3;
+  const [dx, dy] = hz.drift(0, 0);
+  // 风向纵向压扁到 0.6，风力在 0.6–1 倍之间
+  const w = Math.hypot(dx, dy);
+  assert.ok(w > B.wind * 0.6 - 1e-6 && w <= B.wind + 1e-6, `风力 ${w}`);
+  assert.ok(Math.abs(dx) > Math.abs(dy), '大致横着吹');
+  const end = hz.stormUntil;
+  assert.ok(end - hz.stormFrom >= B.dur[0] - 1e-6);
+  hz.storm(30);
+  assert.ok(hz.stormUntil > end, '正刮着就延长');
+  g.now = hz.stormUntil + 0.1;
+  assert.equal(hz.storming(), 0);
+  assert.deepEqual(hz.drift(0, 0), [0, 0]);
+  hz.pull(100, 0, 45, 1);
+  assert.deepEqual(hz.drift(0, 0), [45, 0]);
+  g.now += 1.1;
+  assert.deepEqual(hz.drift(0, 0), [0, 0]);
+
+  // 远吼刮一阵，狂暴再刮一场
+  const scene = runScene('xiao', 7);
+  const calls = [];
+  scene.enemies = { onRoar() {} };
+  scene.hazards = { storm: (n) => calls.push(n) };
+  scene.cameras = { main: { shake() {} } };
+  Object.defineProperty(scene, 'hud', { value: { toast() {} } });
+  scene.roar();
+  assert.deepEqual(calls, [L7.roar.event.count]);
+  scene.rageMusic = true;
+  scene.onBossRage({ def: ENEMIES.xuanming });
+  assert.equal(calls.length, 2);
+});
+
+test('回旋刃：第 7 关的飞镰甩出的刃飞到头折回出手点；之前的关卡照旧直线', async () => {
+  const { ProjectileManager } = await import('../src/game/Projectiles.ts');
+  const { tricksOf } = await import('../src/config/levels.ts');
+  const spr = new Proxy({ anims: { stop() {}, play() {} } }, { get: (t, k) => (k in t ? t[k] : () => spr) });
+  const g = { add: { sprite: () => spr }, player: { x: 0, y: 200, alive: true }, hurtPlayer() {} };
+  const pm = new ProjectileManager(g);
+  const B = TRICKS.boomerang;
+  const p = pm.enemyBoomerang('ep_blade', 0, 0, 1, 0, B.speed, B.back, 5, 'metal');
+  let far = 0;
+  const T = (2 * B.speed) / B.back;
+  for (let t = 0; t < T - 0.02; t += 0.01) {
+    pm.update(0.01);
+    far = Math.max(far, p.x);
+  }
+  assert.ok(Math.abs(far - B.speed ** 2 / (2 * B.back)) < 3, `飞到头约 130，实际 ${far}`);
+  assert.ok(p.active && Math.abs(p.x) < 5, '折回到出手点附近');
+  assert.deepEqual(tricksOf(LEVELS[4], 'feilian'), []);
+  assert.deepEqual(tricksOf(L7, 'feilian'), ['boomerang']);
+});
+
+test('冰蚕死后冰爆：预警后圈里的玩家受水伤、按几率迟缓；火鸦照旧是火爆', () => {
+  for (const [id, el, kind] of [['bingcan', 'water', 'slow'], ['huoya', 'fire', 'burn']]) {
+    const { g, mgr, run } = killScene();
+    const hurts = [];
+    Object.assign(g, { player: { x: 10, y: 20 }, hurtPlayer: (_v, e, o) => hurts.push([e, o?.inflict?.kind]), dmgScale: () => 1 });
+    mgr.kill(mob(id, { blastMul: 1, atkDps: 0 }));
+    assert.equal(hurts.length, 0, '先预警');
+    run();
+    assert.deepEqual(hurts, [[el, kind]]);
+  }
+});
+
+test('寒词缀第 7 关起才抽得到，圈里的玩家按 tick 迟缓', () => {
+  for (let i = 0; i < 20; i++) assert.ok(!trickScene(6).mgr.rollAffixes(3).includes('frost'));
+  assert.ok(trickScene(7).mgr.rollAffixes(4).includes('frost'));
+  const { g, mgr, inflicts } = trickScene(7);
+  const e = trickMob('aoxie', 7, { x: 20, y: 0, affixes: ['frost'], affixTick: 0, frostTick: 0, aura: {} });
+  mgr.list.push(e);
+  mgr.updateAuras(1);
+  mgr.updateAuras(1);
+  assert.deepEqual(inflicts, ['slow'], '按 tick 结算');
+  g.now += AFFIXES.frost.tick;
+  g.player.x = 200;
+  mgr.updateAuras(1);
+  assert.equal(inflicts.length, 1, '出圈不结算');
+});
+
+test('玄冥：吸寒先预警并往身边拉，收完冰爆（必定暴击）并留一片冰；冰锥落在玩家脚下，落地结冰', () => {
+  const { g, mgr, run } = trickScene(7);
+  const pulls = [];
+  const ices = [];
+  const hurts = [];
+  g.hazards = { pull: (...a) => pulls.push(a), iceAt: (...a) => ices.push(a) };
+  g.hurtPlayer = (_v, el, o) => hurts.push([el, !!o?.forceCrit]);
+  g.cameras = { main: { shake() {} } };
+  g.tweens = { add() {} };
+  g.envDamage = () => {};
+  const b = { ...mob('xuanming'), x: 30, y: 0, dmg: 20, state: 0, timer: 0, timer2: 9, timer3: 9, timer4: 0, raged: false, chanceAdd: 0, atkDps: 0 };
+  mgr.xuanming(b, 0.016, -1, 0, 30, 30);
+  assert.equal(b.state, 1);
+  assert.deepEqual(pulls[0].slice(0, 2), [30, 0]);
+  mgr.xuanming(b, 3, -1, 0, 30, 30);
+  assert.equal(b.state, 3);
+  assert.deepEqual(hurts, [['water', true]]);
+  assert.equal(ices.length, 1);
+  mgr.icicles(3);
+  assert.equal(hurts.length, 1, '冰锥先预警');
+  run();
+  assert.equal(ices.length, 4);
+  assert.deepEqual(hurts[1], ['water', false], '第一根落在玩家脚下');
+});
+
+const L8 = LEVELS.find((l) => l.id === 8);
+
+/** 跑 Hazards 的流沙、沙暴用的场景桩 */
+async function sandScene(level = L8) {
+  const { Hazards } = await import('../src/game/Hazards.ts');
+  const img = () => { const o = new Proxy({}, { get: (_t, k) => (k === 'destroy' ? () => {} : () => o) }); return o; };
+  const hurts = [];
+  const world = Object.assign(Object.create(World.prototype), { level, half: level.size / 2, spotCache: new Map() });
+  const g = {
+    levelDef: level, now: 0, elapsed: 0, over: false, player: { x: 0, y: 0 }, add: { image: img }, hud: { toast() {} }, later() {},
+    world, status: { inflict() {} }, dmgScale: () => 1, hurtPlayer: (v, el, o) => hurts.push([v, el, o?.inflict?.kind]),
+    enemies: { inRadius: (_x, _y, _r, out) => ((out.length = 0), out) },
+  };
+  return { g, hz: new Hazards(g), hurts, world };
+}
+
+test('流沙：陷进去往中心吸、陷到中心按 tick 掉土血攒震慑；临时流沙到时消失；别的关没有', async () => {
+  const { g, hz, hurts, world } = await sandScene();
+  let spot = null;
+  for (let i = 1; i < 20 && !spot; i++) spot = world.spotsIn('sand', -i * 340, -i * 340, i * 340, i * 340)[0];
+  assert.ok(spot);
+  const [x, y] = spot;
+  const Q = L8.quicksand;
+  assert.deepEqual(world.sandAt(x + 10, y), spot);
+  assert.equal(world.sandAt(x, y + Q.radius * 0.8), null);
+  // 边上：往中心吸，不掉血
+  g.player = { x: x + Q.radius * 0.8, y };
+  const [dx, dy] = hz.drift(g.player.x, g.player.y);
+  assert.ok(Math.abs(dx + Q.pull) < 1e-6 && Math.abs(dy) < 1e-6, '往中心吸');
+  hz.update();
+  assert.equal(hurts.length, 0);
+  // 中心：按 tick 掉土血、攒震慑
+  g.player = { x: x + 3, y };
+  hz.update();
+  hz.update();
+  assert.deepEqual(hurts, [[Q.dmg, 'earth', 'stun']]);
+  g.now += Q.tick;
+  hz.update();
+  assert.equal(hurts.length, 2);
+  // 临时流沙
+  hz.sandPit(1000, 1000, 40, 5);
+  assert.ok(hz.sandAt(1010, 1000));
+  g.now += 5.1;
+  hz.update();
+  assert.equal(hz.sandAt(1010, 1000), null);
+  const w6 = Object.assign(Object.create(World.prototype), { level: LEVELS[5], half: 2400, spotCache: new Map() });
+  assert.equal(w6.sandAt(x, y), null);
+});
+
+test('沙暴：刮的时候金系术伤害随强度加到 +15%，别系不变；暴风雪不加成', async () => {
+  const { g, hz } = await sandScene();
+  assert.equal(hz.boost('metal'), 1);
+  hz.storm(10, 0);
+  g.now = 3;
+  assert.ok(Math.abs(hz.boost('metal') - 1.15) < 1e-9);
+  assert.equal(hz.boost('wood'), 1);
+  g.now = 0.75;
+  assert.ok(Math.abs(hz.boost('metal') - 1.075) < 1e-9, '起风渐变');
+  const snow = await sandScene(L7);
+  snow.hz.storm(10, 0);
+  snow.g.now = 3;
+  assert.equal(snow.hz.boost('metal'), 1);
+  assert.equal(L8.storm.look, 'sand');
+});
+
+test('沙蝎：贴近停下预警，尾针刺身前一条线；预警时躲开就落空', () => {
+  for (const [py, hit] of [[0, true], [30, false]]) {
+    const { g, mgr, hurts } = trickScene(8);
+    const e = trickMob('shaxie', 8, { x: 0, y: 0, state: 0, timer: 0, windMul: 1, speed: 40 });
+    g.player = { x: 40, y: 0, alive: true };
+    mgr.behave(e, 0.016, 1, 0, 40, 1);
+    assert.equal(e.state, 1, '开始预警');
+    g.player.y = py;
+    mgr.behave(e, 0.6, 1, 0, 40, 1);
+    assert.equal(e.state, 2);
+    assert.equal(hurts.length, hit ? 1 : 0);
+    if (hit) assert.equal(hurts[0][2], 'poison');
+  }
+});
+
+test('陷坑：第 8 关的穿山甲破土处陷出流沙；第 3 关的照旧', () => {
+  for (const [level, n] of [[8, 1], [3, 0]]) {
+    const { g, mgr } = trickScene(level);
+    const pits = [];
+    g.hazards = { sandPit: (...a) => pits.push(a) };
+    g.player = { x: 0, y: 0, alive: true };
+    const e = trickMob('chuanshan', level, { x: 0, y: 0, state: 2, timer: 0, cdMul: 1, tex: 'en_chuanshan', tier: 1, sprite: { ...sprite(), play() {}, anims: { stop() {}, timeScale: 1 } } });
+    g.anims = { exists: () => true };
+    mgr.behave(e, 0.1, 1, 0, 10, 1);
+    assert.equal(pits.length, n);
+  }
+});
+
+test('旱魃：半血焚身化火（换火系、短暂无敌），土相时不狂暴；土相被一口气打穿也只是化火；化火后才会狂暴', () => {
+  const { g, mgr } = trickScene(8);
+  Object.assign(g, {
+    hazards: { sandPit() {}, blast() {}, patch() {} }, cameras: { main: { shake() {} } }, anims: { exists: () => true },
+    proj: { clearEnemyShots() {}, enemyShot() {} }, rages: 0, onBossRage() { this.rages++; },
+  });
+  const boss = () => ({ ...mob('hanba'), hp: 1000, maxHp: 1000, state: 0, timer: 5, timer2: 9, timer3: 9, lift: 0, raged: false, phase: 0, invulnUntil: 0, chanceAdd: 0, atkDps: 0, tex: 'boss_hanba', tier: 1, sprite: { ...sprite(), play() {}, anims: { stop() {}, timeScale: 1 } } });
+  const b = boss();
+  b.hp = 200;
+  mgr.maybeEnrage(b);
+  assert.equal(b.raged, false, '土相不狂暴');
+  mgr.behave(b, 0.016, 1, 0, 30, 200);
+  assert.equal(b.phase, 1);
+  assert.equal(b.def.el, 'fire');
+  assert.equal(b.def.id, 'hanba', '图鉴照记同一只');
+  assert.equal(b.tex, 'boss_hanba_fire');
+  assert.ok(b.invulnUntil > g.now);
+  assert.equal(b.state, 9);
+  mgr.behave(b, 2, 1, 0, 30, 200);
+  assert.equal(b.state, 0);
+  mgr.maybeEnrage(b);
+  assert.equal(b.raged, true);
+  assert.equal(g.rages, 1);
+  // 土相被打穿：化火带 40% 生命，不算击杀
+  const c = boss();
+  mgr.kill(c);
+  assert.equal(c.phase, 1);
+  assert.equal(c.hp, 400);
+  assert.equal(g.bossKilled, 0);
+  mgr.kill(c);
+  assert.equal(g.bossKilled, 1);
+  assert.equal(g.killed.hanba, 1);
+});
+
+const L9 = LEVELS.find((l) => l.id === 9);
+
+/** 跑 Hazards 潮汐用的场景桩 */
+async function phaseScene() {
+  const { Hazards } = await import('../src/game/Hazards.ts');
+  const img = () => { const o = new Proxy({}, { get: (_t, k) => (k === 'destroy' ? () => {} : () => o) }); return o; };
+  const phases = [];
+  const toasts = [];
+  const blasts = [];
+  const g = {
+    levelDef: L9, now: 0, elapsed: 0, over: false, player: { x: 0, y: 0 }, add: { image: img }, hud: { toast: (t) => toasts.push(t) }, later() {},
+    world: { spotsIn: () => [[50, 0], [-80, 30]], inMud: () => null, onIce: () => null, sandAt: () => null },
+    status: { inflict() {} }, dmgScale: () => 1, boss: null, setPhase: (el, quiet) => phases.push([el, quiet]),
+    enemies: { inRadius: (_x, _y, _r, out) => ((out.length = 0), out) },
+  };
+  const hz = new Hazards(g);
+  hz.blast = (...a) => blasts.push(a);
+  return { g, hz, phases, toasts, blasts };
+}
+
+test('潮汐（相位轮转）：开局安静定为涨潮，到点前预警、到点换潮；Boss 狂暴后每潮减半；火山口只在退潮喷', async () => {
+  const { g, hz, phases, toasts, blasts } = await phaseScene();
+  hz.update();
+  assert.deepEqual(phases, [['water', true]]);
+  assert.equal(hz.phaseEl, 'water');
+  const T = L9.cycle;
+  // 涨潮时火山口不喷
+  g.elapsed = 30;
+  hz.update();
+  assert.equal(blasts.length, 0);
+  g.elapsed = T.every[0] - T.warn + 0.1;
+  hz.update();
+  assert.equal(toasts.length, 1, '换潮前预警');
+  g.elapsed = T.every[0] + 0.1;
+  hz.update();
+  assert.deepEqual(phases[1], ['fire', false]);
+  hz.update();
+  assert.ok(blasts.length >= 1, '退潮后火山口喷');
+  // 狂暴后这一潮只有一半长
+  g.boss = { raged: true };
+  hz.turnPhase('water');
+  const k = Math.min(1, g.elapsed / L9.duration);
+  const every = T.every[0] + (T.every[1] - T.every[0]) * k;
+  g.elapsed += every * 0.5 + 0.1;
+  hz.update();
+  assert.equal(hz.phaseEl, 'fire');
+});
+
+test('潮汐：浅滩只在涨潮积水；换潮改地气、刷怪偏向当潮元素；远吼立刻翻潮', () => {
+  const world = Object.assign(Object.create(World.prototype), { level: L9, half: L9.size / 2, spotCache: new Map(), phased: [], phase: null });
+  let spot = null;
+  for (let i = 1; i < 20 && !spot; i++) spot = world.spotsIn('mud', -i * 300, -i * 300, i * 300, i * 300)[0];
+  assert.ok(spot);
+  assert.equal(world.inMud(...spot), null, '还没涨潮');
+  world.setPhase('water');
+  assert.equal(world.inMud(...spot), L9.mud);
+  world.setPhase('fire');
+  assert.equal(world.inMud(...spot), null);
+
+  const scene = runScene('ruan', 9);
+  const calls = [];
+  scene.world = { setPhase: (el) => calls.push(['world', el]) };
+  scene.enemies = { rephase: (el) => calls.push(['boss', el]), onRoar() {} };
+  scene.hazards = { phaseEl: 'water', nextPhase: () => 'fire', turnPhase: (el) => calls.push(['turn', el]) };
+  scene.cameras = { main: { shake() {} } };
+  scene.scene = { isActive: () => false };
+  Object.defineProperty(scene, 'hud', { value: { toast() {} } });
+  scene.setPhase('water');
+  const wet = { ...scene.terrainMods };
+  scene.setPhase('fire');
+  assert.ok(scene.terrainMods.water < wet.water && scene.terrainMods.fire > wet.fire, '退潮后水系地气变差、火系变好');
+  assert.deepEqual(calls.slice(0, 2), [['world', 'water'], ['boss', 'water']]);
+  // 刷怪权重：涨潮时水系 ×2
+  scene.elapsed = 100;
+  scene.hazards.phaseEl = 'water';
+  const random = Math.random;
+  let n = 0;
+  try {
+    let i = 0;
+    Math.random = () => ((i++ * 0.618) % 1);
+    for (let j = 0; j < 400; j++) if (ENEMIES[scene.pickEnemy()].el === 'water') n++;
+  } finally {
+    Math.random = random;
+  }
+  assert.ok(n / 400 > 0.6, `涨潮时水系占比 ${n / 400}`);
+  scene.roar();
+  assert.deepEqual(calls.at(-1), ['turn', 'fire']);
+});
+
+test('九婴随潮换元素（换贴图、换攻击异常，图鉴照记同一只）；夜叉跳到锁定的点砸地；焰蛸一次扇形喷三道', () => {
+  const { g, mgr, hurts } = trickScene(9);
+  const toasts = [];
+  Object.assign(g, { anims: { exists: () => true }, hud: { toast: (t) => toasts.push(t) } });
+  const b = { ...mob('jiuying'), tex: 'boss_jiuying', tier: 1, glyph: null, sprite: { ...sprite(), play() {}, anims: { stop() {}, timeScale: 1 } } };
+  mgr.list.push(b);
+  mgr.rephase('water');
+  assert.equal(toasts.length, 0, '已经是水系不换');
+  mgr.rephase('fire');
+  assert.equal(b.def.el, 'fire');
+  assert.equal(b.def.id, 'jiuying');
+  assert.equal(b.tex, 'boss_jiuying_fire');
+  assert.equal(b.def.inflict.kind, 'burn');
+  mgr.rephase('water');
+  assert.equal(b.def, ENEMIES.jiuying);
+
+  g.player = { x: 100, y: 0, alive: true };
+  const e = trickMob('yecha', 9, { x: 0, y: 0, state: 0, timer: 0, windMul: 1, lift: 0 });
+  mgr.behave(e, 0.016, 1, 0, 100, 1);
+  assert.equal(e.state, 1);
+  assert.deepEqual([e.tx, e.ty], [100, 0]);
+  mgr.behave(e, 1, 1, 0, 100, 1);
+  assert.equal(e.state, 2);
+  mgr.behave(e, 0.5, 1, 0, 100, 1);
+  assert.deepEqual([e.x, e.y, e.state], [100, 0, 0]);
+  assert.equal(hurts.length, 1);
+  assert.equal(hurts[0][1], 'water');
+
+  const shots = [];
+  g.proj = { enemyShot: (...a) => shots.push(a) };
+  const o = trickMob('yanshao', 9, { x: 0, y: 0, timer: 0 });
+  mgr.behave(o, 0.016, 1, 0, 100, 1);
+  assert.equal(shots.length, 3);
+  assert.ok(shots.every((a) => a[0] === 'ep_fire'));
+});
+
+const L10 = LEVELS.find((l) => l.id === 10);
+
+test('昆仑：五气按相生每 3 分钟换一气，Boss 现身在水气；各气的地形只在当令时起作用', async () => {
+  const c = L10.cycle;
+  assert.deepEqual(c.order, ['wood', 'fire', 'earth', 'metal', 'water']);
+  assert.equal(c.every[0] * c.order.length, L10.duration);
+  assert.equal(c.order[Math.floor((L10.duration - 60) / c.every[0])], 'water');
+  const world = Object.assign(Object.create(World.prototype), { level: L10, half: L10.size / 2, spotCache: new Map(), phased: [], phase: null });
+  const find = (kind, cell) => {
+    for (let i = 1; i < 20; i++) {
+      const p = world.spotsIn(kind, -i * cell, -i * cell, i * cell, i * cell)[0];
+      if (p) return p;
+    }
+  };
+  const zone = find('zone', 440);
+  const ice = find('ice', 340);
+  const mud = find('mud', 320);
+  const live = () => [!!world.zoneArmor(...zone), !!world.onIce(...ice), !!world.inMud(...mud)];
+  world.setPhase('fire');
+  assert.deepEqual(live(), [false, false, false]);
+  world.setPhase('metal');
+  assert.deepEqual(live(), [true, false, false]);
+  world.setPhase('water');
+  assert.deepEqual(live(), [false, true, false]);
+  world.setPhase('wood');
+  assert.deepEqual(live(), [false, false, true]);
+
+  // 落石只在土气、熔岩口只在火气、瘴雾只在木气
+  const { Hazards } = await import('../src/game/Hazards.ts');
+  const img = () => { const o = new Proxy({}, { get: (_t, k) => (k === 'destroy' ? () => {} : () => o) }); return o; };
+  const fired = [];
+  const banners = [];
+  const g = {
+    levelDef: L10, now: 0, elapsed: 0, over: false, player: { x: 0, y: 0, facing: { x: 0, y: 1 } }, pstats: { speed: 60 }, add: { image: img },
+    hud: { toast() {} }, later() {}, tweens: { add() {} }, fx: new Proxy({}, { get: () => () => {} }), boss: null,
+    world: { spotsIn: () => [[50, 0]], inMud: () => null, onIce: () => null, sandAt: () => null, zoneArmor: () => 0, clampPt: (x, y) => [x, y] },
+    status: { inflict() {} }, dmgScale: () => 1, setPhase: (el, quiet) => banners.push([el, quiet]),
+    enemies: { inRadius: (_x, _y, _r, out) => ((out.length = 0), out) },
+  };
+  const hz = new Hazards(g);
+  hz.drop = () => fired.push('rock');
+  hz.blast = () => fired.push('lava');
+  hz.miasmaAt = () => fired.push('fog');
+  for (const el of c.order) {
+    hz.phaseEl = el;
+    g.elapsed += 30;
+    hz.nextAt = hz.lavaAt = hz.fogAt = 0;
+    fired.length = 0;
+    hz.update();
+    const want = { earth: 'rock', fire: 'lava', wood: 'fog' }[el];
+    assert.deepEqual([...new Set(fired)], want ? [want] : [], `${el} 气`);
+  }
+});
+
+test('帝江：每掉 20% 生命按相生换一系并震出一圈新元素的弹；歌舞转着喷五色弹；各系的招各不相同', () => {
+  const { g, mgr } = trickScene(10);
+  const shots = [];
+  const calls = [];
+  Object.assign(g, {
+    anims: { exists: () => true }, cameras: { main: { shake() {} } }, tweens: { add() {} },
+    proj: { enemyShot: (...a) => shots.push(a) }, hazards: { rain: (n) => calls.push(['rain', n]), iceAt() {} },
+  });
+  const b = { ...mob('dijiang'), hp: 1000, maxHp: 1000, x: 50, y: 0, state: 0, timer: 0, timer2: 99, timer3: 99, timer4: 0, phase: 0, combo: 0, trailAcc: 0, raged: false, chanceAdd: 0, atkDps: 0, tex: 'boss_dijiang', tier: 1, glyph: null, sprite: { ...sprite(), play() {}, anims: { stop() {}, timeScale: 1 } } };
+  mgr.dijiang(b, 30, -1, 0, 30, 50);
+  assert.equal(b.def.el, 'earth', '满血不换，和时间无关');
+  b.hp = 790;
+  mgr.dijiang(b, 0.016, -1, 0, 30, 50);
+  assert.equal(b.def.el, 'metal');
+  assert.equal(b.def.id, 'dijiang');
+  assert.equal(b.tex, 'boss_dijiang_metal');
+  assert.equal(shots.length, 10);
+  assert.ok(shots.every((a) => a[0] === 'ep_blade' && a[6] === 'metal'));
+  // 一口气打掉大半：每帧只换一相，依次补上，不跳过
+  b.hp = 100;
+  const seen = [];
+  for (let i = 0; i < 5; i++) {
+    mgr.dijiang(b, 0.016, -1, 0, 30, 50);
+    seen.push(b.def.el);
+  }
+  assert.deepEqual(seen, ['water', 'wood', 'fire', 'fire', 'fire']);
+  shots.length = 0;
+  b.hp = 1000;
+  b.phase = 0;
+  // 土相的招是落石
+  b.def = ENEMIES.dijiang;
+  b.timer2 = 0;
+  mgr.dijiang(b, 0.016, -1, 0, 30, 50);
+  assert.deepEqual(calls, [['rain', 4]]);
+  // 歌舞
+  shots.length = 0;
+  b.timer3 = 0;
+  mgr.dijiang(b, 0.016, -1, 0, 30, 50);
+  assert.equal(b.state, 1);
+  mgr.dijiang(b, 0.41, -1, 0, 30, 50);
+  assert.equal(new Set(shots.map((a) => a[6])).size, 5, '五系都有');
+});
+
+test('评审回归：冰爆按预警的压扁椭圆判定，圈外不受伤；火鸦同理', () => {
+  for (const id of ['bingcan', 'huoya']) {
+    for (const [py, hit] of [[28, false], [14, true]]) {
+      const { g, mgr, run } = killScene();
+      const hurts = [];
+      Object.assign(g, { player: { x: 10, y: 20 + py }, hurtPlayer: () => hurts.push(1), dmgScale: () => 1 });
+      mgr.kill(mob(id, { blastMul: 1, atkDps: 0 }));
+      run();
+      assert.equal(hurts.length, hit ? 1 : 0, `${id} 纵向 ${py}`);
+    }
+  }
+});
+
+test('评审回归：瘴、寒同时带时各自计时，重叠范围里两种都按 tick 结算', () => {
+  const { g, mgr, inflicts } = trickScene(7);
+  const e = trickMob('aoxie', 7, { x: 10, y: 0, affixes: ['miasma', 'frost'], affixTick: 0, frostTick: 0, aura: {} });
+  mgr.list.push(e);
+  const random = Math.random;
+  Math.random = () => 0;
+  try {
+    for (let i = 0; i < 10; i++) {
+      g.now += 1;
+      mgr.updateAuras(1);
+    }
+  } finally {
+    Math.random = random;
+  }
+  assert.equal(inflicts.filter((k) => k === 'poison').length, 10);
+  assert.equal(inflicts.filter((k) => k === 'slow').length, 10);
+});
+
+test('评审回归：玄冥冰锥、旱魃陷沙留下的临时冰面、流沙和固定的一样拖慢非水 / 非土系普通敌人', async () => {
+  const { Hazards } = await import('../src/game/Hazards.ts');
+  const chain = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => chain) });
+  const noop = new Proxy({}, { get: () => () => {} });
+  for (const [kind, level, k] of [['ice', 7, L7.ice.enemy], ['sand', 8, L8.quicksand.enemy]]) {
+    const dx = (temp) => {
+      const g = {
+        now: 10, elapsed: 10, over: false, levelDef: LEVELS.find((l) => l.id === level), kills: 0, killed: {}, build: { mods: {} },
+        player: { x: 100, y: 0, alive: true }, puppets: { list: [] }, fx: noop, pickups: noop, hud: noop, proj: noop, add: { image: () => chain },
+        tweens: { add() {} }, later() {}, dmgScale: () => 1, spawnCap: () => 999, hurtPlayer() {}, anims: { exists: () => true }, cameras: { main: noop },
+        world: { inMud: () => null, onIce: () => (temp ? null : g.levelDef.ice), sandAt: () => (temp ? null : [0, 0]), push: () => false, clamp: () => false, nav: null },
+      };
+      const hz = new Hazards(g);
+      g.hazards = hz;
+      if (temp && kind === 'ice') hz.iceAt(0, 0, 30, 5);
+      if (temp && kind === 'sand') hz.sandPit(0, 0, 30, 5);
+      const mgr = new EnemyManager(g);
+      g.enemies = mgr;
+      const e = Object.assign(new Enemy(chain), { id: 1, def: ENEMIES.canbing, x: 0, y: 0, alive: true, hp: 100, maxHp: 100, speed: 50, radius: 7, tricks: [], affixes: [] });
+      mgr.list.push(e);
+      mgr.update(0.1);
+      return e.x;
+    };
+    assert.ok(Math.abs(dx(false) - 50 * 0.1 * k) < 1e-6, `${kind} 固定`);
+    assert.ok(Math.abs(dx(true) - 50 * 0.1 * k) < 1e-6, `${kind} 临时`);
+  }
+});
+
+test('评审回归：换相后升级三选一按当前地气加权；帝江同一帧换相和出招时用新元素的招', async () => {
+  const { SKILLS, PASSIVES } = await import('../src/config/skills.ts');
+  const scene = runScene('xuanyi', 10);
+  scene.world = { setPhase() {} };
+  scene.enemies = { rephase() {} };
+  scene.scene = { isActive: () => false };
+  const count = (el) => {
+    scene.setPhase(el, true);
+    let seed = 123;
+    const random = Math.random;
+    Math.random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+    const n = {};
+    try {
+      for (let i = 0; i < 4000; i++) {
+        const o = scene.build.options(1)[0];
+        const e = o.kind === 'skill' ? SKILLS[o.id].el : PASSIVES[o.id].el;
+        n[e] = (n[e] ?? 0) + 1;
+      }
+    } finally {
+      Math.random = random;
+    }
+    return n;
+  };
+  const wood = count('wood');
+  const fire = count('fire');
+  assert.ok(wood.wood > fire.wood && fire.fire > wood.fire, '当令元素的卡更多');
+
+  const { g, mgr } = trickScene(10);
+  const calls = [];
+  Object.assign(g, { anims: { exists: () => true }, proj: { enemyShot() {} }, hazards: { rain: () => calls.push('earth'), iceAt() {} } });
+  const b = { ...mob('dijiang'), hp: 790, maxHp: 1000, x: 50, y: 0, state: 0, timer: 9, timer2: 0, timer3: 99, timer4: 0, phase: 0, combo: 0, trailAcc: 0, raged: false, chanceAdd: 0, atkDps: 0, tex: 'boss_dijiang', tier: 1, glyph: null, sprite: { ...sprite(), play() {}, anims: { stop() {}, timeScale: 1 } } };
+  mgr.bladeRing = () => calls.push('metal');
+  mgr.dijiang(b, 0.016, -1, 0, 30, 50);
+  assert.equal(b.def.el, 'metal');
+  assert.deepEqual(calls, ['metal']);
 });

@@ -1,5 +1,8 @@
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import type { GameScene } from '../scenes/GameScene';
+import { TEMP_TERRAIN, type StormLook } from '../config/levels';
+import type { El } from '../config/elements';
+import { VIEW_W, VIEW_H } from '../config/view';
 import type { Enemy } from './Enemies';
 import { PLAYER_RADIUS } from './Player';
 import { audio } from '../audio/Audio';
@@ -45,6 +48,32 @@ const PATCH_MAX = 48;
 /** 余火对玩家的结算间隔（秒） */
 const PATCH_TICK = 0.6;
 
+/** 流沙同样纵向压扁 */
+const SAND_SQUASH = 0.62;
+/** 风暴的提示 */
+const STORM_TEXT: Record<StormLook, { css: string; warn: string; start: (dir: string) => string }> = {
+  snow: { css: '#c8ecff', warn: '北风紧了，暴风雪要来了！看不远时贴着冰崖走', start: (d) => `暴风雪！北风往${d}吹，看不远了` },
+  sand: { css: '#fff0d0', warn: '天边黄了，沙暴要来了！沙暴里金气更盛', start: (d) => `沙暴！风往${d}刮，看不远了；金系术更强` },
+};
+/** 临时冰面同时存在的上限 */
+const ICE_MAX = 24;
+/** 风暴起、落各用这么多秒渐变 */
+const STORM_FADE = 1.5;
+/** 风暴里的雪片 / 沙粒数 */
+const FLAKES = 48;
+/** 风暴的遮罩比画面大一圈，玩家贴着地图边、不在画面正中时也盖得住 */
+const VEIL_W = VIEW_W * 2;
+const VEIL_H = VIEW_H * 2;
+const VEIL_DEPTH = 1.5e6;
+
+interface IcePatch {
+  x: number;
+  y: number;
+  r: number;
+  until: number;
+  img: Phaser.GameObjects.Image;
+}
+
 /**
  * 关卡地形机制：
  * - 落石（第 3 关山林）：地上先出现影子，石头从天而降，砸中玩家造成土伤害并累积震慑；砸中的普通敌人掉一大截血，引怪进落石区是正当打法。
@@ -54,6 +83,12 @@ const PATCH_TICK = 0.6;
  * - 泥潭（第 6 关云梦泽）只改移速，由 World.inMud 判定，这里只负责第一次踩进去的提示。
  * - 瘴雾（第 6 关）：周期从玩家附近的泥潭里冒出，慢慢扩散开，雾里玩家会中毒，非木系的普通敌人持续掉血；相柳吐的毒泽也化成瘴雾。
  * - 水洼：蛟冲刺、鱼妖的抛射水弹留下，踩上去可能迟缓；缠根（后期关卡的藤怪催生）同理。
+ * - 冰面（第 7 关寒江）：固定的由 World.onIce 判定，玄冥冰锥留下的临时冰面在这里；玩家在冰上有惯性（Player 里算）。
+ * - 风暴（第 7 关暴风雪、第 8 关沙暴）：周期刮起，视野只剩玩家周围一圈，风一直把玩家往一个方向推；沙暴里金系术更强。
+ *   玄冥的吸寒、流沙往中心的吸力也走这里的外力（drift）。
+ * - 相位轮转（第 9 关涨退潮、第 10 关五气当令）：按 cycle.order 换相，换相时 GameScene.setPhase 改地气、点位、Boss 元素；
+ *   带 phase 的点位（浅滩、火山口、毒沼、剑阵、冰面）和落石、瘴雾只在那一相起作用。
+ * - 流沙（第 8 关）：固定的由 World.sandAt 判定，旱魃和穿山甲留下的临时流沙在这里；陷进去走得慢、往中心吸，陷到中心掉血攒震慑。
  */
 export class Hazards {
   private nextAt: number;
@@ -71,14 +106,44 @@ export class Hazards {
   private fogTickAt = 0;
   private fogEnemyAt = 0;
   private tmp: Enemy[] = [];
+  /** 当前相（东海归墟的潮、昆仑的当令元素），没有相位的关卡为 null；phaseAt 是下一次换相的开局秒数 */
+  phaseEl: El | null = null;
+  private phaseAt = Infinity;
+  private phaseWarned = false;
+  private ices: IcePatch[] = [];
+  private sands: IcePatch[] = [];
+  private sandHinted = false;
+  private sandTickAt = 0;
+  private iceHinted = false;
+  /** 风暴：下一场的开局秒数；当前这场从 stormFrom 刮到 stormUntil（g.now），风向单位向量 */
+  private stormAt: number;
+  stormFrom = 0;
+  stormUntil = 0;
+  private windX = 0;
+  private windY = 0;
+  private stormWarned = false;
+  private veil: Phaser.GameObjects.Image | null = null;
+  private flakes: Phaser.GameObjects.Image[] = [];
+  private flakeAt = 0;
+  /** 往 (pullX, pullY) 拉的外力，到 pullUntil 为止，每秒 pullF 像素（玄冥的吸寒） */
+  private pullX = 0;
+  private pullY = 0;
+  private pullF = 0;
+  private pullUntil = 0;
 
   constructor(private g: GameScene) {
     this.nextAt = g.levelDef.rockfall?.start ?? Infinity;
     this.lavaAt = g.levelDef.lava?.start ?? Infinity;
     this.fogAt = g.levelDef.miasma?.start ?? Infinity;
+    this.stormAt = g.levelDef.storm?.start ?? Infinity;
+    if (g.levelDef.storm && g.textures) stormTexture(g, g.levelDef.storm.look, g.levelDef.storm.vision);
   }
 
   update() {
+    this.updatePhase();
+    this.updateIce();
+    this.updateSand();
+    this.updateStorm();
     this.updatePatches();
     this.updateLava();
     this.updateZoneHint();
@@ -91,7 +156,7 @@ export class Hazards {
   private updateRockfall() {
     const g = this.g;
     const rf = g.levelDef.rockfall;
-    if (!rf || g.over || g.elapsed < this.nextAt) return;
+    if (!rf || g.over || g.elapsed < this.nextAt || (rf.phase && rf.phase !== this.phaseEl)) return;
     const k = Math.min(1, g.elapsed / g.levelDef.duration);
     const every = rf.every[0] + (rf.every[1] - rf.every[0]) * k;
     const count = Math.round(rf.count[0] + (rf.count[1] - rf.count[0]) * k);
@@ -151,7 +216,8 @@ export class Hazards {
   private updateLava() {
     const g = this.g;
     const lv = g.levelDef.lava;
-    if (!lv || g.over || g.elapsed < this.lavaAt) return;
+    // 海底火山口只在退潮时喷
+    if (!lv || g.over || g.elapsed < this.lavaAt || (lv.phase && lv.phase !== this.phaseEl)) return;
     const k = Math.min(1, g.elapsed / g.levelDef.duration);
     const every = lv.every[0] + (lv.every[1] - lv.every[0]) * k;
     const count = Math.round(lv.count[0] + (lv.count[1] - lv.count[0]) * k);
@@ -165,7 +231,7 @@ export class Hazards {
     if (!vents.length) return;
     if (!this.lavaWarned) {
       this.lavaWarned = true;
-      g.hud.toast('熔岩口要喷发了！发亮的地方快离开', '#ff8a4a');
+      g.hud.toast(lv.hint ?? '熔岩口要喷发了！发亮的地方快离开', '#ff8a4a');
     }
     for (const v of vents) this.blast(v.x, v.y, lv.radius, lv.warn, lv.dmg, lv.burn);
   }
@@ -309,7 +375,7 @@ export class Hazards {
     const p = g.player;
     if (!g.world.inMud(p.x, p.y)) return;
     this.mudHinted = true;
-    g.hud.toast('陷进泥潭了：走得慢，非水系的妖物也一样', '#b8a878');
+    g.hud.toast(g.levelDef.mud.tex ? '踩进涨潮的浅滩了：走得慢，非水系的妖物也一样' : '陷进泥潭了：走得慢，非水系的妖物也一样', '#b8a878');
   }
 
   // ---------- 瘴雾 ----------
@@ -317,7 +383,7 @@ export class Hazards {
   private updateMiasma() {
     const g = this.g;
     const m = g.levelDef.miasma;
-    if (!m || g.over || g.elapsed < this.fogAt) return;
+    if (!m || g.over || g.elapsed < this.fogAt || (m.phase && m.phase !== this.phaseEl)) return;
     const k = Math.min(1, g.elapsed / g.levelDef.duration);
     const every = m.every[0] + (m.every[1] - m.every[0]) * k;
     this.fogAt = g.elapsed + every * (0.85 + Math.random() * 0.3);
@@ -406,4 +472,283 @@ export class Hazards {
           if (!e.boss && e.def.el !== 'wood' && this.covers(f, e.x, e.y)) g.envDamage(e, e.maxHp * m.enemy * (e.elite ? 0.25 : 1), 'wood');
     }
   }
+
+  // ---------- 相位轮转 ----------
+
+  /** 开局定为 order 的第一相；到点前 warn 秒预警，到点换到下一相 */
+  private updatePhase() {
+    const g = this.g;
+    const c = g.levelDef.cycle;
+    if (!c || g.over) return;
+    if (!this.phaseEl) {
+      this.turnPhase(c.order[0], true);
+      return;
+    }
+    const next = this.nextPhase();
+    if (!this.phaseWarned && g.elapsed >= this.phaseAt - c.warn) {
+      this.phaseWarned = true;
+      const t = c.warnText[next];
+      if (t) g.hud.toast(t, '#b8aec8');
+    }
+    if (g.elapsed >= this.phaseAt) this.turnPhase(next);
+  }
+
+  /** order 里的下一相 */
+  nextPhase(): El {
+    const order = this.g.levelDef.cycle?.order ?? [];
+    return order[(order.indexOf(this.phaseEl!) + 1) % order.length];
+  }
+
+  /** 换到这一相，排好下一次换相（cycle.rage 的关卡 Boss 狂暴后每相减半）；quiet 为开局定相，不提示。远吼也用这个 */
+  turnPhase(el: El, quiet = false) {
+    const g = this.g;
+    const c = g.levelDef.cycle;
+    if (!c) return;
+    const k = Math.min(1, g.elapsed / g.levelDef.duration);
+    const every = (c.every[0] + (c.every[1] - c.every[0]) * k) * (c.rage && g.boss?.raged ? 0.5 : 1);
+    this.phaseEl = el;
+    this.phaseAt = g.elapsed + every;
+    this.phaseWarned = false;
+    g.setPhase(el, quiet);
+  }
+
+  // ---------- 冰面 ----------
+
+  /** 本关此刻有没有冰面（固定的或临时的）；敌人每帧查减速前先看这个，没有就省掉查询 */
+  get anyIce() {
+    return !!this.g.levelDef.ice || this.ices.length > 0;
+  }
+
+  /** 本关此刻有没有流沙（固定的或临时的） */
+  get anySand() {
+    return !!this.g.levelDef.quicksand || this.sands.length > 0;
+  }
+
+  /** 这里是不是冰面（固定的或冰锥留下的）：是就返回冰面配置，否则 null */
+  onIce(x: number, y: number) {
+    const fixed = this.g.world.onIce?.(x, y);
+    if (fixed) return fixed;
+    for (const c of this.ices) if (Math.hypot(x - c.x, (y - c.y) / 0.62) < c.r) return this.g.levelDef.ice ?? TEMP_TERRAIN.ice;
+    return null;
+  }
+
+  /** 在 (x, y) 结一片半径 r、持续 dur 秒的临时冰面 */
+  iceAt(x: number, y: number, r: number, dur: number) {
+    const g = this.g;
+    if (this.ices.length >= ICE_MAX) this.ices.shift()!.img.destroy();
+    const img = g.add.image(x, y, 'dc_ice', Math.floor(Math.random() * 2)).setDepth(-9.5e4).setScale(r / 50).setAlpha(0.9).setFlipX(Math.random() < 0.5);
+    this.ices.push({ x, y, r, until: g.now + dur, img });
+  }
+
+  private updateIce() {
+    const g = this.g;
+    for (let i = this.ices.length - 1; i >= 0; i--) {
+      const c = this.ices[i];
+      const left = c.until - g.now;
+      if (left <= 0) {
+        c.img.destroy();
+        this.ices.splice(i, 1);
+      } else if (left < 1) c.img.setAlpha(left * 0.9);
+    }
+    if (this.iceHinted || !g.levelDef.ice) return;
+    const p = g.player;
+    if (!this.onIce(p.x, p.y)) return;
+    this.iceHinted = true;
+    g.hud.toast('踩上冰面了：起步慢、转向会滑出去，非水系的妖物在冰上也站不稳', '#c8ecff');
+  }
+
+  // ---------- 流沙 ----------
+
+  /** 这里在不在流沙里（固定的或临时的）：在就返回流沙中心、到中心的距离和配置 */
+  sandAt(x: number, y: number) {
+    const g = this.g;
+    const fixed = g.levelDef.quicksand ? g.world.sandAt(x, y) : null;
+    if (fixed) return { x: fixed[0], y: fixed[1], d: Math.hypot(fixed[0] - x, fixed[1] - y), r: g.levelDef.quicksand!.radius, def: g.levelDef.quicksand! };
+    for (const c of this.sands)
+      if (Math.hypot(x - c.x, (y - c.y) / SAND_SQUASH) < c.r) return { x: c.x, y: c.y, d: Math.hypot(c.x - x, c.y - y), r: c.r, def: g.levelDef.quicksand ?? TEMP_TERRAIN.sand };
+    return null;
+  }
+
+  /** 在 (x, y) 陷出一片半径 r、持续 dur 秒的临时流沙 */
+  sandPit(x: number, y: number, r: number, dur: number) {
+    const g = this.g;
+    if (this.sands.length >= ICE_MAX) this.sands.shift()!.img.destroy();
+    const img = g.add.image(x, y, 'dc_quicksand', Math.floor(Math.random() * 2)).setDepth(-9.5e4).setScale(r / 50).setAlpha(0.95).setFlipX(Math.random() < 0.5);
+    this.sands.push({ x, y, r, until: g.now + dur, img });
+  }
+
+  /** 临时流沙到时消失；玩家陷到中心时按 tick 掉血、攒震慑 */
+  private updateSand() {
+    const g = this.g;
+    for (let i = this.sands.length - 1; i >= 0; i--) {
+      const c = this.sands[i];
+      const left = c.until - g.now;
+      if (left <= 0) {
+        c.img.destroy();
+        this.sands.splice(i, 1);
+      } else if (left < 1) c.img.setAlpha(left * 0.95);
+    }
+    if (!g.levelDef.quicksand && !this.sands.length) return;
+    const p = g.player;
+    const s = this.sandAt(p.x, p.y);
+    if (!s) return;
+    if (!this.sandHinted) {
+      this.sandHinted = true;
+      g.hud.toast('陷进流沙了：走得慢、往中间吸，陷到中间会被埋，赶紧往外走', '#e8c878');
+    }
+    if (g.over || s.d > s.r * s.def.core || g.now < this.sandTickAt) return;
+    this.sandTickAt = g.now + s.def.tick;
+    g.hurtPlayer(s.def.dmg * g.dmgScale(), 'earth', { inflict: { kind: 'stun', chance: 0.5, mob: true } });
+  }
+
+  // ---------- 风暴与外力 ----------
+
+  /** 本关风暴的外观，没配就当暴风雪 */
+  private get look(): StormLook {
+    return this.g.levelDef.storm?.look ?? 'snow';
+  }
+
+  /** 风暴给这一系术的伤害倍率（沙暴里金 +15%，随风暴强度渐变） */
+  boost(el: El) {
+    const b = this.g.levelDef.storm?.boost;
+    return b && b.el === el ? 1 + b.amt * this.storming() : 1;
+  }
+
+  /** 这一刻风暴的强度 0..1（起落各渐变 STORM_FADE 秒） */
+  storming(now = this.g.now) {
+    if (now < this.stormFrom || now >= this.stormUntil) return 0;
+    return Math.min(1, (now - this.stormFrom) / STORM_FADE, (this.stormUntil - now) / STORM_FADE);
+  }
+
+  /** 推着玩家走的外力（风 + 吸寒 + 流沙），每秒像素 */
+  drift(x: number, y: number): [number, number] {
+    const g = this.g;
+    const k = this.storming();
+    let dx = 0;
+    let dy = 0;
+    if (k > 0) {
+      const w = (g.levelDef.storm?.wind ?? 22) * k;
+      dx = this.windX * w;
+      dy = this.windY * w;
+    }
+    if (g.now < this.pullUntil) {
+      const d = Math.hypot(this.pullX - x, this.pullY - y);
+      if (d > 4) {
+        dx += ((this.pullX - x) / d) * this.pullF;
+        dy += ((this.pullY - y) / d) * this.pullF;
+      }
+    }
+    const sand = this.sandAt(x, y);
+    if (sand && sand.d > 3) {
+      dx += ((sand.x - x) / sand.d) * sand.def.pull;
+      dy += ((sand.y - y) / sand.d) * sand.def.pull;
+    }
+    return [dx, dy];
+  }
+
+  /** 往 (x, y) 拉玩家 dur 秒，每秒 force 像素 */
+  pull(x: number, y: number, force: number, dur: number) {
+    this.pullX = x;
+    this.pullY = y;
+    this.pullF = force;
+    this.pullUntil = this.g.now + dur;
+  }
+
+  private updateStorm() {
+    const g = this.g;
+    const b = g.levelDef.storm;
+    if (b && !g.over && g.elapsed >= this.stormAt) {
+      const k = Math.min(1, g.elapsed / g.levelDef.duration);
+      const dur = b.dur[0] + (b.dur[1] - b.dur[0]) * k;
+      const every = b.every[0] + (b.every[1] - b.every[0]) * k;
+      this.stormAt = g.elapsed + b.warn + dur + every * (0.85 + Math.random() * 0.3);
+      if (!this.stormWarned) {
+        this.stormWarned = true;
+        g.hud.toast(STORM_TEXT[this.look].warn, STORM_TEXT[this.look].css);
+      }
+      this.storm(dur, b.warn);
+    }
+    this.drawStorm();
+  }
+
+  /**
+   * 刮一场 dur 秒的风暴，warn 秒后起风；正在刮就接着延长（远吼、Boss 狂暴也用这个）。
+   * 每场换一个风向，大致横着吹
+   */
+  storm(dur: number, warn = 1) {
+    const g = this.g;
+    const now = g.now;
+    if (this.storming(now) > 0 || now < this.stormFrom) {
+      this.stormUntil = Math.max(this.stormUntil, now + dur);
+      return;
+    }
+    this.stormFrom = now + warn;
+    this.stormUntil = this.stormFrom + dur;
+    const a = (Math.random() < 0.5 ? 0 : Math.PI) + (Math.random() - 0.5) * 0.8;
+    this.windX = Math.cos(a);
+    this.windY = Math.sin(a) * 0.6;
+    audio.sfx('charge', { rate: 0.35, vol: 0.4 });
+    g.later(warn, () => {
+      if (g.over) return;
+      g.hud.toast(STORM_TEXT[this.look].start(this.windX > 0 ? '东' : '西'), STORM_TEXT[this.look].css);
+    });
+  }
+
+  /** 视野遮罩跟着玩家，雪片（沙粒）在屏幕上顺着风斜飞；不刮的时候都藏起来 */
+  private drawStorm() {
+    const g = this.g;
+    if (!g.levelDef.storm && !this.stormUntil) return;
+    const k = this.storming();
+    if (!this.veil) {
+      const look = this.look;
+      if (k <= 0 || !g.textures?.exists(`fx_storm_${look}`)) return;
+      this.veil = g.add.image(0, 0, `fx_storm_${look}`).setDepth(VEIL_DEPTH).setAlpha(0);
+      for (let i = 0; i < FLAKES; i++)
+        this.flakes.push(g.add.image(Math.random() * VIEW_W, Math.random() * VIEW_H, look === 'snow' ? 'fx_snowflake' : 'fx_sandgrain').setScrollFactor(0).setDepth(VEIL_DEPTH + 1).setAlpha(0));
+    }
+    const p = g.player;
+    this.veil.setVisible(k > 0).setPosition(p.x, p.y - 6).setAlpha(k);
+    const dt = Math.min(0.05, g.now - this.flakeAt);
+    this.flakeAt = g.now;
+    const vx = this.windX * 260 + 20;
+    // 雪往下飘，沙贴着地横着刮
+    const vy = this.windY * 120 + (this.look === 'snow' ? 90 : 20);
+    this.flakes.forEach((f, i) => {
+      f.setVisible(k > 0);
+      if (k <= 0) return;
+      const sp = 0.6 + (i % 5) * 0.12;
+      let x = f.x + vx * sp * dt;
+      let y = f.y + vy * sp * dt;
+      if (x < -8) x += VIEW_W + 16;
+      else if (x > VIEW_W + 8) x -= VIEW_W + 16;
+      if (y > VIEW_H + 8) y -= VIEW_H + 16;
+      f.setPosition(x, y).setRotation(Math.atan2(vy, vx)).setAlpha(k * (0.45 + (i % 3) * 0.2));
+    });
+  }
+}
+
+/** 风暴的视野遮罩颜色：暴风雪灰白，沙暴昏黄 */
+const VEIL_RGB: Record<StormLook, [string, string]> = { snow: ['150,166,184', '160,174,192'], sand: ['150,120,78', '162,130,84'] };
+
+/** 风暴的视野遮罩：中间留一圈看得清的，往外渐渐被风雪（风沙）吞掉（线性过滤，软边） */
+export function stormTexture(scene: Phaser.Scene, look: StormLook, vision: number) {
+  const tm = scene.textures;
+  const key = `fx_storm_${look}`;
+  if (tm.exists(key)) return;
+  const c = document.createElement('canvas');
+  c.width = VEIL_W;
+  c.height = VEIL_H;
+  const ctx = c.getContext('2d')!;
+  const cx = VEIL_W / 2;
+  const cy = VEIL_H / 2;
+  const [mid, edge] = VEIL_RGB[look];
+  // 纵向压扁一点，和地面透视一致
+  ctx.setTransform(1, 0, 0, 0.8, 0, cy * 0.2);
+  const grad = ctx.createRadialGradient(cx, cy, vision * 0.7, cx, cy, vision + 110);
+  grad.addColorStop(0, `rgba(${mid},0)`);
+  grad.addColorStop(0.45, `rgba(${mid},0.55)`);
+  grad.addColorStop(1, `rgba(${edge},0.93)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, -VEIL_H, VEIL_W, VEIL_H * 3);
+  tm.addCanvas(key, c)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
 }

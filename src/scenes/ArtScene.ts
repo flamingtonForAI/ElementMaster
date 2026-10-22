@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { HERO_DIRS } from '../art/heroXiao';
 import { label } from '../ui/text';
+import { LEVELS, enemyTex } from '../config/levels';
+import { ENEMIES, tierTex } from '../config/enemies';
 
 /** 美术预览：?art 打开，检查 8 方向动画与敌人 */
 export class ArtScene extends Phaser.Scene {
@@ -9,6 +11,11 @@ export class ArtScene extends Phaser.Scene {
   }
 
   create() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('art') === 'enemies') {
+      this.showEnemies(Number(params.get('level')) || 2);
+      return;
+    }
     this.add.tileSprite(0, 0, 640, 360, 'ground_1').setOrigin(0);
     const poses = ['idle', 'run', 'atk', 'atkrun'];
     // ?art=zhu 预览符师，?art=ruan 海贼，?art=qingdai 药师，?art=moheng 傀儡师，?art=xuanyi 散人
@@ -64,5 +71,45 @@ export class ArtScene extends Phaser.Scene {
     this.add.image(540, 334, 'fx_fog');
     const decor6 = ['dc_reed', 'dc_cattail', 'dc_lotus', 'dc_mud'];
     decor6.forEach((k, i) => this.add.image(600 + (i % 2) * 40, 320 + Math.floor(i / 2) * 34, k).setOrigin(0.5, 1).setScale(k === 'dc_mud' ? 0.4 : 1));
+  }
+
+  /** 正式纹理与动画的逐关预览，检查真实尺寸、地域皮肤及升阶。 */
+  private showEnemies(levelId: number) {
+    const level = LEVELS.find((l) => l.id === levelId && l.available) ?? LEVELS[1];
+    this.children.removeAll(true);
+    this.add.tileSprite(0, 0, 640, 360, level.ground).setOrigin(0);
+    this.add.rectangle(0, 0, 640, 64, 0x15121c, .92).setOrigin(0);
+    label(this, 16, 10, `怪物像素预览 · 第 ${level.id} 关 ${level.name}`, '#f4eee0', 24);
+    label(this, 16, 42, '← → 切换关卡　上排 2×　下排原尺寸：原 / 凶 / 煞', '#d2c6b6');
+    const ids = [...level.enemies.map((e) => e.id), level.boss];
+    // 怪多（昆仑）时分两排，只放原尺寸和凶、煞
+    const two = ids.length > 10;
+    const perRow = two ? Math.ceil(ids.length / 2) : ids.length;
+    const step = 600 / perRow;
+    ids.forEach((id, i) => {
+      const def = ENEMIES[id];
+      const tex = enemyTex(level, id, def.tex);
+      const row = Math.floor(i / perRow);
+      const x = 20 + step * ((i % perRow) + .5);
+      if (two) {
+        const y = 150 + row * 92;
+        this.add.sprite(x, y, tex, 0).setOrigin(.5, .9).setScale(def.boss ? 1 : 1.5).play(`${tex}_move`);
+        label(this, x, y + 4, def.name, '#f4eee0').setOrigin(.5, 0);
+        return;
+      }
+      this.add.sprite(x, 204, tex, 0).setOrigin(.5, .9).setScale(2).play(`${tex}_move`);
+      label(this, x, 220, def.name, '#f4eee0').setOrigin(.5, 0);
+      if (def.boss) this.add.sprite(x, 316, tex, 0).setOrigin(.5, .9).play(`${tex}_move`);
+      else for (const tier of [1, 2, 3] as const) {
+        const key = tierTex(tex, tier);
+        this.add.sprite(x + (tier - 2) * 30, 316, key, 0).setOrigin(.5, .9).play(`${key}_move`);
+      }
+    });
+    label(this, 16, 342, '正式 PNG 素材 · 角色、碰撞与数值沿用当前设置', '#d2c6b6');
+    this.input.keyboard?.removeAllListeners('keydown-LEFT');
+    this.input.keyboard?.removeAllListeners('keydown-RIGHT');
+    const last = Math.max(...LEVELS.filter((l) => l.available).map((l) => l.id));
+    this.input.keyboard?.on('keydown-LEFT', () => this.showEnemies(level.id === 1 ? last : level.id - 1));
+    this.input.keyboard?.on('keydown-RIGHT', () => this.showEnemies(level.id === last ? 1 : level.id + 1));
   }
 }

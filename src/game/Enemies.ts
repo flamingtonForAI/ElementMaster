@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import { ENEMIES, TRICKS, AFFIXES, TIERS, tierTex, type EnemyDef, type Trick, type Affix, type Tier } from '../config/enemies';
+import { ENEMIES, TRICKS, AFFIXES, TIERS, HANBA_FIRE, PHASE_FORMS, DIJIANG_FORMS, BOSS_MOVES, MOB_MOVES, tierTex, type EnemyDef, type Trick, type Affix, type Tier } from '../config/enemies';
 import { enemyTex, roarBuff, tricksOf, type RoarBuff } from '../config/levels';
-import { STATUS_INFO, FROZEN, type Inflict } from '../config/status';
-import { EL_INFO, type El } from '../config/elements';
+import { STATUS_INFO, STATUS_OF, FROZEN, type Inflict } from '../config/status';
+import { EL_INFO, GEN_ORDER, type El } from '../config/elements';
 import { SpatialGrid } from './SpatialGrid';
 import { PLAYER_RADIUS } from './Player';
 import { label, hex } from '../ui/text';
@@ -10,12 +10,15 @@ import type { GameScene, HurtOpts } from '../scenes/GameScene';
 import type { ChestKind } from './Pickups';
 import type { PatchKind } from './Hazards';
 import { audio } from '../audio/Audio';
+import { ENEMY_SHEETS } from '../art/enemySheets';
 
 export class Enemy {
   id = 0;
   def!: EnemyDef;
   /** 本关实际用的贴图：有地域外观时和 def.tex 不同，动画、尸骸都跟着它走 */
   tex = '';
+  /** 地面怪的四姿势步态跟随主动移动速度；飞行/漂浮怪持续拍翼。 */
+  walkWithSpeed = false;
   x = 0;
   y = 0;
   hp = 0;
@@ -94,6 +97,8 @@ export class Enemy {
   combo = 0;
   /** 已经复起过（刑天） */
   rose = false;
+  /** 第几相（旱魃：0 土相，1 焚身化火之后） */
+  phase = 0;
   noKill = false;
   /** 冲刺留火的里程（赤狐、毕方） */
   trailAcc = 0;
@@ -113,9 +118,10 @@ export class Enemy {
   tricks: readonly Trick[] = [];
   trickAt = 0;
   castUntil = 0;
-  /** 精英词缀，以及瘴气结算、召唤的下次时刻 */
+  /** 精英词缀，以及瘴气、寒气结算和召唤的下次时刻（瘴、寒各自计时，同时带也互不干扰） */
   affixes: Affix[] = [];
   affixTick = 0;
+  frostTick = 0;
   summonAt = 0;
   /** 被列阵 / 护词缀罩着：这之前护甲 +guardArmor */
   guardUntil = 0;
@@ -132,6 +138,12 @@ const HOP = 0.3;
 export const RAGE_AT = 0.3;
 /** 狂暴吼叫的停顿（期间无敌、不出招） */
 const RAGE_PAUSE = 1;
+const { xuanming: XM, hanba: HB, jiuying: JY, dijiang: DJ } = BOSS_MOVES;
+const { sting: STING, leap: LEAP } = MOB_MOVES;
+/** 平时 / 狂暴后取哪个值 */
+const at = (v: readonly [number, number], rage: boolean) => v[rage ? 1 : 0];
+/** 帝江每种元素喷的弹 */
+const EL_SHOT: Record<El, string> = { metal: 'ep_blade', wood: 'ep_leaf', water: 'ep_water', fire: 'ep_fire', earth: 'ep_rock' };
 
 const TINTS: Record<number, number> = {
   2: STATUS_INFO.stun.tint,
@@ -199,6 +211,7 @@ export class EnemyManager {
     e.lastEl = null;
     e.invulnUntil = 0;
     e.rose = false;
+    e.phase = 0;
     e.raged = false;
     e.rageUntil = 0;
     e.combo = 0;
@@ -212,7 +225,7 @@ export class EnemyManager {
     e.trickAt = this.g.now + 2 + Math.random() * 3;
     e.castUntil = e.guardUntil = e.guardArmor = 0;
     e.affixes = e.elite ? this.rollAffixes(this.g.levelDef.eliteAffixes ?? 0) : [];
-    e.affixTick = 0;
+    e.affixTick = e.frostTick = 0;
     e.summonAt = this.g.now + (AFFIXES.summon.every ?? 9);
     e.alive = true;
     e.kbx = e.kby = 0;
@@ -228,8 +241,10 @@ export class EnemyManager {
     e.lift = 0;
     e.tint = -1;
     e.navUntil = 0;
-    const tex = tierTex(enemyTex(this.g.levelDef, defId, def.tex), e.tier);
+    const baseTex = enemyTex(this.g.levelDef, defId, def.tex);
+    const tex = tierTex(baseTex, e.tier);
     e.tex = tex;
+    e.walkWithSpeed = ENEMY_SHEETS[baseTex as keyof typeof ENEMY_SHEETS]?.grounded ?? false;
     e.sprite.setTexture(tex, 0).setVisible(true).setActive(true).setScale(scale).setAlpha(1).clearTint();
     if (T) this.hint(`tier${e.tier}`, `${T.name}化的妖物出现了：${e.tier === 2 ? '颜色更深，更耐打、更痛' : '通体发暗、描着元素色的边，非常难缠'}`, T.css);
     this.play(e, '_move');
@@ -274,7 +289,8 @@ export class EnemyManager {
 
   /** 血量跌破 RAGE_AT 就狂暴；等 Boss 回到普通走位（不在蓄力、冲刺、半空里）再触发，免得打断一半的招 */
   maybeEnrage(e: Enemy) {
-    if (e.boss && !e.raged && e.state === 0 && e.lift <= 0 && e.hp > 0 && e.hp < e.maxHp * RAGE_AT) this.enrage(e);
+    // 有第二相的 Boss（旱魃）先换相再狂暴
+    if (e.boss && !e.raged && e.state === 0 && e.lift <= 0 && e.hp > 0 && e.hp < e.maxHp * RAGE_AT && !(e.def.phase && e.phase === 0)) this.enrage(e);
   }
 
   /** Boss 进入狂暴：停顿吼一声（期间无敌），通知场景给全场小怪叠一层 */
@@ -313,7 +329,19 @@ export class EnemyManager {
   /** 按地域外观播放动作帧；皮肤没做这套帧（如 _dig）就退回同阶的默认贴图 */
   private play(e: Enemy, suffix: '_move' | '_dig') {
     const key = e.tex + suffix;
+    e.sprite.anims.timeScale = 1;
     e.sprite.play(this.g.anims.exists(key) ? key : tierTex(e.def.tex, e.tier) + suffix);
+  }
+
+  private syncWalk(e: Enemy, speed: number) {
+    const a = e.sprite.anims;
+    if (!e.walkWithSpeed || a.currentAnim?.key !== e.tex + '_move') return;
+    if (speed < 1) {
+      if (!a.isPaused) a.pause(a.currentAnim.frames[0]);
+    } else {
+      if (a.isPaused) a.resume();
+      a.timeScale = Math.min(2.5, Math.max(0.35, speed / e.def.speed));
+    }
   }
 
   get count() {
@@ -346,9 +374,18 @@ export class EnemyManager {
         if (st) [nx, ny] = st;
       }
       const stunned = now < e.stunUntil;
-      // 泥潭拖慢非水系的普通敌人，和迟缓叠乘
-      const mud = !e.boss && e.def.el !== 'water' && !this.underground(e) ? g.world.inMud(e.x, e.y) : null;
-      const slow = (now < e.slowUntil ? e.slowF : 1) * (mud ? mud.enemy : 1);
+      // 泥潭、冰面拖慢非水系的普通敌人，流沙拖慢非土系的，和迟缓叠乘
+      const grounded = !e.boss && !this.underground(e);
+      const soggy = grounded && e.def.el !== 'water';
+      // 冰面、流沙走 Hazards：固定的和冰锥、陷沙、陷坑留下的临时区域同一套规则
+      const mud = soggy ? g.world.inMud(e.x, e.y) : null;
+      const ice = soggy && g.hazards.anyIce ? g.hazards.onIce(e.x, e.y) : null;
+      const quick = grounded && e.def.el !== 'earth' && g.hazards.anySand ? g.hazards.sandAt(e.x, e.y) : null;
+      const sand = quick ? quick.def.enemy : 1;
+      // 相位轮转：当相元素的普通妖物更快
+      const cycle = g.levelDef.cycle;
+      const surge = cycle && !e.boss && e.def.el === g.hazards.phaseEl ? cycle.surge : 1;
+      const slow = (now < e.slowUntil ? e.slowF : 1) * (mud ? mud.enemy : 1) * (ice ? ice.enemy : 1) * sand * surge;
       let vx = 0;
       let vy = 0;
 
@@ -380,6 +417,9 @@ export class EnemyManager {
           if (!e.alive) continue;
         }
       }
+
+      // 只按主动移动调整步态，被击退或挤开不应触发迈步。
+      this.syncWalk(e, Math.hypot(vx, vy));
 
       // 击退衰减
       vx += e.kbx;
@@ -441,7 +481,7 @@ export class EnemyManager {
         now < e.flashUntil ? 1
         : hop > 0 ? 8
         : stunned ? (now < e.frozenUntil ? 10 : 2)
-        : now < e.castUntil || (e.state === 1 && (e.def.behavior === 'charge' || e.boss)) || (e.state === 4 && e.def.behavior === 'boss_xingtian') || (e.state === 2 && e.def.behavior === 'burrow') ? 4
+        : now < e.castUntil || (e.state === 1 && (e.def.behavior === 'charge' || e.def.behavior === 'sting' || e.def.behavior === 'leap' || e.boss)) || (e.state === 4 && e.def.behavior === 'boss_xingtian') || (e.state === 2 && e.def.behavior === 'burrow') ? 4
         : burning ? 5
         : poisoned ? 6
         : slow < 1 ? 3
@@ -520,7 +560,19 @@ export class EnemyManager {
         if (e.timer <= 0 && dist < 180) {
           e.timer = (4.5 + Math.random()) * e.cdMul;
           if (e.tricks.includes('lob')) this.lobShot(e);
-          else g.proj.enemyShot(e.def.shot ?? 'ep_poison', e.x, e.y - 8, nx * 90, ny * 90, e.dmg, e.def.el, this.hurtOf(e));
+          else if (e.tricks.includes('boomerang')) {
+            const B = TRICKS.boomerang;
+            g.proj.enemyBoomerang(e.def.shot ?? 'ep_blade', e.x, e.y - 8, nx, ny, B.speed, B.back, e.dmg, e.def.el, this.hurtOf(e));
+            this.hint('boomerang', `${e.def.name}的飞刃会折回来：躲开之后别站在它身后`, EL_INFO[e.def.el].css);
+          } else {
+            // 扇形吐几道（焰蛸），每道 0.25 弧度
+            const n = e.def.spread ?? 1;
+            const a = Math.atan2(ny, nx);
+            for (let i = 0; i < n; i++) {
+              const k = a + (i - (n - 1) / 2) * 0.25;
+              g.proj.enemyShot(e.def.shot ?? 'ep_poison', e.x, e.y - 8, Math.cos(k) * 90, Math.sin(k) * 90, e.dmg, e.def.el, this.hurtOf(e));
+            }
+          }
           audio.sfx('bossShot', { rate: 1.6, vol: 0.4 });
         }
         if (dist > 90) return [nx * sp, ny * sp];
@@ -552,12 +604,102 @@ export class EnemyManager {
           this.play(e, '_move');
           audio.sfx('spike', { rate: 0.8 });
           g.fx.anim('fx_spike', e.x, e.y + 2, { originY: 0.92, depth: e.y + 1, tint: 0xdaa53e });
+          if (e.tricks.includes('sinkhole')) {
+            g.hazards.sandPit(e.x, e.y, TRICKS.sinkhole.r, TRICKS.sinkhole.dur);
+            this.hint('sinkhole', `${e.def.name}破土的地方会陷成流沙：冒头之后别站在那儿`, '#e8c878');
+          }
           g.fx.burst(e.x, e.y - 2, 0x8a6220, 8);
           const p = g.player;
           if (Math.hypot(p.x - e.x, p.y - e.y) < 22 + PLAYER_RADIUS) g.hurtPlayer(e.dmg * 1.5, e.def.el, this.hurtOf(e));
         }
         return [0, 0];
       }
+      case 'sidestep': {
+        // 横着挪：一边左右来回错步一边逼近，贴近了才直扑
+        if (dist < 36) return [nx * sp, ny * sp];
+        const side = Math.sin(g.now * 2.4 + e.id) * 0.95;
+        return [(nx * 0.55 - ny * side) * sp, (ny * 0.55 + nx * side) * sp];
+      }
+      case 'sting': {
+        // 0 走近 → 1 停下预警（锁定方向）→ 2 尾针直刺身前一条线 → 收招
+        e.timer -= dt;
+        if (e.state === 0) {
+          if (e.timer <= 0 && dist < STING.len) {
+            e.state = 1;
+            e.timer = STING.warn * e.windMul;
+            e.dashX = nx;
+            e.dashY = ny;
+            g.fx.line(e.x, e.y - 4, Math.atan2(ny, nx), STING.len, 0xdaa53e, e.timer, 8);
+          }
+          return [nx * sp, ny * sp];
+        }
+        if (e.state === 1) {
+          if (e.timer <= 0) {
+            e.state = 2;
+            e.timer = 0.4;
+            audio.sfx('spike', { rate: 1.4, vol: 0.4 });
+            g.fx.line(e.x, e.y - 4, Math.atan2(e.dashY, e.dashX), STING.len, 0xfff0b0, 0.12, 3);
+            const p = g.player;
+            const t = Math.max(0, Math.min(STING.len, (p.x - e.x) * e.dashX + (p.y - e.y) * e.dashY));
+            if (Math.hypot(p.x - (e.x + e.dashX * t), p.y - (e.y + e.dashY * t)) < 6 + PLAYER_RADIUS) g.hurtPlayer(e.dmg * 1.3, e.def.el, this.hurtOf(e));
+          }
+          return [0, 0];
+        }
+        if (e.timer <= 0) {
+          e.state = 0;
+          e.timer = 2.5 * e.cdMul;
+        }
+        return [0, 0];
+      }
+      case 'leap': {
+        // 0 走近 → 1 蹲下预警（锁定玩家当前位置）→ 2 跳过去 → 落地砸一圈
+        e.timer -= dt;
+        if (e.state === 0) {
+          if (e.timer <= 0 && dist > LEAP.min && dist < LEAP.max) {
+            e.state = 1;
+            e.timer = LEAP.warn * e.windMul;
+            e.sx = e.x;
+            e.sy = e.y;
+            [e.tx, e.ty] = g.world.clampPt(g.player.x, g.player.y, 10);
+            g.fx.telegraph(e.tx, e.ty, LEAP.r, 0x5a9ae8, e.timer + LEAP.air);
+            this.hint('leap', `${e.def.name}会跳到你脚下：看地上的圈，挪开就行`, EL_INFO[e.def.el].css);
+          }
+          return [nx * sp, ny * sp];
+        }
+        if (e.state === 1) {
+          if (e.timer <= 0) {
+            e.state = 2;
+            e.timer = LEAP.air;
+          }
+          return [0, 0];
+        }
+        if (e.state === 2) {
+          const k = Math.min(1, 1 - e.timer / LEAP.air);
+          e.x = e.sx + (e.tx - e.sx) * k;
+          e.y = e.sy + (e.ty - e.sy) * k;
+          e.lift = Math.sin(k * Math.PI) * 28;
+          if (e.timer <= 0) {
+            e.lift = 0;
+            e.state = 0;
+            e.timer = 4 * e.cdMul;
+            audio.sfx('explode', { rate: 1.4, vol: 0.35 });
+            g.fx.ring(e.x, e.y - 2, LEAP.r, 0x9fc0ff, 0.3);
+            g.fx.burst(e.x, e.y - 4, 0x5a9ae8, 8);
+            const p = g.player;
+            if (Math.hypot(p.x - e.x, (p.y - e.y) / 0.6) < LEAP.r + PLAYER_RADIUS) g.hurtPlayer(e.dmg * 1.3, e.def.el, this.hurtOf(e));
+          }
+          return [0, 0];
+        }
+        return [0, 0];
+      }
+      case 'boss_jiuying':
+        return this.jiuying(e, dt, nx, ny, sp, dist);
+      case 'boss_dijiang':
+        return this.dijiang(e, dt, nx, ny, sp, dist);
+      case 'boss_hanba':
+        return this.hanba(e, dt, nx, ny, sp, dist);
+      case 'boss_xuanming':
+        return this.xuanming(e, dt, nx, ny, sp, dist);
       case 'boss_ape':
         return this.ape(e, dt, nx, ny, sp);
       case 'boss_bird':
@@ -651,9 +793,10 @@ export class EnemyManager {
     }
   }
 
-  /** 随机挑 n 个不重复的精英词缀 */
+  /** 随机挑 n 个不重复的精英词缀；带 from 的词缀到那一关才有 */
   private rollAffixes(n: number): Affix[] {
-    const pool = Object.keys(AFFIXES) as Affix[];
+    const lv = this.g.levelDef.id;
+    const pool = (Object.keys(AFFIXES) as Affix[]).filter((a) => (AFFIXES[a].from ?? 0) <= lv);
     const out: Affix[] = [];
     while (out.length < Math.min(n, pool.length)) {
       const a = pool[Math.floor(Math.random() * pool.length)];
@@ -662,7 +805,7 @@ export class EnemyManager {
     return out;
   }
 
-  /** 列阵、护画成脚下一圈淡色阵环，瘴画成一团跟着走的瘴气 */
+  /** 列阵、护画成脚下一圈淡色阵环，瘴画成一团跟着走的瘴气，寒画成脚下一圈霜 */
   private makeAura(e: Enemy) {
     const g = this.g;
     e.aura?.destroy();
@@ -670,6 +813,7 @@ export class EnemyManager {
     const r = e.tricks.includes('formation') ? TRICKS.formation.r : e.affixes.includes('guard') ? AFFIXES.guard.r! : 0;
     if (r) e.aura = g.add.image(e.x, e.y, 'fx_ring').setTint(e.tricks.includes('formation') ? 0xc8d0e0 : 0xe8d38a).setAlpha(0.2).setScale(r / 31, (r / 31) * 0.6).setDepth(-9e4);
     else if (e.affixes.includes('miasma')) e.aura = g.add.image(e.x, e.y, 'fx_fog').setAlpha(0.4).setScale(AFFIXES.miasma.r! / 26);
+    else if (e.affixes.includes('frost')) e.aura = g.add.image(e.x, e.y, 'fx_frost').setAlpha(0.7).setScale(AFFIXES.frost.r! / 30, (AFFIXES.frost.r! / 30) * 0.7);
   }
 
   /** 第一次见到某种手段时提示一句 */
@@ -772,6 +916,10 @@ export class EnemyManager {
       if (e.affixes.includes('miasma') && now >= e.affixTick && Math.hypot(p.x - e.x, (p.y - e.y) / 0.7) < AFFIXES.miasma.r!) {
         e.affixTick = now + AFFIXES.miasma.tick!;
         g.status.inflict({ kind: 'poison', chance: 0.35, dps: 2 * g.dmgScale(), dur: 3, mob: true });
+      }
+      if (e.affixes.includes('frost') && now >= e.frostTick && Math.hypot(p.x - e.x, (p.y - e.y) / 0.7) < AFFIXES.frost.r!) {
+        e.frostTick = now + AFFIXES.frost.tick!;
+        g.status.inflict({ kind: 'slow', chance: 0.35, mob: true });
       }
       if (e.affixes.includes('summon') && now >= e.summonAt && this.count < g.spawnCap()) {
         e.summonAt = now + AFFIXES.summon.every!;
@@ -920,6 +1068,458 @@ export class EnemyManager {
         if (g.over) return;
         g.fx.burst(x, y - 4, 0x7ac04a, 8);
         g.hazards.miasmaAt(x, y, 48, 1.5, 8);
+      });
+    }
+  }
+
+  /**
+   * 旱魃：所居之处赤地千里。土相时慢慢逼近，定时朝玩家裂地钻出三道土刺，隔一会儿在玩家脚下陷一片流沙，贴身时跺地；
+   * 血量跌破一半焚身化火（换成 HANBA_FIRE：火系、更快），走过的地方留火，定时放一圈火球、在玩家周围降焚风火柱，跺地也留火。
+   * 火相里再跌破 30% 才狂暴：火环、焚风更密，并刮一场沙暴（GameScene.onBossRage）。
+   */
+  private hanba(e: Enemy, dt: number, nx: number, ny: number, sp: number, dist: number): [number, number] {
+    const g = this.g;
+    const fire = e.phase === 1;
+    const rage = e.raged;
+    const R = HB.stomp.r;
+    e.timer -= dt;
+    if (e.state === 9) {
+      // 焚身的停顿
+      if (e.timer <= 0) {
+        e.state = 0;
+        e.timer = 1.2;
+      }
+      return [0, 0];
+    }
+    if (e.state === 0) {
+      if (!fire && e.hp < e.maxHp * (e.def.phase ?? 0.5)) {
+        this.ignite(e);
+        return [0, 0];
+      }
+      e.timer2 -= dt;
+      e.timer3 -= dt;
+      const hurt = this.hurtOf(e);
+      if (fire) this.trail(e, sp * dt, 22, 10, 2.5, 4);
+      if (e.timer2 <= 0) {
+        if (fire) {
+          e.timer2 = at(HB.ring.every, rage);
+          this.fireRing(e, at(HB.ring.n, rage));
+        } else {
+          e.timer2 = HB.thorn.every;
+          const a = Math.atan2(ny, nx);
+          for (const k of [-0.35, 0, 0.35]) this.thornLine(e.x, e.y, a + k, hurt, 'earth');
+        }
+      }
+      if (e.timer3 <= 0) {
+        const p = g.player;
+        if (fire) {
+          // 焚风：玩家脚下和周围降火柱
+          e.timer3 = at(HB.blast.every, rage);
+          const n = at(HB.blast.n, rage);
+          g.hazards.blast(p.x, p.y, 30, 1.1, 14, 2.5);
+          const off = Math.random() * Math.PI;
+          for (let i = 1; i < n; i++) {
+            const a = off + (i / (n - 1)) * Math.PI * 2;
+            g.hazards.blast(p.x + Math.cos(a) * 80, p.y + Math.sin(a) * 55, 30, 1.1, 14, 2.5);
+          }
+        } else {
+          // 陷沙：玩家脚下预警后陷成一片流沙
+          const S = HB.sand;
+          e.timer3 = S.every;
+          const [x, y] = g.world.clampPt(p.x, p.y, 30);
+          g.fx.telegraph(x, y, S.r, 0xdaa53e, S.warn);
+          audio.sfx('charge', { rate: 0.5, vol: 0.4 });
+          g.later(S.warn, () => !g.over && g.hazards.sandPit(x, y, S.r, S.dur));
+        }
+      }
+      if (e.timer <= 0 && dist < HB.stomp.range) {
+        // 跺地：身边一圈预警
+        e.state = 1;
+        e.timer = HB.stomp.warn;
+        g.fx.telegraph(e.x, e.y, R, fire ? 0xff7a2a : 0xdaa53e, HB.stomp.warn);
+        audio.sfx('bossCharge');
+        return [0, 0];
+      }
+      return [nx * sp, ny * sp];
+    }
+    if (e.state === 1) {
+      if (e.timer <= 0) {
+        e.state = 3;
+        e.timer = 0.8;
+        audio.sfx('explode', { rate: 0.6 });
+        g.cameras.main.shake(220, 0.007);
+        g.fx.crack(e.x, e.y, 0.6);
+        g.fx.ring(e.x, e.y - 4, R, fire ? 0xff8a3a : 0xdaa53e, 0.4);
+        g.fx.burst(e.x, e.y - 4, fire ? 0xff7a2a : 0x8a6220, 18);
+        const p = g.player;
+        if (Math.hypot(p.x - e.x, (p.y - e.y) / 0.6) < R + PLAYER_RADIUS) g.hurtPlayer(e.dmg, e.def.el, this.hurtOf(e, true));
+        if (fire) g.hazards.patch(e.x, e.y, 30, 3, 5);
+      }
+      return [0, 0];
+    }
+    if (e.timer <= 0) {
+      e.state = 0;
+      e.timer = at(HB.stomp.rest, rage);
+    }
+    return [0, 0];
+  }
+
+  /** 旱魃焚身化火：停顿 1.5 秒（无敌），换成火相的定义和贴图，清掉身上的异常 */
+  private ignite(e: Enemy) {
+    const g = this.g;
+    e.phase = 1;
+    e.state = 9;
+    e.timer = HB.ignite;
+    e.timer2 = 1;
+    e.timer3 = 3;
+    e.lift = 0;
+    e.kbx = e.kby = 0;
+    e.invulnUntil = g.now + HB.ignite;
+    e.speed = HANBA_FIRE.speed;
+    e.armor = HANBA_FIRE.armor;
+    e.poisonUntil = e.burnUntil = e.slowUntil = e.bleedUntil = 0;
+    this.reform(e, HANBA_FIRE);
+    g.proj.clearEnemyShots();
+    g.cameras.main.shake(400, 0.008);
+    g.fx.ring(e.x, e.y - 12, 60, 0xff8a3a, 0.5);
+    g.later(0.25, () => g.fx.ring(e.x, e.y - 12, 90, 0xff8a3a, 0.5));
+    g.fx.burst(e.x, e.y - 16, 0xff7a2a, 24);
+    audio.sfx('boss', { rate: 1.1, vol: 0.7 });
+    g.hud.toast(`${e.def.name}焚身化火！转为火系，用水克它`, '#ff8a4a');
+  }
+
+  /** Boss 换一份定义（旱魃化火、九婴随潮）：贴图、元素字、攻击异常跟着换，生命和状态机不动 */
+  private reform(e: Enemy, def: EnemyDef) {
+    e.def = def;
+    e.atkDps = def.inflict?.dps ?? 0;
+    e.tex = def.tex;
+    this.play(e, '_move');
+    e.glyph?.setText(EL_INFO[def.el].name).setColor(hex(EL_INFO[def.el].color));
+    e.tint = -1;
+  }
+
+  /** 换相：随相换元素的 Boss（PHASE_FORMS）换成这一相的那份定义；这一相没配就不换 */
+  rephase(el: El) {
+    for (const e of this.list) {
+      const form = e.alive ? PHASE_FORMS[e.def.id]?.[el] : undefined;
+      if (form && e.def !== form) this.morph(e, form);
+    }
+  }
+
+  /** Boss 换元素：换定义、闪一圈元素色、提示一句 */
+  private morph(e: Enemy, def: EnemyDef) {
+    const g = this.g;
+    this.reform(e, def);
+    const col = EL_INFO[def.el].color;
+    g.fx.ring(e.x, e.y - 12, 60, col, 0.5);
+    g.fx.burst(e.x, e.y - 16, col, 16);
+    g.hud.toast(`${def.name}化为${EL_INFO[def.el].name}系！`, EL_INFO[def.el].css);
+  }
+
+  /**
+   * 九婴：水火之怪，九首婴啼，随潮汐在水、火两系间换（PHASE_FORMS）。远了游过来，近了绕着玩家转；
+   * 定时九首轮着旋喷一圈水弹、火弹；隔一会儿按当前的潮招水柱（落地留水洼）或引火山（焚风火柱）；
+   * 再隔一会儿停下婴啼，预警后唤来几只同系小怪、震出一圈弹。狂暴后潮汐翻得更快（Hazards.turnPhase），各招更密。
+   */
+  private jiuying(e: Enemy, dt: number, nx: number, ny: number, sp: number, dist: number): [number, number] {
+    const g = this.g;
+    const rage = e.raged;
+    const water = e.def.el === 'water';
+    e.timer -= dt;
+    if (e.state === 0) {
+      e.timer2 -= dt;
+      e.timer3 -= dt;
+      if (e.timer2 <= 0) {
+        e.timer2 = at(JY.spiral.every, rage);
+        this.spiral(e, at(JY.spiral.n, rage));
+      }
+      if (e.timer3 <= 0) {
+        e.timer3 = at(JY.tide.every, rage);
+        const p = g.player;
+        const n = at(JY.tide.n, rage);
+        const off = Math.random() * Math.PI;
+        for (let i = 0; i < n; i++) {
+          const a = off + (i / Math.max(1, n - 1)) * Math.PI * 2;
+          const d = i === 0 ? 0 : 80;
+          const [x, y] = g.world.clampPt(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d * 0.7, 20);
+          if (water) this.spout(x, y);
+          else g.hazards.blast(x, y, 30, 1.1, 14, 2.5);
+        }
+      }
+      if (e.timer <= 0 && dist < JY.cry.range) {
+        // 婴啼
+        e.state = 1;
+        e.timer = JY.cry.warn;
+        g.fx.telegraph(e.x, e.y, JY.cry.r, EL_INFO[e.def.el].color, JY.cry.warn);
+        audio.sfx('bossCharge', { rate: 1.4 });
+        return [0, 0];
+      }
+      if (dist > 120) return [nx * sp, ny * sp];
+      return [-ny * sp * 0.6 + nx * sp * 0.1, nx * sp * 0.6 + ny * sp * 0.1];
+    }
+    if (e.state === 1) {
+      if (e.timer <= 0) {
+        e.state = 3;
+        e.timer = 0.8;
+        audio.sfx('boss', { rate: 1.6, vol: 0.6 });
+        g.cameras.main.shake(260, 0.006);
+        g.fx.ring(e.x, e.y - 8, JY.cry.r, EL_INFO[e.def.el].color, 0.4);
+        const p = g.player;
+        if (Math.hypot(p.x - e.x, (p.y - e.y) / 0.6) < JY.cry.r + PLAYER_RADIUS) g.hurtPlayer(e.dmg * 0.6, e.def.el, this.hurtOf(e, true));
+        const id = water ? 'shuigui' : 'huoya';
+        const n = at(JY.cry.n, rage);
+        for (let i = 0; i < n && this.count < g.spawnCap(); i++) {
+          const a = (i / n) * Math.PI * 2;
+          this.spawn(id, e.x + Math.cos(a) * 40, e.y + Math.sin(a) * 30, { hpMult: g.hpScale(), noXp: true });
+        }
+      }
+      return [0, 0];
+    }
+    if (e.timer <= 0) {
+      e.state = 0;
+      e.timer = at(JY.cry.every, rage);
+    }
+    return [0, 0];
+  }
+
+  /**
+   * 帝江：混沌，「如黄囊，赤如丹火，六足四翼，浑敦无面目，是识歌舞」。远了飘过来，近了绕着玩家转。
+   * 自己按相生每掉 20% 生命换一系（DIJIANG_FORMS），换时震出一圈新元素的弹；每系一套招：木三道毒刺、火一圈火球、
+   * 土玩家周围落石、金一圈飞刃、水冰锥。隔一会儿停下歌舞：原地转着喷五色弹，每发换一系、附带那一系的异常。
+   * 狂暴后各招更密。
+   */
+  private dijiang(e: Enemy, dt: number, nx: number, ny: number, sp: number, dist: number): [number, number] {
+    const g = this.g;
+    const rage = e.raged;
+    // 按血量换相：每掉 DJ.step 的生命换下一系（phase 记已经换过几次），打得再快五相也都会出场
+    const due = Math.min(GEN_ORDER.length - 1, Math.floor((1 - e.hp / e.maxHp) / DJ.step));
+    if (due > e.phase && e.state === 0) {
+      e.phase++;
+      const next = GEN_ORDER[(GEN_ORDER.indexOf(e.def.el) + 1) % GEN_ORDER.length];
+      this.morph(e, DIJIANG_FORMS[next]);
+      this.elementRing(e, next, at(DJ.ring, rage));
+    }
+    // 换相之后再取，同一帧到期的招用新元素
+    const el = e.def.el;
+    e.timer -= dt;
+    if (e.state === 0) {
+      e.timer2 -= dt;
+      e.timer3 -= dt;
+      if (e.timer2 <= 0) {
+        e.timer2 = at(DJ.move, rage);
+        this.dijiangMove(e, el, Math.atan2(ny, nx), rage);
+      }
+      if (e.timer3 <= 0 && dist < DJ.dance.range) {
+        e.timer3 = at(DJ.dance.every, rage);
+        e.state = 1;
+        e.timer = DJ.dance.dur;
+        e.timer2 = Math.max(e.timer2, 1);
+        e.dashX = Math.random() * Math.PI * 2;
+        audio.sfx('bossCharge', { rate: 1.2 });
+        this.hint('dance', `${e.def.name}起舞了：五色弹转着圈喷，站远一点找空隙`, '#ffd23f');
+        return [0, 0];
+      }
+      if (dist > 140) return [nx * sp, ny * sp];
+      return [-ny * sp * 0.6 + nx * sp * 0.1, nx * sp * 0.6 + ny * sp * 0.1];
+    }
+    if (e.state === 1) {
+      // 歌舞：每 0.08 秒喷一发，转着圈，五系轮着来
+      e.trailAcc += dt;
+      while (e.trailAcc >= 0.08) {
+        e.trailAcc -= 0.08;
+        e.dashX += 0.42;
+        e.combo = (e.combo + 1) % 5;
+        const k = GEN_ORDER[e.combo];
+        const hurt: HurtOpts = { inflict: { kind: STATUS_OF[k], chance: 0.3, dps: 3 } };
+        g.proj.enemyShot(EL_SHOT[k], e.x, this.bodyY(e, 0.5), Math.cos(e.dashX) * 95, Math.sin(e.dashX) * 95, 10, k, hurt);
+      }
+      if (e.timer <= 0) {
+        e.state = 3;
+        e.timer = 0.6;
+        e.trailAcc = 0;
+      }
+      return [0, 0];
+    }
+    if (e.timer <= 0) {
+      e.state = 0;
+      e.timer = 1;
+    }
+    return [0, 0];
+  }
+
+  /** 帝江这一系的招 */
+  private dijiangMove(e: Enemy, el: El, a: number, rage: boolean) {
+    const g = this.g;
+    const hurt = this.hurtOf(e);
+    const n = at(DJ.n[el], rage);
+    if (el === 'wood') for (let i = 0; i < n; i++) this.thornLine(e.x, e.y, a + (i - (n - 1) / 2) * 0.33, hurt);
+    else if (el === 'fire') this.fireRing(e, n);
+    else if (el === 'earth') g.hazards.rain(n);
+    else if (el === 'metal') this.bladeRing(e, n, hurt);
+    else this.icicles(n);
+  }
+
+  /** 换系时震出的一圈弹（新元素） */
+  private elementRing(e: Enemy, el: El, n: number) {
+    const g = this.g;
+    const hurt = this.hurtOf(e);
+    const off = Math.random() * Math.PI;
+    for (let i = 0; i < n; i++) {
+      const a = off + (i / n) * Math.PI * 2;
+      g.proj.enemyShot(EL_SHOT[el], e.x, this.bodyY(e, 0.5), Math.cos(a) * 90, Math.sin(a) * 90, 10, el, hurt);
+    }
+  }
+
+  /** 九首旋喷：一发接一发转着圈喷，水弹（迟缓）、火弹（灼烧）交替 */
+  private spiral(e: Enemy, n: number) {
+    const g = this.g;
+    const { id } = e;
+    const base = Math.random() * Math.PI * 2;
+    const water: HurtOpts = { inflict: { kind: 'slow', chance: 0.4 } };
+    const fire: HurtOpts = { inflict: { kind: 'burn', chance: 0.4, dps: 3 } };
+    audio.sfx('bossShot', { rate: 1.1 });
+    for (let i = 0; i < n; i++) {
+      g.later(i * 0.05, () => {
+        if (!e.alive || e.id !== id || e.state !== 0 || g.over) return;
+        const a = base + i * 0.35;
+        const wet = i % 2 === 0;
+        g.proj.enemyShot(wet ? 'ep_water' : 'ep_fire', e.x, this.bodyY(e, 0.65), Math.cos(a) * 100, Math.sin(a) * 100, 10, wet ? 'water' : 'fire', wet ? water : fire);
+      });
+    }
+  }
+
+  /** 水柱：预警后从海底喷起，砸中必定迟缓，落地留一汪水洼 */
+  private spout(x: number, y: number) {
+    const g = this.g;
+    const r = 28;
+    g.fx.telegraph(x, y, r, 0x5a9ae8, 1.2);
+    g.later(1.2, () => {
+      if (g.over) return;
+      audio.sfx('explode', { rate: 1.5, vol: 0.4 });
+      g.fx.ring(x, y - 2, r + 4, 0x9fc0ff, 0.35);
+      g.fx.burst(x, y - 10, 0x6aa8e8, 14);
+      const p = g.player;
+      if (Math.hypot(p.x - x, (p.y - y) / 0.6) < r + PLAYER_RADIUS) g.hurtPlayer(14, 'water', { inflict: { kind: 'slow', chance: 1 } });
+      g.hazards.patch(x, y, 16, 4, 0, 'water');
+    });
+  }
+
+  /** 火环：一圈火球 */
+  private fireRing(e: Enemy, n: number) {
+    const g = this.g;
+    const hurt = this.hurtOf(e);
+    audio.sfx('bossShot', { rate: 1 });
+    const off = Math.random() * Math.PI;
+    for (let i = 0; i < n; i++) {
+      const a = off + (i / n) * Math.PI * 2;
+      g.proj.enemyShot('ep_fire', e.x, this.bodyY(e, 0.5), Math.cos(a) * 95, Math.sin(a) * 95, 10, 'fire', hurt);
+    }
+  }
+
+  /**
+   * 玄冥：北方水神，人面鸟身、珥两青蛇。绕着玩家盘旋，定时扇出一排冰羽；
+   * 隔一会儿在玩家脚下和周围落冰锥，预警后砸下，落地结一片临时冰面；
+   * 再隔一会儿停下吸寒：把玩家往身边拉，拉完身边一圈冰爆（必定暴击），原地留一片冰。
+   * 狂暴后冰羽连发两排、冰锥更多更勤、吸得更狠，并立刻刮一场暴风雪（见 GameScene.onBossRage）。
+   */
+  private xuanming(e: Enemy, dt: number, nx: number, ny: number, sp: number, dist: number): [number, number] {
+    const g = this.g;
+    const rage = e.raged;
+    const R = at(XM.inhale.r, rage);
+    e.timer -= dt;
+    if (e.state === 0) {
+      e.timer2 -= dt;
+      e.timer3 -= dt;
+      if (e.timer2 <= 0) {
+        e.timer2 = at(XM.feather.every, rage);
+        const a = Math.atan2(ny, nx);
+        this.iceFeathers(e, a, at(XM.feather.n, rage));
+        if (rage) g.later(0.3, () => e.alive && e.state === 0 && this.iceFeathers(e, a, 8));
+      }
+      if (e.timer3 <= 0) {
+        e.timer3 = at(XM.icicle.every, rage);
+        this.icicles(at(XM.icicle.n, rage));
+      }
+      if (e.timer <= 0 && dist < XM.inhale.range) {
+        // 吸寒：预警圈慢慢收，期间一直往身边拉，收完冰爆
+        e.state = 1;
+        e.timer = XM.inhale.warn;
+        e.timer4 = 0;
+        g.fx.telegraph(e.x, e.y, R, 0x9fd8ff, XM.inhale.warn);
+        g.hazards.pull(e.x, e.y, at(XM.inhale.pull, rage), XM.inhale.warn - 0.2);
+        audio.sfx('bossCharge', { rate: 0.7 });
+        this.hint('inhale', `${e.def.name}在吸寒：顶着往外走，别被拉进冰爆圈`, '#c8ecff');
+        return [0, 0];
+      }
+      // 远了飞过来，近了绕着玩家盘旋
+      if (dist > 130) return [nx * sp, ny * sp];
+      return [-ny * sp * 0.6 + nx * sp * 0.1, nx * sp * 0.6 + ny * sp * 0.1];
+    }
+    if (e.state === 1) {
+      e.timer4 -= dt;
+      if (e.timer4 <= 0) {
+        e.timer4 = 0.3;
+        g.fx.burst(e.x + (Math.random() - 0.5) * R * 1.6, e.y + (Math.random() - 0.5) * R, 0xd8f0ff, 2);
+      }
+      if (e.timer <= 0) {
+        e.state = 3;
+        e.timer = 0.9;
+        audio.sfx('explode', { rate: 1.2, vol: 0.6 });
+        g.cameras.main.shake(220, 0.007);
+        g.fx.ring(e.x, e.y - 4, R, 0xd8f0ff, 0.4);
+        g.fx.burst(e.x, e.y - 8, 0x9fd8ff, 20);
+        const p = g.player;
+        if (Math.hypot(p.x - e.x, (p.y - e.y) / 0.6) < R + PLAYER_RADIUS) g.hurtPlayer(e.dmg, 'water', this.hurtOf(e, true));
+        g.hazards.iceAt(e.x, e.y, R * 0.8, XM.inhale.ice);
+      }
+      return [0, 0];
+    }
+    if (e.timer <= 0) {
+      e.state = 0;
+      e.timer = at(XM.inhale.every, rage);
+    }
+    return [0, 0];
+  }
+
+  /** 身上第 k 高处的 y（0 脚底、1 头顶），弹幕从这里出手；体型大的 Boss 不会从腿上喷弹。测试桩没有贴图时按 40 像素算 */
+  private bodyY(e: Enemy, k: number) {
+    return e.y - (e.sprite.displayHeight || 40) * 0.9 * k;
+  }
+
+  /** 冰羽：朝玩家扇形一排 */
+  private iceFeathers(e: Enemy, a: number, n: number) {
+    const g = this.g;
+    const hurt = this.hurtOf(e);
+    audio.sfx('bossShot', { rate: 1.2 });
+    for (let i = 0; i < n; i++) {
+      const k = a + (i - (n - 1) / 2) * 0.17;
+      g.proj.enemyShot('ep_ice', e.x, this.bodyY(e, 0.55), Math.cos(k) * 115, Math.sin(k) * 115, 10, 'water', hurt);
+    }
+  }
+
+  /** 冰锥：落在玩家脚下和周围，预警后砸下，落地结一片临时冰面；砸中非水系的普通敌人也掉一截血 */
+  private icicles(n: number) {
+    const g = this.g;
+    const p = g.player;
+    const I = XM.icicle;
+    const r = I.r;
+    audio.sfx('bossShot', { rate: 1.4, vol: 0.5 });
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = i === 0 ? 0 : 50 + Math.random() * 70;
+      const [x, y] = g.world.clampPt(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d * 0.8, 20);
+      g.fx.telegraph(x, y, r, 0x9fd8ff, I.warn);
+      const spike = g.add.image(x, y - 160, 'fx_icicle').setOrigin(0.5, 0.9).setDepth(1e6 - 1);
+      g.tweens.add({ targets: spike, y, duration: I.warn * 1000, ease: 'Quad.in', onComplete: () => spike.destroy() });
+      g.later(I.warn, () => {
+        if (g.over) return;
+        audio.sfx('explode', { rate: 1.8, vol: 0.35 });
+        g.fx.ring(x, y - 2, r + 4, 0xd8f0ff, 0.3);
+        g.fx.burst(x, y - 4, 0x9fd8ff, 8);
+        const pl = g.player;
+        if (Math.hypot(pl.x - x, (pl.y - y) / 0.6) < r + PLAYER_RADIUS) g.hurtPlayer(I.dmg, 'water', { inflict: { kind: 'slow', chance: 1 } });
+        for (const o of this.inRadius(x, y, r, this.near)) if (!o.boss && o.def.el !== 'water') g.envDamage(o, o.maxHp * (o.elite ? 0.1 : 0.4), 'water');
+        g.hazards.iceAt(x, y, 30, I.ice);
       });
     }
   }
@@ -1268,6 +1868,11 @@ export class EnemyManager {
     const g = this.g;
     const burnt = e.lastEl === 'fire';
     if (e.def.rise && !e.rose && !burnt && !g.over) return this.rise(e);
+    // 土相一口气被打穿也不会直接死：焚身化火，带一截生命接着打
+    if (e.def.phase && e.phase === 0 && !g.over) {
+      e.hp = Math.round(e.maxHp * 0.4);
+      return this.ignite(e);
+    }
     e.alive = false;
     e.sprite.setVisible(false).setActive(false);
     e.sprite.anims.stop();
@@ -1299,15 +1904,29 @@ export class EnemyManager {
     if (e.def.behavior === 'explode' && !(g.build.mods['kx.water'] && e.def.el === 'fire')) {
       const x = e.x;
       const y = e.y;
-      // 自爆一半几率灼烧
-      const burn: Inflict | undefined = e.def.inflict && { ...e.def.inflict, chance: 0.5, dps: e.atkDps, mob: true };
-      const R = 18 * e.blastMul;
-      g.fx.disc(x, y, R, 0xff5a3a, 0.28, 0.6);
-      g.later(0.6, () => {
-        g.fx.anim('fx_explosion', x, y, { scale: (0.8 * R) / 18 });
-        audio.sfx('explode', { rate: 1.3, vol: 0.6 });
+      const el = e.def.el;
+      // 自爆按元素附带异常（火鸦灼烧、冰蚕迟缓），一半几率
+      const inflict: Inflict | undefined = e.def.inflict && { ...e.def.inflict, chance: 0.5, dps: e.atkDps, mob: true };
+      // 冰爆圈大一点、慢一点，看得清
+      const frost = el === 'water';
+      const R = (frost ? 24 : 18) * e.blastMul;
+      const warn = frost ? 0.8 : 0.6;
+      if (frost) {
+        g.fx.telegraph(x, y, R, 0x9fd8ff, warn);
+        this.hint('frostburst', `${e.def.name}死后会冰爆：圈里迟缓，别贴着打`, '#c8ecff');
+      } else g.fx.disc(x, y, R, 0xff5a3a, 0.28, warn);
+      g.later(warn, () => {
+        if (frost) {
+          g.fx.ring(x, y - 2, R, 0xd8f0ff, 0.35);
+          g.fx.burst(x, y - 4, 0x9fd8ff, 10);
+          audio.sfx('explode', { rate: 1.6, vol: 0.4 });
+        } else {
+          g.fx.anim('fx_explosion', x, y, { scale: (0.8 * R) / 18 });
+          audio.sfx('explode', { rate: 1.3, vol: 0.6 });
+        }
+        // 和预警圈一样纵向压扁到 0.6
         const p = g.player;
-        if (Math.hypot(p.x - x, p.y - y) < R + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale(), 'fire', { inflict: burn });
+        if (Math.hypot(p.x - x, (p.y - y) / 0.6) < R + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale(), el, { inflict });
       });
     }
     // 残兵：不是被火系击杀就会复活；精英不复活
@@ -1327,25 +1946,26 @@ export class EnemyManager {
     return { inflict: f && { ...f, chance: Math.min(1, f.chance + e.chanceAdd), dps: e.atkDps, mob: !e.boss }, crit: e.def.crit, critDmg: e.def.critDmg, forceCrit };
   }
 
-  /** 预警 0.7 秒后沿直线钻出毒刺，压到玩家就造成伤害 */
-  private thornLine(x: number, y: number, a: number, hurt?: HurtOpts) {
+  /** 预警 0.7 秒后沿直线钻出毒刺（木）或土刺（土），压到玩家就造成伤害 */
+  private thornLine(x: number, y: number, a: number, hurt?: HurtOpts, el: 'wood' | 'earth' = 'wood') {
     const g = this.g;
     const len = 260;
     const cx = Math.cos(a);
     const cy = Math.sin(a);
-    g.fx.line(x, y - 4, a, len, 0x6fbf5a, 0.7, 10);
+    const [warn, tint] = el === 'wood' ? [0x6fbf5a, 0x8fd06a] : [0xdaa53e, 0xe8c878];
+    g.fx.line(x, y - 4, a, len, warn, 0.7, 10);
     g.later(0.7, () => {
       if (g.over) return;
       audio.sfx('spike');
       for (let d = 26; d <= len; d += 26) {
         const sx = x + cx * d;
         const sy = y + cy * d;
-        g.fx.anim('fx_spike', sx, sy + 2, { originY: 0.92, depth: sy + 1, tint: 0x8fd06a });
+        g.fx.anim('fx_spike', sx, sy + 2, { originY: 0.92, depth: sy + 1, tint });
       }
       // 玩家到线段的距离
       const p = g.player;
       const t = Math.max(0, Math.min(len, (p.x - x) * cx + (p.y - y) * cy));
-      if (Math.hypot(p.x - (x + cx * t), p.y - (y + cy * t)) < 10 + PLAYER_RADIUS) g.hurtPlayer(16, 'wood', hurt);
+      if (Math.hypot(p.x - (x + cx * t), p.y - (y + cy * t)) < 10 + PLAYER_RADIUS) g.hurtPlayer(16, el, hurt);
     });
   }
 

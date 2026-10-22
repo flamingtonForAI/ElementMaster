@@ -13,6 +13,9 @@ export class Proj {
   y = 0;
   vx = 0;
   vy = 0;
+  /** 敌弹的加速度（飞镰的回旋刃：一直往回拽，飞到头折返） */
+  ax = 0;
+  ay = 0;
   dmg = 0;
   el: El = 'metal';
   pierce = 0;
@@ -69,7 +72,7 @@ export interface FireOpts {
 }
 
 /** 有朝向的敌方弹丸（贴图朝右画），按飞行方向转；其余敌弹原地翻滚 */
-const AIMED_SHOTS = new Set(['ep_fire', 'ep_poison', 'ep_wind', 'ep_water']);
+const AIMED_SHOTS = new Set(['ep_fire', 'ep_poison', 'ep_wind', 'ep_water', 'ep_ice']);
 
 export class ProjectileManager {
   private list: Proj[] = [];
@@ -166,10 +169,21 @@ export class ProjectileManager {
     p.y = y;
     p.vx = vx;
     p.vy = vy;
+    p.ax = p.ay = 0;
     p.dmg = dmg;
     p.el = el;
     p.life = 5;
     p.radius = 4;
+    return p;
+  }
+
+  /** 回旋刃：沿 (nx, ny) 以 speed 出手，一直受反向加速度 back，飞到头原路折回，飞够两倍时长再消失 */
+  enemyBoomerang(tex: string, x: number, y: number, nx: number, ny: number, speed: number, back: number, dmg: number, el: El, hurt?: HurtOpts) {
+    const p = this.enemyShot(tex, x, y, nx * speed, ny * speed, dmg, el, hurt);
+    p.ax = -nx * back;
+    p.ay = -ny * back;
+    p.life = (2 * speed) / back + 0.3;
+    return p;
   }
 
   update(dt: number) {
@@ -214,6 +228,10 @@ export class ProjectileManager {
         }
       }
 
+      if (p.kind === 'enemy') {
+        p.vx += p.ax * dt;
+        p.vy += p.ay * dt;
+      }
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       const s = p.sprite;

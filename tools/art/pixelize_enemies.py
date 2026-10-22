@@ -33,7 +33,7 @@ PALETTE = [tuple(bytes.fromhex(h)) for h in PALETTE_HEX]
 MIDTONE_GAMMA = 0.55
 
 
-def extract_subjects(source):
+def extract_subjects(source, columns=3, rows=2):
     """Find alpha-connected subjects: imagegen grids are not exact crop guides."""
     w, h = source.size
     alpha = source.getchannel('A').tobytes()
@@ -56,16 +56,16 @@ def extract_subjects(source):
                     if not seen[j] and alpha[j] >= 128:
                         seen[j] = 1
                         queue.append(j)
-        if len(points) > w * h * .005:
+        if len(points) > w * h * .03 / (columns * rows):
             components.append(points)
-    if len(components) != 6:
-        raise ValueError(f'Expected six separate subjects; got {len(components)}. Inspect source before cropping.')
+    if len(components) != columns * rows:
+        raise ValueError(f'Expected {columns * rows} separate subjects; got {len(components)}. Inspect source before cropping.')
     ordered = {}
     for points in components:
         xs, ys = [i % w for i in points], [i // w for i in points]
-        col = min(2, int(sum(xs) / len(xs) / w * 3))
-        row = min(1, int(sum(ys) / len(ys) / h * 2))
-        slot = row * 3 + col
+        col = min(columns - 1, int(sum(xs) / len(xs) / w * columns))
+        row = min(rows - 1, int(sum(ys) / len(ys) / h * rows))
+        slot = row * columns + col
         if slot in ordered:
             raise ValueError('Two subjects occupy the same grid slot.')
         bounds = (min(xs), min(ys), max(xs) + 1, max(ys) + 1)
@@ -77,7 +77,7 @@ def extract_subjects(source):
         cut = source.copy()
         cut.putalpha(mask)
         ordered[slot] = (cut.crop(bounds), bounds)
-    return [ordered[i] for i in range(6)]
+    return [ordered[i] for i in range(columns * rows)]
 
 
 def fit(source, size, padding=0):

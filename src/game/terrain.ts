@@ -3,6 +3,8 @@
  * 用哈希格点上的平滑值噪声叠两层，不会像正弦拼出来的那样成片重复。
  */
 
+import type { El } from '../config/elements';
+
 /** 山脊配置，见 LevelDef.ridges */
 export interface RidgeDef {
   tex: string;
@@ -83,6 +85,8 @@ export interface SpotDef {
   /** 一格里有点位的几率 */
   chance: number;
   radius: number;
+  /** 只在这一相起作用（东海归墟：浅滩涨潮才积水，火山口退潮才喷；昆仑五气各管一种），不填一直有 */
+  phase?: El;
 }
 
 /**

@@ -1,0 +1,522 @@
+{
+  "en_zhushe": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": true
+  },
+  "en_zhangchan": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 6,
+    "grounded": true
+  },
+  "en_tengguai_grove": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": true
+  },
+  "en_shiyong_moss": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": true
+  },
+  "boss_shuyao": {
+    "width": 64,
+    "height": 64,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 4,
+    "grounded": true
+  },
+  "en_shiyong_rock": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": true
+  },
+  "en_shanxiao": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": true
+  },
+  "en_chuanshan": {
+    "width": 32,
+    "height": 32,
+    "frames": 6,
+    "move": [
+      0,
+      1,
+      4,
+      5
+    ],
+    "rate": 10,
+    "grounded": true
+  },
+  "boss_shanxiao": {
+    "width": 56,
+    "height": 48,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": true
+  },
+  "en_huoya_ember": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 12,
+    "grounded": false
+  },
+  "en_chihu": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 12,
+    "grounded": true
+  },
+  "en_huojing": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": false
+  },
+  "en_shiyong_lava": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": true
+  },
+  "boss_bifang": {
+    "width": 56,
+    "height": 48,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 10,
+    "grounded": false
+  },
+  "en_canbing": {
+    "width": 32,
+    "height": 32,
+    "frames": 5,
+    "move": [
+      0,
+      1,
+      3,
+      4
+    ],
+    "rate": 7,
+    "grounded": true
+  },
+  "en_tiejia_battle": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 9,
+    "grounded": true
+  },
+  "en_feilian": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 6,
+    "grounded": false
+  },
+  "en_shiyong_armor": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": true
+  },
+  "en_chuanshan_armor": {
+    "width": 32,
+    "height": 32,
+    "frames": 6,
+    "move": [
+      0,
+      1,
+      4,
+      5
+    ],
+    "rate": 10,
+    "grounded": true
+  },
+  "boss_xingtian": {
+    "width": 56,
+    "height": 56,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 7,
+    "grounded": true
+  },
+  "en_shuigui_marsh": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 6,
+    "grounded": false
+  },
+  "en_yuyao": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": false
+  },
+  "en_jiao": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 10,
+    "grounded": true
+  },
+  "boss_xiangliu": {
+    "width": 56,
+    "height": 56,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 6,
+    "grounded": true
+  },
+  "en_bingcan": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 6,
+    "grounded": true
+  },
+  "en_aoxie": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 10,
+    "grounded": true
+  },
+  "boss_xuanming": {
+    "width": 72,
+    "height": 72,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": false
+  },
+  "en_shaxie": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 10,
+    "grounded": true
+  },
+  "en_jinqiang": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 10,
+    "grounded": true
+  },
+  "boss_hanba": {
+    "width": 60,
+    "height": 72,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 7,
+    "grounded": true
+  },
+  "boss_hanba_fire": {
+    "width": 60,
+    "height": 72,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": true
+  },
+  "en_yecha": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 9,
+    "grounded": true
+  },
+  "en_yanshao": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 7,
+    "grounded": true
+  },
+  "boss_jiuying": {
+    "width": 80,
+    "height": 80,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 6,
+    "grounded": true
+  },
+  "boss_jiuying_fire": {
+    "width": 80,
+    "height": 80,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 6,
+    "grounded": true
+  },
+  "boss_dijiang": {
+    "width": 88,
+    "height": 88,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": false
+  },
+  "boss_dijiang_metal": {
+    "width": 88,
+    "height": 88,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": false
+  },
+  "boss_dijiang_water": {
+    "width": 88,
+    "height": 88,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": false
+  },
+  "boss_dijiang_wood": {
+    "width": 88,
+    "height": 88,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": false
+  },
+  "boss_dijiang_fire": {
+    "width": 88,
+    "height": 88,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": false
+  }
+}

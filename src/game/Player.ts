@@ -5,7 +5,7 @@ import { FROZEN, STATUS_INFO, type StatusId } from '../config/status';
 import { stick } from '../ui/touch';
 
 export const PLAYER_RADIUS = 7;
-/** 迟缓、泥潭叠在一起时移速最低保留的比例 */
+/** 迟缓、泥潭、流沙叠在一起时移速最低保留的比例 */
 export const MIN_SLOW = 0.6;
 const PIP_ORDER: StatusId[] = ['stun', 'burn', 'poison', 'slow', 'bleed'];
 
@@ -23,6 +23,9 @@ export class Player {
   hp: number;
   /** 单位朝向向量，停下时保留 */
   facing = { x: 0, y: 1 };
+  /** 当前速度：平地上直接等于想走的速度，冰面上慢慢追过去（惯性） */
+  vx = 0;
+  vy = 0;
   moving = false;
   alive = true;
   private dir: HeroDir = 's';
@@ -62,20 +65,38 @@ export class Player {
     // 定身时不能移动，术照常自动释放
     if (st.stunned) mx = my = 0;
     this.moving = mx !== 0 || my !== 0;
+    let tx = 0;
+    let ty = 0;
+    const ice = g.hazards.onIce(this.x, this.y);
     if (this.moving) {
       const len = Math.hypot(mx, my);
       mx /= len;
       my /= len;
-      // 泥潭和迟缓叠乘时最低保留 MIN_SLOW，免得被拖到躲不开预警
+      // 泥潭、流沙和迟缓叠乘时最低保留 MIN_SLOW，免得被拖到躲不开预警
       const mud = g.world.inMud(this.x, this.y);
-      const drag = Math.max(MIN_SLOW, st.speedMult * (mud ? mud.player : 1));
-      const sp = g.pstats.speed * speedK * drag * (g.now < g.dunUntil ? 1.4 : 1);
-      this.x += mx * sp * dt;
-      this.y += my * sp * dt;
+      const sand = g.hazards.sandAt(this.x, this.y);
+      const drag = Math.max(MIN_SLOW, st.speedMult * (mud ? mud.player : 1) * (sand ? sand.def.player : 1));
+      const sp = g.pstats.speed * speedK * drag * (g.now < g.dunUntil ? 1.4 : 1) * (ice ? ice.boost : 1);
+      tx = mx * sp;
+      ty = my * sp;
       this.facing.x = mx;
       this.facing.y = my;
     }
-    g.world.push(this, PLAYER_RADIUS);
+    // 冰面上速度按 grip 慢慢追向想走的方向：起步慢、停不住、转向会滑出去
+    const grip = ice ? 1 - Math.exp(-ice.grip * dt) : 1;
+    this.vx += (tx - this.vx) * grip;
+    this.vy += (ty - this.vy) * grip;
+    const [wx, wy] = g.hazards.drift(this.x, this.y);
+    this.x += (this.vx + wx) * dt;
+    this.y += (this.vy + wy) * dt;
+    if (g.world.push(this, PLAYER_RADIUS)) {
+      // 撞墙时去掉朝墙那一截速度，免得贴着墙一直滑
+      const into = this.vx * g.world.hitNx + this.vy * g.world.hitNy;
+      if (into < 0) {
+        this.vx -= into * g.world.hitNx;
+        this.vy -= into * g.world.hitNy;
+      }
+    }
     // 遁符期间半透明闪烁
     this.sprite.setAlpha(g.now < g.dunUntil ? 0.55 + 0.2 * Math.sin(g.now * 20) : 1);
 
