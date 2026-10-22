@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 import { captureTextures, runReadabilityCheck } from '../tools/readability.mjs';
 import ENEMY_SHEETS from '../src/art/enemySheets.json' with { type: 'json' };
 
@@ -26,7 +27,7 @@ test('OKLab 战斗区可读性守门：地面平静度、装饰不撞宝石色�
   }
 });
 
-test('原画 PNG 接入正式贴图、升阶和特殊帧；第一关造型不变', () => {
+test('原画 PNG 接入正式贴图、升阶和特殊帧，第 1 关起全部用原画', () => {
   const current = captureTextures();
   const fallback = captureTextures({ raster: false });
   for (const [key, spec] of Object.entries(ENEMY_SHEETS)) {
@@ -49,9 +50,9 @@ test('原画 PNG 接入正式贴图、升阶和特殊帧；第一关造型不变
       if (key === 'en_canbing') assert.ok(!indices.includes(2), '残兵走路时不能播放尸骸');
     }
   }
+  // 第 1 关的怪也换成了原画，不再等于程序画回退
   for (const key of ['en_shiyong', 'en_tengguai', 'en_shuigui', 'en_huoya', 'en_tiejia', 'boss_langyao']) {
-    assert.deepEqual(current.get(key).frames, fallback.get(key).frames, `${key} 第一关原画被意外替换`);
-    assert.deepEqual(current.animations.get(key + '_move'), fallback.animations.get(key + '_move'), `${key} 第一关动作被意外改变`);
+    assert.notDeepEqual(current.get(key).frames[0].data, fallback.get(key).frames[0].data, `${key} 仍是程序画`);
   }
   for (const key of ['en_chuanshan', 'en_chuanshan_armor', 'en_canbing']) {
     assert.notDeepEqual(current.get(key).frames[0].data, current.get(key).frames[2].data, `${key} 钻地 / 尸骸不能仍是站立帧`);
@@ -59,4 +60,21 @@ test('原画 PNG 接入正式贴图、升阶和特殊帧；第一关造型不变
   for (const key of ['en_chuanshan', 'en_chuanshan_armor']) {
     assert.deepEqual(current.animations.get(key + '_dig').frames.map((f) => f.frame), [2, 3]);
   }
+});
+
+test('傀儡原画图集：走路 4 帧 + 拍地 4 帧，硬透明', () => {
+  const out = execFileSync('python3', ['-c', `
+import json
+from PIL import Image
+m = json.load(open('src/art/puppetSheets.json'))
+for k, s in m.items():
+    im = Image.open('public/assets/puppets/' + k + '.png').convert('RGBA')
+    assert im.size == (s['width'] * s['frames'], s['height']), k
+    assert s['frames'] == 8, k
+    assert set(im.getchannel('A').tobytes()) <= {0, 255}, k
+    frames = [im.crop((i * s['width'], 0, (i + 1) * s['width'], s['height'])).tobytes() for i in range(8)]
+    assert len(set(frames)) == 8, k
+print(','.join(m))
+`], { encoding: 'utf8' });
+  assert.equal(out.trim(), 'pp_golem,pp_giant');
 });

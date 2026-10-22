@@ -4,10 +4,10 @@ import { HERO_DIRS, HERO_FRAMES_PER_DIR, type HeroDir } from './heroXiao';
 
 // 傀儡师·墨衡：墨家匠人，取“衣褐带索”与偃师造倡者。比剑客矮 1 像素，清瘦。
 // 头发挽髻，墨色布巾贴着头顶包住、髻上打结垂两条短巾脚；及膝褐色交领短褐，腰束麻绳；
-// 裤腿打绑腿、草鞋；腰挂墨斗，背上一把木矩尺；右手提一块竹制勾牌，几根灵丝垂下——这是剪影标志。
+// 裤腿打绑腿、草鞋；腰挂墨斗，背上一把木矩尺；右手提一副十字木操纵架，灵丝吊着一具小木偶——这是剪影标志。
 
 // 土系褐色：比旧版更暗、更朴素；高光偏暖麦黄，暗部偏深茶褐
-const SK = 0xf4cfb0, SKS = 0xd29278;
+const SK = 0xf4cfb0, SKS = 0xd29278, BL = 0xe89a8c;
 const HR = 0x261f30;
 const CAP = 0x2a2432, CAPH = 0x50485e;
 const RB = 0xa8763c, RBS = 0x7a5228, RBH = 0xcc9a56, RBD = 0x56381c;
@@ -15,8 +15,8 @@ const IN = 0xe6dcc2;
 const ROPE = 0xdcc68e, ROPES = 0x9e8854;
 const PT = 0x4a3a30, WRAP = 0xcbb98e, WRAPS = 0x948458, SANDAL = 0xc8a85e;
 const WD = 0xb27a40, WDS = 0x784c26, WDH = 0xdca862;
-const BAM = 0xc8b062, BAMS = 0x8e7a3a, BAMH = 0xeedc8c;
 const INKBOX = 0x5a3a24, REEL = 0x9a6a3c;
+const DOLL = 0xeed2a0, DOLLH = 0xfff0cc;
 const STR = 0xf0e4c8, GLOW = 0xffeca4;
 const EYE = 0x1c1424;
 const MUS = 0x8a6658;
@@ -78,7 +78,7 @@ function drawLegs(p: PC, d: HeroDir, pose: Pose) {
 /** 及膝交领短褐，腰束麻绳，绳结垂下两截 */
 function drawRobe(p: PC, d: HeroDir, pose: Pose) {
   const k = d === 'e' ? 0.75 : d === 's' || d === 'n' ? 1 : 0.88;
-  const half = [6, 6, 5, 5, 5, 6, 6, 7];
+  const half = [6, 6, 6, 5, 5, 6, 6, 7, 7];
   const cx = d === 'e' ? 15 : 16;
   const hem = pose.run ? Math.round(Math.sin(pose.wavePhase - 0.8) * 1.1) : 0;
   for (let i = 0; i < half.length; i++) {
@@ -91,7 +91,9 @@ function drawRobe(p: PC, d: HeroDir, pose: Pose) {
     p.set(x0, y, RBH);
     p.set(x1, y, RBD);
     if (hw > 3) p.set(x1 - 1, y, RBS);
-    if (i === half.length - 1) p.span(y, x0, x1, RBS);
+    if (i >= 5 && i < half.length - 2 && hw > 4) p.set(x0 + 2, y, RBS);
+    if (i === half.length - 2) p.span(y, x0 + 1, x1 - 1, RBS);
+    if (i === half.length - 1) p.span(y, x0, x1, RBD);
   }
   // 交领：右衽，领口露米白中衣
   if (d === 's' || d === 'se') {
@@ -173,9 +175,12 @@ function drawArms(p: PC, d: HeroDir, pose: Pose) {
 function drawHead(p: PC, d: HeroDir, pose: Pose) {
   const Y = HEAD_Y;
   const hx = d === 'e' ? 16.5 : 16;
-  p.ellipse(hx, Y + 0.5, 5.4, 5, HR);
+  p.ellipse(hx, Y + 0.5, 5.8, 5.6, HR);
   if (d === 's') {
-    p.ellipse(16, Y + 1.2, 4.2, 4, SK);
+    p.ellipse(16, Y + 1.4, 4.6, 4.2, SK);
+    p.span(Y + 4, 14, 17, SKS);
+    p.set(12, Y + 3, BL);
+    p.set(19, Y + 3, BL);
     if (pose.blink) {
       p.span(Y + 2, 12, 14, SKS);
       p.span(Y + 2, 17, 19, SKS);
@@ -198,7 +203,9 @@ function drawHead(p: PC, d: HeroDir, pose: Pose) {
     p.set(16, Y + 3, MUS);
     p.set(16, Y + 5, HR);
   } else if (d === 'se') {
-    p.ellipse(17.2, Y + 1.2, 3.8, 4, SK);
+    p.ellipse(17.4, Y + 1.4, 4.2, 4.2, SK);
+    p.span(Y + 4, 16, 19, SKS);
+    p.set(21, Y + 3, BL);
     if (pose.blink) {
       p.span(Y + 2, 15, 17, SKS);
       p.span(Y + 2, 19, 20, SKS);
@@ -215,7 +222,8 @@ function drawHead(p: PC, d: HeroDir, pose: Pose) {
     p.set(18, Y + 3, MUS);
     p.set(18, Y + 5, HR);
   } else if (d === 'e') {
-    p.ellipse(18.4, Y + 1.2, 3.2, 4, SK);
+    p.ellipse(18.6, Y + 1.4, 3.4, 4.2, SK);
+    p.set(18, Y + 3, BL);
     if (pose.blink) p.span(Y + 2, 18, 20, SKS);
     else {
       p.rect(19, Y + 1, 1, 2, EYE);
@@ -267,28 +275,49 @@ function drawWrap(p: PC, d: HeroDir, wavePhase: number) {
   }
 }
 
-/** 竹制提线勾牌：一块横板带竹节 */
-function board(p: PC, x: number, y: number, tilt: number) {
+/** 十字木操纵架：一根横杆压一根短竖杆，深木色和浅色身体拉开 */
+function cross(p: PC, x: number, y: number, tilt: number) {
   x = Math.round(x);
   y = Math.round(y);
-  p.line(x - 3, y - tilt, x + 3, y + tilt, BAM);
-  p.line(x - 3, y + 1 - tilt, x + 3, y + 1 + tilt, BAMS);
-  p.set(x - 3, y - tilt, BAMH);
-  p.set(x, y, BAMS);
+  p.line(x - 3, y - tilt, x + 3, y + tilt, WD);
+  p.line(x - 3, y + 1 - tilt, x + 3, y + 1 + tilt, WDS);
+  p.set(x - 3, y - tilt, WDH);
+  p.line(x, y - 2, x, y + 2, WD);
+  p.set(x, y - 2, WDH);
+  p.set(x, y + 2, WDS);
 }
 
+/** 吊在灵丝下的小木偶：圆头、方身、两点手脚；(cx, cy) 是头顶 */
+function doll(p: PC, cx: number, cy: number) {
+  cx = Math.round(cx);
+  cy = Math.round(cy);
+  // 偶身用比褐衣浅一档的白木，头顶受光
+  p.rect(cx - 1, cy, 2, 2, DOLL);
+  p.set(cx - 1, cy, DOLLH);
+  p.rect(cx - 1, cy + 2, 2, 2, WDH);
+  p.set(cx, cy + 3, WD);
+  p.set(cx - 2, cy + 2, DOLL);
+  p.set(cx + 1, cy + 2, DOLL);
+  p.set(cx - 1, cy + 4, WD);
+  p.set(cx, cy + 4, WD);
+}
+
+/** 灵丝从横杆两端和中间连到木偶的手和头，木偶吊在 len 深处 */
 function strings(p: PC, x: number, y: number, tilt: number, sway: number, col: number, len: number, glow = false) {
   x = Math.round(x);
   y = Math.round(y);
-  const ends: [number, number][] = [[x - 3, y - tilt], [x, y], [x + 3, y + tilt]];
-  // 灵丝用半透明画，外描边只套不透明像素，细线就不会被描成一排黑白梳齿
-  for (const [sx, sy] of ends) {
-    if (glow) p.line(sx, sy + 2, sx + sway, sy + len, GLOW, 2, 95);
-    p.line(sx, sy + 2, sx + sway, sy + len, col, 1, 235);
+  const cx = x + 1 + sway;
+  const cy = Math.min(25, y + len - 3);
+  const lines: [number, number, number, number][] = [[x - 3, y - tilt, cx - 2, cy + 2], [x, y + 2, cx, cy], [x + 3, y + tilt, cx + 1, cy + 2]];
+  // 灵丝用半透明画，外描边只套不透明像素，细线不会被描成一排黑白梳齿
+  for (const [sx, sy, ex, ey] of lines) {
+    if (glow) p.line(sx, sy + 1, ex, ey, GLOW, 2, 95);
+    p.line(sx, sy + 1, ex, ey, col, 1, 200);
   }
+  doll(p, cx, cy);
 }
 
-/** 平时：右手提着竹勾牌，灵丝随正弦波柔顺摆动；出招 6 帧：勾牌扬起，灵丝绷直泛起金光 */
+/** 平时：右手提着操纵架，木偶随正弦波轻轻晃；出招 6 帧：操纵架扬起，灵丝绷直泛起金光、木偶被扯向前方 */
 function drawRig(p: PC, d: HeroDir, pose: Pose) {
   const theta = (FACING[d] * Math.PI) / 180;
   if (pose.atk < 0) {
@@ -296,11 +325,13 @@ function drawRig(p: PC, d: HeroDir, pose: Pose) {
     const hy = BODY_Y + 2 + Math.round(pose.swing * 0.5);
     p.line(hx - 3, BODY_Y + 1, hx - 1, hy, RB, 2);
     p.set(hx, hy, SK);
-    const tx = hx + 1;
-    const ty = hy - 2;
-    const sway = Math.round(Math.sin(pose.wavePhase - 0.6) * 1.4);
-    strings(p, tx, ty, 0, sway, STR, 8);
-    board(p, tx, ty, 0);
+    // 操纵架提在身侧外面，木偶吊到腰下，和褐衣分开
+    const tx = hx + 2;
+    const ty = hy - 3;
+    const sway = Math.round(Math.sin(pose.wavePhase - 0.6) * 1.2);
+    p.line(hx, hy, tx - 1, ty + 1, SK);
+    strings(p, tx, ty, 0, sway + 1, STR, 11);
+    cross(p, tx, ty, 0);
     return;
   }
   const k = pose.atk;
@@ -315,16 +346,17 @@ function drawRig(p: PC, d: HeroDir, pose: Pose) {
   p.set(hx, hy, SK);
   const taut = k >= 1 && k <= 3;
   const tilt = taut ? (Math.cos(theta) >= 0 ? -1 : 1) : 0;
-  const len = [7, 9, 11, 10, 8, 7][k];
+  const len = [9, 11, 13, 12, 10, 9][k];
   const sway = taut ? Math.round(5 * Math.cos(theta)) : 0;
   strings(p, hx + 1, hy - 2, tilt, sway, taut ? GLOW : STR, len, taut);
-  board(p, hx + 1, hy - 2, tilt);
+  cross(p, hx + 1, hy - 2, tilt);
   if (k === 2 || k === 3) {
-    const ex = Math.round(hx + 1 + sway);
-    const ey = Math.round(hy + len - 2);
-    p.set(ex - 1, ey, GLOW);
-    p.set(ex + 1, ey, GLOW);
-    p.set(ex, ey + 1, 0xfff6d0);
+    // 木偶两侧迸出金光
+    const ex = Math.round(hx + 2 + sway);
+    const ey = Math.min(25, Math.round(hy - 2 + len - 3)) + 2;
+    p.set(ex - 3, ey, GLOW);
+    p.set(ex + 3, ey, GLOW);
+    p.set(ex, ey + 4, 0xfff6d0);
   }
 }
 

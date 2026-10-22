@@ -21,10 +21,18 @@ CONCEPTS = ROOT / 'output/enemy-concepts-2026-10-20'
 # 第 7–10 关的新怪：两张概念图，A 冰蚕至旱魃，B 旱魃火相至帝江
 LATE = ROOT / 'output/enemy-concepts-2026-10-21'
 # 九婴第一版只有 8 个头，10-22 单独重画（'j'，2 列 1 行：水相、火相），动作也单独出一张（2 行 × 4 帧）
+# 第 1 关（'l1'，3 列 2 行：石俑、藤怪、水鬼、火鸦、狼妖、石傀儡）10-22 补画，和后几关同一画风；动作原画 source-7.png（6 行 × 4 帧）
 CONCEPT_FILES = {**{n: CONCEPTS / f'level-{n}-source.png' for n in range(2, 7)}, 'a': LATE / 'sheet-a-alpha.png', 'b': LATE / 'sheet-b.png',
-                 'j': ROOT / 'output/enemy-concepts-2026-10-22/jiuying-v2.png'}
+                 'j': ROOT / 'output/enemy-concepts-2026-10-22/jiuying-v2.png', 'l1': ROOT / 'output/enemy-concepts-2026-10-22/level1/level-1-source.png'}
 CONCEPT_GRID = {'j': (2, 1)}
-MOTION_OVERRIDES = {'boss_jiuying': ('source-jiuying.png', 0), 'boss_jiuying_fire': ('source-jiuying.png', 1)}
+# 动作原画默认按 SPECS 每 6 只一张 source-N.png（4 列 6 行）；这里列出单独出图的：key → (文件, 行, 列数, 行数)
+MOTION_OVERRIDES = {'boss_jiuying': ('source-jiuying.png', 0, 4, 2), 'boss_jiuying_fire': ('source-jiuying.png', 1, 4, 2),
+                    **{k: ('source-7.png', i, 4, 6) for i, k in enumerate(['en_shiyong', 'en_tengguai', 'en_shuigui', 'en_huoya', 'boss_langyao'])}}
+# 墨衡的召唤物：概念图 'l1' 第 6 格，走路是 source-7.png 第 6 行，拍地另出一张 source-puppet-atk.png（4 列 1 行）。
+# 两种体型同一套姿势、各自缩放；身体保持浅灰白，运行时按五行染色，脚下金环在 puppetArt 里叠
+# 举拳过顶那帧最高，画布往上留空
+PUPPETS = [('pp_golem', '石傀儡', 28, 38), ('pp_giant', '巨傀', 52, 68)]
+PUPPET_OUTPUT = ROOT / 'public/assets/puppets'
 MOTION = STUDY / 'motion-v2'
 # key, Chinese name, approved sheet/slot, frame size, special-state profile.
 SPECS = [
@@ -43,7 +51,8 @@ SPECS = [
     ('en_shiyong_lava', '熔壳石俑', 4, 3, 32, 32, 'step'),
     ('boss_bifang', '毕方', 4, 4, 56, 48, 'hover'),
     ('en_canbing', '残兵', 5, 0, 32, 32, 'corpse'),
-    ('en_tiejia_battle', '铁甲兵·兵冢', 5, 1, 32, 32, 'step'),
+    # 铁甲兵横端长枪、比常人宽，放宽画布让身高和残兵、石俑一致；第 1 关起全游戏共用这一版
+    ('en_tiejia', '铁甲兵', 5, 1, 40, 34, 'step'),
     ('en_feilian', '飞镰', 5, 2, 32, 32, 'hover'),
     ('en_shiyong_armor', '残甲石俑', 5, 3, 32, 32, 'step'),
     ('en_chuanshan_armor', '穿山甲·兵冢', 5, 4, 32, 32, 'burrow'),
@@ -64,6 +73,11 @@ SPECS = [
     ('boss_jiuying', '九婴', 'j', 0, 80, 80, 'sway'),
     ('boss_jiuying_fire', '九婴·火', 'j', 1, 80, 80, 'sway'),
     ('boss_dijiang', '帝江', 'b', 5, 88, 88, 'hover'),
+    ('en_shiyong', '石俑', 'l1', 0, 32, 32, 'step'),
+    ('en_tengguai', '藤怪', 'l1', 1, 32, 32, 'sway'),
+    ('en_shuigui', '水鬼', 'l1', 2, 32, 32, 'hover'),
+    ('en_huoya', '火鸦', 'l1', 3, 32, 32, 'hover'),
+    ('boss_langyao', '狼妖', 'l1', 4, 56, 48, 'heavy'),
 ]
 # 第 7–10 关 Boss 逐关加大（72 → 88），和前几关拉开；帝江五相：金、水、木、火从土相（黄囊）的四帧换色得到，动作和土相完全一致
 DIJIANG_HUES = {'boss_dijiang_metal': None, 'boss_dijiang_water': .58, 'boss_dijiang_wood': .33, 'boss_dijiang_fire': .01}
@@ -71,6 +85,8 @@ DIJIANG_HUES = {'boss_dijiang_metal': None, 'boss_dijiang_water': .58, 'boss_dij
 COLORS = PALETTE_HEX + ['28694a', '438c54', '73b964', 'aad984',
                         'f8c640', 'fff1b0', '427ca9', '74acdb', 'd7eff5']
 PALETTE = [tuple(bytes.fromhex(h)) for h in COLORS]
+# 个别怪的中间调额外提亮（默认 0.8）：铁甲兵钢甲、藤怪暗绿藤、水鬼深蓝发偏暗，第 1 关地面上明度拉不开
+LIFT = {'en_tiejia': .55, 'en_tengguai': .7, 'en_shuigui': .6}
 
 # Four articulated phases at the cadence of the original two-frame cycles.
 MOVE_RATES = {
@@ -78,12 +94,13 @@ MOVE_RATES = {
     'boss_shuyao': 4, 'en_shanxiao': 8, 'en_chuanshan': 10,
     'boss_shanxiao': 8, 'en_huoya_ember': 12, 'en_chihu': 12,
     'en_huojing': 8, 'boss_bifang': 10, 'en_canbing': 7,
-    'en_tiejia_battle': 9, 'en_feilian': 6, 'en_chuanshan_armor': 10,
+    'en_tiejia': 9, 'en_feilian': 6, 'en_chuanshan_armor': 10,
     'boss_xingtian': 7, 'en_shuigui_marsh': 6, 'en_yuyao': 8,
     'en_jiao': 10, 'boss_xiangliu': 6,
     'en_bingcan': 6, 'en_aoxie': 10, 'boss_xuanming': 8, 'en_shaxie': 10, 'en_jinqiang': 10,
     'boss_hanba': 7, 'boss_hanba_fire': 8, 'en_yecha': 9, 'en_yanshao': 7,
     'boss_jiuying': 6, 'boss_jiuying_fire': 6, 'boss_dijiang': 8,
+    'en_shiyong': 6, 'en_tengguai': 7, 'en_shuigui': 6, 'en_huoya': 10, 'boss_langyao': 8,
 }
 
 
@@ -91,31 +108,41 @@ def prepare_motion_sources():
     """Cut isolated poses, using one scale per creature (never fit each pose)."""
     dest = MOTION / 'source96'
     dest.mkdir(exist_ok=True)
-    overrides = {}
-    for key, (name, row) in MOTION_OVERRIDES.items():
-        if name not in overrides:
-            overrides[name] = extract_subjects(Image.open(MOTION / name).convert('RGBA'), 4, 2)
-    for group in range(len(SPECS) // 6):
-        subjects = extract_subjects(Image.open(MOTION / f'source-{group + 1}.png').convert('RGBA'), 4, 6)
-        for row, (key, _, _, _, w, h, _) in enumerate(SPECS[group * 6:group * 6 + 6]):
-            if key in MOTION_OVERRIDES:
-                name, r = MOTION_OVERRIDES[key]
-                poses = [overrides[name][r * 4 + i][0] for i in range(4)]
-            else:
-                poses = [subjects[row * 4 + i][0] for i in range(4)]
-            max_w = max(p.width for p in poses)
-            max_h = max(p.height for p in poses)
-            hop = [0, 1, 3, 0] if key == 'en_zhangchan' else [0] * 4
-            ratio = min((w - 4) / max_w, (h - 6 - max(hop)) / max_h)
-            # Use the same 96px canvas mapping for every pose and a shared floor.
-            sheet = Image.new('RGBA', (384, 96))
-            for i, pose in enumerate(poses):
-                pw, ph = round(pose.width * ratio * 96 / w), round(pose.height * ratio * 96 / h)
-                scaled = pose.convert('RGBa').resize((pw, ph), Image.Resampling.BOX).convert('RGBA')
-                x = (96 - pw) // 2
-                y = round((h * .9 - 1 - hop[i]) * 96 / h) - ph
-                sheet.paste(scaled, (i * 96 + x, y))
-            sheet.save(dest / f'{key}.png')
+    cache = {}
+
+    def subjects(name, cols, rows):
+        if name not in cache:
+            cache[name] = extract_subjects(Image.open(MOTION / name).convert('RGBA'), cols, rows)
+        return cache[name]
+
+    for index, (key, _, _, _, w, h, _) in enumerate(SPECS):
+        name, row, cols, rows = MOTION_OVERRIDES.get(key, (f'source-{index // 6 + 1}.png', index % 6, 4, 6))
+        poses = [subjects(name, cols, rows)[row * cols + i][0] for i in range(4)]
+        hop = [0, 1, 3, 0] if key == 'en_zhangchan' else [0] * 4
+        save_poses(poses, w, h, hop, dest / f'{key}.png')
+    # 傀儡：走路 4 帧 + 拍地 4 帧，共用一个缩放
+    walk = [subjects('source-7.png', 4, 6)[5 * 4 + i][0] for i in range(4)]
+    atk = [s[0] for s in subjects('source-puppet-atk.png', 4, 1)]
+    # 拍地那张画得大：按收势站姿和走路站姿的身高对齐
+    k = walk[0].height / atk[3].height
+    poses = walk + [a.resize((round(a.width * k), round(a.height * k)), Image.Resampling.LANCZOS) for a in atk]
+    for key, _, w, h in PUPPETS:
+        save_poses(poses, w, h, [0] * len(poses), dest / f'{key}.png')
+
+
+def save_poses(poses, w, h, hop, path):
+    max_w = max(p.width for p in poses)
+    max_h = max(p.height for p in poses)
+    ratio = min((w - 4) / max_w, (h - 6 - max(hop)) / max_h)
+    # Use the same 96px canvas mapping for every pose and a shared floor.
+    sheet = Image.new('RGBA', (96 * len(poses), 96))
+    for i, pose in enumerate(poses):
+        pw, ph = round(pose.width * ratio * 96 / w), round(pose.height * ratio * 96 / h)
+        scaled = pose.convert('RGBa').resize((pw, ph), Image.Resampling.BOX).convert('RGBA')
+        x = (96 - pw) // 2
+        y = round((h * .9 - 1 - hop[i]) * 96 / h) - ph
+        sheet.paste(scaled, (i * 96 + x, y))
+    sheet.save(path)
 
 
 def source_images():
@@ -151,23 +178,27 @@ def body(source, size):
     return palette_snap(frame)
 
 
-def palette_snap(frame):
+def palette_snap(frame, lift=.8):
     px = frame.load()
     for y in range(frame.height):
         for x in range(frame.width):
             r, g, b, a = px[x, y]
             # Keep ink dark; gently lift painted midtones for the dark floors.
             if max(r, g, b) > 64:
-                r, g, b = (round(255 * (c / 255) ** .8) for c in (r, g, b))
+                r, g, b = (round(255 * (c / 255) ** lift) for c in (r, g, b))
             px[x, y] = (*nearest_palette_color(r, g, b, PALETTE), 255) if a >= 110 else (0, 0, 0, 0)
     return frame
+
+
+def pose_frames(key, size):
+    poses = Image.open(MOTION / 'source96' / f'{key}.png').convert('RGBA')
+    return [selective_outline(palette_snap(poses.crop((i * 96, 0, (i + 1) * 96, 96)).convert('RGBa').resize(size, Image.Resampling.BOX).convert('RGBA'), LIFT.get(key, .8))) for i in range(poses.width // 96)]
 
 
 def make_frames(key, size, mode):
     src = Image.open(SOURCES / f'{key}.png').convert('RGBA')
     base = body(src, size)
-    poses = Image.open(MOTION / 'source96' / f'{key}.png').convert('RGBA')
-    frames = [selective_outline(palette_snap(poses.crop((i * 96, 0, (i + 1) * 96, 96)).convert('RGBa').resize(size, Image.Resampling.BOX).convert('RGBA'))) for i in range(4)]
+    frames = pose_frames(key, size)
     if mode == 'burrow':
         for i in (2, 3):
             old = Image.open(STUDY / f'reference/en_chuanshan-{i}.png').convert('RGBA')
@@ -256,6 +287,18 @@ def main():
                 save_indexed(alt_sheet, OUTPUT / f'{alt}.png')
                 manifest[alt] = dict(manifest[key])
     (ROOT / 'src/art/enemySheets.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    PUPPET_OUTPUT.mkdir(parents=True, exist_ok=True)
+    puppets = {}
+    for key, name, w, h in PUPPETS:
+        frames = pose_frames(key, (w, h))
+        sheet = Image.new('RGBA', (w * len(frames), h))
+        for i, frame in enumerate(frames):
+            sheet.paste(frame, (w * i, 0))
+        save_indexed(sheet, PUPPET_OUTPUT / f'{key}.png')
+        puppets[key] = {'width': w, 'height': h, 'frames': len(frames)}
+        items.append((name, frames[0]))
+        print(f'{key}: {w}x{h}, {len(frames)} frames')
+    (ROOT / 'src/art/puppetSheets.json').write_text(json.dumps(puppets, indent=2) + '\n')
     (STUDY / 'palette.json').write_text(json.dumps(COLORS) + '\n')
     preview(items)
     print(f'Saved {len(items)} sheets, {sum(p.stat().st_size for p in OUTPUT.glob("*.png"))} bytes')

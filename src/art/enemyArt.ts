@@ -1683,10 +1683,9 @@ export function buildEnemies(scene: Phaser.Scene, readSheet: (key: string) => PC
   boss('boss_jiuying', [0, 1, 2, 3].map((f) => jiuying(f)), 5);
   boss('boss_jiuying_fire', [0, 1, 2, 3].map((f) => jiuying(f, true)), 5);
   for (const el of ['earth', 'metal', 'water', 'wood', 'fire'] as const) boss(el === 'earth' ? 'boss_dijiang' : `boss_dijiang_${el}`, [0, 1, 2, 3].map((f) => dijiang(f, el)), 7);
-  // 后续关卡共用怪的原画皮肤；第一关继续使用原贴图。
+  // 后续关卡共用怪的原画皮肤；第一关用上面同 key 的原画（en_shiyong 等）。
   two('en_tengguai_grove', 'wood', tengguai, 5);
   two('en_huoya_ember', 'fire', huoya, 8);
-  two('en_tiejia_battle', 'metal', tiejia, 5);
   two('en_shuigui_marsh', 'water', shuigui, 4);
   mob('en_chuanshan_armor', 'earth', [0, 1, 2, 3].map(chuanshan), [['_move', [0, 1], 5], ['_dig', [2, 3], 8]]);
 }

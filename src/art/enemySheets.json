@@ -194,9 +194,9 @@
     "rate": 7,
     "grounded": true
   },
-  "en_tiejia_battle": {
-    "width": 32,
-    "height": 32,
+  "en_tiejia": {
+    "width": 40,
+    "height": 34,
     "frames": 4,
     "move": [
       0,
@@ -518,5 +518,70 @@
     ],
     "rate": 8,
     "grounded": false
+  },
+  "en_shiyong": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 6,
+    "grounded": true
+  },
+  "en_tengguai": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 7,
+    "grounded": true
+  },
+  "en_shuigui": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 6,
+    "grounded": false
+  },
+  "en_huoya": {
+    "width": 32,
+    "height": 32,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 10,
+    "grounded": false
+  },
+  "boss_langyao": {
+    "width": 56,
+    "height": 48,
+    "frames": 4,
+    "move": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "rate": 8,
+    "grounded": true
   }
 }

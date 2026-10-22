@@ -114,7 +114,7 @@ export class PuppetManager {
     const p = g.player;
     const a = Math.random() * Math.PI * 2;
     const tex = giant ? 'pp_giant' : 'pp_golem';
-    const sprite = g.add.sprite(0, 0, tex, 0).setOrigin(0.5, giant ? 0.91 : 0.95);
+    const sprite = g.add.sprite(0, 0, tex, 0).setOrigin(0.5, 0.9);
     sprite.play(`${tex}_move`);
     const hpBg = g.add.rectangle(0, 0, giant ? 22 : 14, 3, 0x1c1424).setOrigin(0.5, 0);
     const hpFill = g.add.rectangle(0, 0, giant ? 20 : 12, 1, 0xdaa53e).setOrigin(0, 0);

@@ -1,13 +1,15 @@
 import Phaser from 'phaser';
 import { PC, addSheet, addAnim, OUTLINE, OUTLINE_LIT } from './painter';
+import { readEnemySheet } from './enemySheets';
 
 // 傀儡师的召唤物：只画朝右，朝左翻转。
 // 和敌人石俑（矮方块身体、方头、发光黄眼）拉开剪影：细腰人偶，金色球形关节，脸上一张白色傩面，
 // 头顶发髻插金簪，红腰带垂下一截；头和两手各连一根半透明提线往上走，脚下一圈金色的我方标记环。
 // 主体用浅灰白石色，运行时 setTint 染成五行外壳色（金刀傀、木藤傀、水傀、火傀）。
 //
-// 原点：pp_golem 24×30，脚底在 y=28.5，setOrigin(0.5, 0.95)；
-//       pp_giant 46×56，脚底在 y=51，setOrigin(0.5, 0.91)。
+// 正式造型是原画 PNG（assets/puppets，0–3 走路、4–7 拍地），加载后在脚底叠阴影和金环；下方程序画只作缺图回退。
+// 原点：PNG 脚底在 0.9 高度处（pp_golem 28×38、pp_giant 52×68），setOrigin(0.5, 0.9)；
+//       回退的程序画 pp_golem 24×30 脚底 y=28.5、pp_giant 46×56 脚底 y=51，同样按 0.9 放会差一两像素，可接受。
 
 const B = 0xdad6ce, S = 0xa4a2ae, H = 0xf8f3ea, D = 0x727082;
 const J = 0xecb84a, JS = 0xa87628;
@@ -152,14 +154,24 @@ function giantFrame(pose: GPose): PC {
   return p;
 }
 
-export function buildPuppetArt(scene: Phaser.Scene) {
+/** 原画帧脚底叠阴影和我方金环（rx 为环的横半径） */
+function ground(frames: PC[] | undefined, rx: number) {
+  return frames?.map((p) => {
+    const y = p.h * 0.9;
+    p.under(p.w / 2 + 0.6, y, rx * 0.8, rx * 0.21, 0x12222b, 88);
+    p.underRing(p.w / 2, y, rx, rx * 0.28, J, 175);
+    return p;
+  });
+}
+
+export function buildPuppetArt(scene: Phaser.Scene, readSheet: (key: string) => PC[] | undefined = (key) => readEnemySheet(scene, key)) {
   const walk = [0, 1, 2, 3].map((step) => ({ step, atk: -1 }));
   const atk = [0, 1, 2, 3].map((a) => ({ step: 0, atk: a }));
-  addSheet(scene, 'pp_golem', [...walk, ...atk].map(golemFrame));
+  addSheet(scene, 'pp_golem', ground(readSheet('pp_golem'), 9) ?? [...walk, ...atk].map(golemFrame));
   addAnim(scene, 'pp_golem_move', 'pp_golem', [0, 1, 2, 3], 8);
   // 拍地：举拳 → 过顶 → 拍地（停两拍）→ 收势；第 3 帧（拍地）出现在 0.2 秒左右，伤害在那时结算
   addAnim(scene, 'pp_golem_atk', 'pp_golem', [4, 5, 6, 6, 7], 14, 0);
-  addSheet(scene, 'pp_giant', [...walk, ...atk].map(giantFrame));
+  addSheet(scene, 'pp_giant', ground(readSheet('pp_giant'), 16) ?? [...walk, ...atk].map(giantFrame));
   addAnim(scene, 'pp_giant_move', 'pp_giant', [0, 1, 2, 3], 6);
   addAnim(scene, 'pp_giant_atk', 'pp_giant', [4, 5, 6, 6, 7], 10, 0);
 }

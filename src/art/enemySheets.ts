@@ -1,20 +1,28 @@
 import type Phaser from 'phaser';
 import sheets from './enemySheets.json' with { type: 'json' };
+import puppets from './puppetSheets.json' with { type: 'json' };
 import { PC } from './painter';
 
 /** PNG 来自已确认的原画；source key 与正式动画 key 分开，便于沿用升阶着色。 */
 export const ENEMY_SHEETS = sheets;
+/** 墨衡召唤物的原画图集，同一条管线导出，放在 assets/puppets */
+export const PUPPET_SHEETS = puppets;
+type Spec = { width: number; height: number; frames: number };
+const SPECS: Record<string, Spec> = { ...sheets, ...puppets };
 export const enemySourceKey = (key: string) => `source_${key}`;
 
 export function preloadEnemySheets(scene: Phaser.Scene) {
   for (const key of Object.keys(sheets)) {
     scene.load.image(enemySourceKey(key), `assets/enemies/${key}.png`);
   }
+  for (const key of Object.keys(puppets)) {
+    scene.load.image(enemySourceKey(key), `assets/puppets/${key}.png`);
+  }
 }
 
 /** 将加载好的位图拆成帧；缺图时由调用方沿用原来的程序画。 */
 export function readEnemySheet(scene: Phaser.Scene, key: string): PC[] | undefined {
-  const spec = sheets[key as keyof typeof sheets];
+  const spec = SPECS[key];
   const sourceKey = enemySourceKey(key);
   if (!spec || !scene.textures.exists(sourceKey)) return;
   const image = scene.textures.get(sourceKey).getSourceImage() as HTMLImageElement;

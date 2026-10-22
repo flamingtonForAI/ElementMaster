@@ -6,12 +6,13 @@ import { EL_INFO } from '../config/elements';
 // 五行散人·玄一：云游老道。白发白须、发髻插木簪，灰白宽袍黑镶边，背后太极图；
 // 手持拂尘，身边五颗五行色光点绕身旋转。剪影靠拂尘的斜线、垂到胸口的长须和五色光点和其他人拉开。
 
-// 色阶采用冷暖色相偏移：道袍高光偏暖银白、暗部偏蓝紫灰，白须白发暗部偏冷青灰
+// 色阶采用冷暖色相偏移：道袍高光偏暖银白、暗部偏蓝紫灰，白须白发暗部偏冷青灰。
+// 道袍比须发暗一档，胸前露黑色中衣，白须压在黑底上才不和袍子连成一片
 const SK = 0xf4cfb0, SKS = 0xd49678, BL = 0xe89a8c;
 const HR = 0xf5f1ea, HRS = 0xbfc4ce;
-const RB = 0xa4a6b4, RBS = 0x76788a, RBD = 0x525468, RBH = 0xd8dce8;
+const RB = 0x8e91a6, RBS = 0x686a80, RBD = 0x4a4c60, RBH = 0xc2c6d6;
 const TRIM = 0x221d2c;
-const WD = 0x925e36, WDH = 0xbe864e;
+const WD = 0x925e36, WDH = 0xbe864e, GD = 0xe3ac3e;
 const HD = 0x7e502e;
 const TL = 0xfaf7f0, TLS = 0xc8ccd6;
 const BT = 0x2b2435, BTH = 0x4f4460;
@@ -80,11 +81,13 @@ function drawRobe(p: PC, d: HeroDir, pose: Pose) {
   p.span(22, cx - bw, cx + bw - 1, TRIM);
   if (d === 's' || d === 'se') {
     const o = d === 's' ? 0 : 1;
+    for (let i = 0; i < 4; i++) p.span(BODY_Y + i, 14 + o + i, 18 + o - i, TRIM);
     p.line(13 + o, BODY_Y, 16 + o, BODY_Y + 3, TRIM);
     p.line(19 + o, BODY_Y, 16 + o, BODY_Y + 3, TRIM);
     p.line(16 + o, 23, 16 + o + Math.round(wave1 * 0.6), 27, RBS);
     p.line(17 + o, 23, 17 + o + Math.round(wave1 * 0.5), 25, TRIM);
   } else if (d === 'e') {
+    p.rect(17, BODY_Y, 2, 3, TRIM);
     p.line(17, BODY_Y, 18, BODY_Y + 3, TRIM);
     p.line(18, 23, 18 + Math.round(wave1 * 0.6), 27, RBS);
   } else {
@@ -192,13 +195,19 @@ function drawHead(p: PC, d: HeroDir, pose: Pose) {
     p.set(23, Y + 2, SKS);
     p.set(21, Y + 2, BL);
   } else if (d === 'ne') {
+    p.span(BODY_Y, 11, 20, TRIM);
     p.rect(20, Y, 2, 3, SK);
     p.set(21, Y, HR);
+    for (const x of [12, 15, 17]) p.line(x, Y - 3, x, Y + 5, HRS);
+    p.span(Y + 5, 11, 18, HRS);
   } else {
+    p.span(BODY_Y, 10, 21, TRIM);
     p.rect(11, Y + 2, 10, 5, HR);
     p.span(Y + 7, 12, 19, HRS);
-    p.line(13, Y - 3, 13, Y + 6, HRS);
-    p.line(18, Y - 3, 18, Y + 6, HRS);
+    for (const x of [13, 16, 18]) p.line(x, Y - 3, x, Y + 6, HRS);
+    p.set(12, Y + 7, TRIM);
+    p.set(15, Y + 7, TRIM);
+    p.set(19, Y + 7, TRIM);
   }
   drawBeard(p, d, pose.wavePhase);
   drawTopknot(p, d);
@@ -246,11 +255,14 @@ function drawTopknot(p: PC, d: HeroDir) {
 function whisk(p: PC, hx: number, hy: number, dir: number, wavePhase: number) {
   const tx = hx + 4 * dir;
   const ty = hy - 5;
-  p.line(hx, hy, tx, ty, HD);
-  p.set(tx, ty, WDH);
+  p.line(hx, hy, tx, ty, HD, 2);
+  p.line(hx, hy, tx, ty, WD);
+  p.set(tx, ty, GD);
   const s1 = Math.sin(wavePhase) * 1.1;
   const s2 = Math.sin(wavePhase - 1.0) * 1.8;
-  p.strand([[tx + dir, ty], [tx + 2 * dir + s1 * 0.4, ty + 3], [tx + 3 * dir + s1, ty + 6], [tx + 3 * dir + s2, ty + 9]], TL, 2);
+  const tail: [number, number][] = [[tx + dir, ty], [tx + 2 * dir + s1 * 0.4, ty + 3], [tx + 3 * dir + s1, ty + 6], [tx + 3 * dir + s2, ty + 9]];
+  p.strand(tail.map(([x, y]) => [x + dir, y] as [number, number]), TLS, 2);
+  p.strand(tail, TL, 2);
   p.set(tx + 3 * dir + Math.round(s2), ty + 10, TLS);
   p.set(tx + 2 * dir, ty + 4, WHITE);
 }
@@ -312,10 +324,10 @@ function orbit(p: PC, phase: number, front: boolean) {
   for (let i = 0; i < 5; i++) {
     const a = ((phase + i * 72) * Math.PI) / 180;
     if (Math.sin(a) > 0 !== front) continue;
-    const x = Math.round(16 + 13 * Math.cos(a) - 1);
+    const x = Math.round(16 + 11 * Math.cos(a) - 1);
     const y = Math.round(19 + 3 * Math.sin(a) - Math.cos(a * 2));
     const pa = a - 0.22;
-    p.set(Math.round(16 + 13 * Math.cos(pa)), Math.round(19 + 3 * Math.sin(pa) - Math.cos(pa * 2)), LIGHTS[i], 145);
+    p.set(Math.round(16 + 11 * Math.cos(pa)), Math.round(19 + 3 * Math.sin(pa) - Math.cos(pa * 2)), LIGHTS[i], 145);
     p.rect(x, y, 2, 2, LIGHTS[i]);
     p.set(x, y, WHITE);
   }

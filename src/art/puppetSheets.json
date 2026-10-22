@@ -1,0 +1,12 @@
+{
+  "pp_golem": {
+    "width": 28,
+    "height": 38,
+    "frames": 8
+  },
+  "pp_giant": {
+    "width": 52,
+    "height": 68,
+    "frames": 8
+  }
+}
