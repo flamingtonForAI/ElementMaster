@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
+import { armoredDamage } from '../game/damage';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
 import { phaseTerrain, LEVELS, DIFF, enemyPool, rollTier, type LevelDef } from '../config/levels';
 import { ENEMIES, AFFIXES, type Affix } from '../config/enemies';
-import { ENEMY_CRIT, ENEMY_CRIT_DMG, FROZEN, ON_ENEMY, STATUS_INFO, STATUS_OF, statusChance, statusPower, type Inflict, type StatusId } from '../config/status';
+import { advances, BOSS_STATUS, STATUS_TIERS, ENEMY_CRIT, ENEMY_CRIT_DMG, FROZEN, ON_ENEMY, STATUS_INFO, STATUS_OF, statusChance, statusPower, type Inflict, type StatusId } from '../config/status';
 import { EL_INFO, GEN_ORDER, REL_MULT, relation, terrainMod, type El } from '../config/elements';
 import { SKILLS } from '../config/skills';
 import { Build, upgradeSum, type Option, type PlayerStats } from '../game/Build';
@@ -31,6 +32,8 @@ export interface HitOpts {
   fromX?: number;
   fromY?: number;
   stun?: number;
+  /** 土系一阶眩晕的持续时间；后续施加可进阶打昏。 */
+  daze?: number;
   slow?: number;
   noCrit?: boolean;
   /** 浪花溅射的层数，0 或不填是原始命中 */
@@ -560,7 +563,7 @@ export class GameScene extends Phaser.Scene {
       case 'poison': return now < e.poisonUntil;
       case 'burn': return now < e.burnUntil;
       case 'bleed': return now < e.bleedUntil;
-      case 'stun': return now < e.stunUntil;
+      case 'stun': return now < e.stunUntil || now < e.confusedUntil;
     }
   }
 
@@ -637,12 +640,13 @@ export class GameScene extends Phaser.Scene {
       e.kby += (dy / d) * k;
     }
     if (o.stun) this.stunEnemy(e, o.stun);
+    if (o.daze && e.hp > 0) this.dazeEnemy(e, o.daze);
     if (o.slow) {
       this.slowEnemy(e, o.slow);
       // 水系命中带来的迟缓攒寒意（毒雾、藤缚这类别系的迟缓不算）
       if (el === 'water') this.chillEnemy(e);
     }
-    if (o.proc && e.hp > 0 && Math.random() < o.proc * ps.procMult[el] * statusChance(STATUS_OF[el], e.def.el)) this.afflict(e, STATUS_OF[el], dmg);
+    if (o.proc && e.hp > 0 && Math.random() < o.proc * statusChance(STATUS_OF[el], e.def.el)) this.afflict(e, STATUS_OF[el], dmg);
     if (e.hp > 0) this.comboHit(e, el, dmg);
 
     let prefix = '';
@@ -670,9 +674,9 @@ export class GameScene extends Phaser.Scene {
     for (const e of near) this.hitEnemy(e, base * k, 'water', { kb: 20, fromX: src.x, fromY: src.y, splash: depth, noCrit: !canCrit });
   }
 
-  explode(x: number, y: number, radius: number, dmg: number, el: El, kb: number, tint?: number, proc = 0) {
-    audio.sfx('explode');
-    this.fx.anim('fx_explosion', x, y - 4, { scale: radius / 22, tint });
+  explode(x: number, y: number, radius: number, dmg: number, el: El, kb: number, tint?: number, proc = 0, style: 'fire' | 'seal' = 'fire') {
+    audio.sfx(style === 'seal' ? 'seal' : 'explode');
+    this.fx.impact(style, x, y, radius, tint);
     const tmp: Enemy[] = [];
     for (const e of this.enemies.inRadius(x, y, radius, tmp)) this.hitEnemy(e, dmg, el, { kb, fromX: x, fromY: y, proc });
   }
@@ -689,56 +693,72 @@ export class GameScene extends Phaser.Scene {
     e.slowF = e.boss ? ON_ENEMY.slow.bossF : ON_ENEMY.slow.f;
   }
 
-  /** 寒意一层：攒满冰冻（机制同定身）；凝冰让流血中的敌人少攒一层；Boss 不冻，攒满改为迟缓 */
+  /** 寒意积累：几率进阶、攒满保底冰冻（机制同定身）；凝冰让流血中的敌人少攒一层；Boss 也会冰冻，持续时间减半 */
   private chillEnemy(e: Enemy) {
-    if (!e.alive || this.now < e.chillImmuneUntil || this.now < e.stunUntil || Math.random() >= this.power(e, 'slow')) return;
+    if (!e.alive || this.now < e.chillImmuneUntil || this.now < e.stunUntil || (e.boss && this.now < e.stunImmuneUntil) || Math.random() >= this.power(e, 'slow')) return;
     const C = ON_ENEMY.chill;
     const now = this.now;
     if (now - e.chillAt > C.window) e.chill = 0;
     e.chillAt = now;
     e.chill++;
-    const need = this.pstats.chillNeed - (this.build.mods['hh.freeze'] && now < e.bleedUntil ? 1 : 0);
-    if (e.chill < need) return;
+    const need = C.need - (this.build.mods['hh.freeze'] && now < e.bleedUntil ? 1 : 0);
+    if (!advances(e.chill, need, this.pstats.advanceBonus.water)) return;
     e.chill = 0;
-    const d = C.dur * this.pstats.stunMult;
+    const d = C.dur * this.pstats.stunMult * (e.boss ? BOSS_STATUS.duration : 1);
     e.chillImmuneUntil = now + d + C.immune;
     if (e.boss) {
-      e.slowUntil = Math.max(e.slowUntil, now + d * 1.5);
-      e.slowF = ON_ENEMY.slow.bossF;
-      return;
+      e.daze = 0;
+      e.stunImmuneUntil = now + d + BOSS_STATUS.controlImmune;
     }
     e.stunUntil = Math.max(e.stunUntil, now + d);
     e.frozenUntil = e.stunUntil;
+    this.statusText(e, 'slow');
     this.fx.ring(e.x, e.y - 6, 14, FROZEN.tint, 0.25);
   }
 
-  /** 几率触发的震慑一层：攒满打晕（走定身，吃定身免疫） */
-  private dazeEnemy(e: Enemy) {
-    if (!e.alive) return;
+  /** 土系一阶扰乱方向；积累时有几率进阶，第三次保底打昏。 */
+  private dazeEnemy(e: Enemy, dur: number = ON_ENEMY.daze.confuseDur) {
+    if (!e.alive || this.now < e.stunUntil || this.now < e.stunImmuneUntil) return;
     const D = ON_ENEMY.daze;
     const now = this.now;
     if (now - e.dazeAt > D.window) e.daze = 0;
     e.dazeAt = now;
-    if (++e.daze < D.need) return;
-    e.daze = 0;
-    this.stunEnemy(e, D.dur * this.pstats.dazeMult);
+    e.daze++;
+    if (e.boss) {
+      e.slowUntil = Math.max(e.slowUntil, now + dur * this.power(e, 'stun'));
+      e.slowF = ON_ENEMY.slow.bossF;
+    } else {
+      if (now >= e.confusedUntil) {
+        e.confuseAngle = Math.random() * Math.PI * 2;
+        e.confuseTurnAt = now + 0.35;
+        this.fx.text(e.x, e.y - e.sprite.displayHeight - 4, STATUS_TIERS.stun.first, STATUS_INFO.stun.css, 0.6);
+      }
+      e.confusedUntil = Math.max(e.confusedUntil, now + dur * this.power(e, 'stun'));
+    }
+    if (!advances(e.daze, D.need, this.pstats.advanceBonus.earth)) return;
+    this.stunEnemy(e, D.dur, true);
+    this.statusText(e, 'stun');
   }
 
-  /** 流血叠一层：每层伤害取更强的，刷新时间；叠满撕裂，剩下的流血一次打完；金系、火系敌人身上流血打折 */
+  private statusText(e: Enemy, kind: StatusId) {
+    const name = STATUS_TIERS[kind].second;
+    this.fx.text(e.x, e.y - e.sprite.displayHeight - 4, name, STATUS_INFO[kind].css, 0.6);
+  }
+
+  /** 流血叠一层：每层伤害取更强的，刷新时间；叠满撕裂，剩下的流血一次打完；输入已含命中时的五行伤害，不重复打折 */
   bleedEnemy(e: Enemy, dps: number) {
     if (!e.alive) return;
-    dps *= this.power(e, 'bleed');
     const now = this.now;
     if (now >= e.poisonUntil && now >= e.burnUntil && now >= e.bleedUntil) e.dotTick = 0.5;
     if (now >= e.bleedUntil) e.bleedStacks = e.bleedDps = 0;
     e.bleedStacks++;
     e.bleedDps = Math.max(e.bleedDps, dps);
     e.bleedUntil = now + ON_ENEMY.bleed.dur;
-    if (e.bleedStacks < this.pstats.bleedMax) return;
+    if (!advances(e.bleedStacks, ON_ENEMY.bleed.max, this.pstats.advanceBonus.metal)) return;
     const rest = e.bleedStacks * e.bleedDps * ON_ENEMY.bleed.dur;
     e.bleedStacks = e.bleedDps = 0;
     e.bleedUntil = 0;
-    this.fx.text(e.x, e.y - e.sprite.displayHeight - 4, '撕裂', STATUS_INFO.bleed.css, 0.6);
+    this.statusText(e, 'bleed');
     this.bleedTick(e, rest, true);
   }
 
@@ -752,20 +772,24 @@ export class GameScene extends Phaser.Scene {
     if (e.hp <= 0) this.enemies.kill(e);
   }
 
-  /** Boss 不会被定身，改为迟缓；定身结束后短暂免疫 */
-  stunEnemy(e: Enemy, dur: number) {
-    const d = dur * this.pstats.stunMult * this.power(e, 'stun');
-    if (e.boss) {
+  /** 二阶打昏对 Boss 持续减半；特殊直接定身仍降为迟缓。 */
+  stunEnemy(e: Enemy, dur: number, tierTwo = false) {
+    if (!e.alive || this.now < e.stunUntil || this.now < e.stunImmuneUntil) return;
+    const d = dur * this.pstats.stunMult * this.power(e, 'stun') * (e.boss && tierTwo ? BOSS_STATUS.duration : 1);
+    if (e.boss && !tierTwo) {
+      e.daze = 0;
+      e.stunImmuneUntil = this.now + d + ON_ENEMY.stun.immune;
       e.slowUntil = Math.max(e.slowUntil, this.now + d);
       e.slowF = ON_ENEMY.slow.bossF;
       return;
     }
-    if (this.now < e.stunUntil || this.now < e.stunImmuneUntil) return;
+    e.daze = 0;
+    e.confusedUntil = 0;
     e.stunUntil = this.now + d;
-    e.stunImmuneUntil = e.stunUntil + ON_ENEMY.stun.immune;
+    e.stunImmuneUntil = e.stunUntil + (e.boss ? BOSS_STATUS.controlImmune : ON_ENEMY.stun.immune);
   }
 
-  /** 按几率触发的异常；中毒、灼烧、流血的伤害按本次命中伤害折算；迟缓攒寒意、震慑攒层数 */
+  /** 按几率触发的异常；中毒、灼烧、流血的伤害按本次命中伤害折算；迟缓积累寒意、眩晕积累后进阶 */
   private afflict(e: Enemy, kind: StatusId, dmg: number) {
     switch (kind) {
       case 'slow':
@@ -782,33 +806,64 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** 灼烧叠一层：每层伤害取更强的，刷新时间；火系、水系敌人身上灼烧打折，烈焰提高层数上限 */
+  /** 灼烧叠一层：每层伤害取更强的，刷新时间；输入已含命中时的五行伤害，烈焰提高层数上限 */
   burnEnemy(e: Enemy, dps: number) {
     if (!e.alive) return;
-    dps *= this.power(e, 'burn');
     const now = this.now;
     if (now >= e.poisonUntil && now >= e.burnUntil && now >= e.bleedUntil) e.dotTick = 0.5;
-    if (now >= e.burnUntil) e.burnStacks = e.burnDps = 0;
-    e.burnStacks = Math.min(ON_ENEMY.burn.max + (this.build.mods.burnMax ?? 0) + this.pstats.burnMaxAdd, e.burnStacks + 1);
+    if (e.burningDeep && now >= e.burnDeepUntil) { e.burningDeep = false; e.burnBuild = 0; }
+    if (now >= e.burnUntil) {
+      e.burnBuild = e.burnStacks = e.burnDps = 0;
+      e.burningDeep = false;
+    }
+    e.burnBuild = Math.min(ON_ENEMY.burn.need, e.burnBuild + 1);
+    e.burnStacks = Math.min(ON_ENEMY.burn.max + (this.build.mods.burnMax ?? 0), e.burnStacks + 1);
     e.burnDps = Math.max(e.burnDps, dps);
     e.burnUntil = now + ON_ENEMY.burn.dur;
+    if (e.burningDeep && !e.boss) e.burnDeepUntil = e.burnUntil;
+    if (!e.burningDeep && advances(e.burnBuild, ON_ENEMY.burn.need, this.pstats.advanceBonus.fire)) {
+      e.burningDeep = true;
+      e.burnDeepUntil = now + ON_ENEMY.burn.dur * (e.boss ? BOSS_STATUS.duration : 1);
+      this.statusText(e, 'burn');
+    }
   }
 
-  /** 中毒单层：取更强的伤害，刷新时间（不缩短）；木系、金系敌人身上中毒打折，pierce（药师的毒雾）不打折 */
-  poisonEnemy(e: Enemy, dps: number, dur: number, pierce = false) {
+  /** 中毒单层：取更强的伤害，刷新时间（不缩短）；输入已含命中或毒雾的五行伤害，传播不再逐跳折损 */
+  poisonEnemy(e: Enemy, dps: number, dur: number) {
     if (!e.alive) return;
-    if (!pierce) dps *= this.power(e, 'poison');
     const now = this.now;
     if (now >= e.poisonUntil && now >= e.burnUntil && now >= e.bleedUntil) e.dotTick = 0.5;
-    if (now >= e.poisonUntil) e.poisonDps = 0;
+    if (e.poisonDeep && now >= e.poisonDeepUntil) { e.poisonDeep = false; e.poisonBuild = 0; }
+    if (now >= e.poisonUntil) {
+      e.poisonDps = e.poisonBuild = 0;
+      e.poisonDeep = false;
+    }
+    e.poisonBuild = Math.min(ON_ENEMY.poison.need, e.poisonBuild + 1);
     e.poisonDps = Math.max(e.poisonDps, dps);
     e.poisonUntil = Math.max(e.poisonUntil, now + dur * (1 + (this.build.mods.poisonDur ?? 0)));
+    if (e.poisonDeep && !e.boss) e.poisonDeepUntil = e.poisonUntil;
+    if (!e.poisonDeep && advances(e.poisonBuild, ON_ENEMY.poison.need, this.pstats.advanceBonus.wood)) {
+      e.poisonDeep = true;
+      e.poisonDeepUntil = now + (e.poisonUntil - now) * (e.boss ? BOSS_STATUS.duration : 1);
+      this.statusText(e, 'poison');
+    }
+  }
+
+  /** 二阶燃烧每跳灼伤周边；不走命中流程，不附异常或递归扩散。 */
+  burnAura(e: Enemy) {
+    if (!e.alive || !e.burningDeep || this.now >= e.burnDeepUntil || this.now >= e.burnUntil || this.now < e.invulnUntil) return;
+    const B = ON_ENEMY.burn;
+    this.fx.ring(e.x, e.y - 6, B.radius, STATUS_INFO.burn.tint, 0.3);
+    const damage = e.burnStacks * e.burnDps * B.aura * 0.5;
+    for (const other of this.enemies.inRadius(e.x, e.y, B.radius, [])) {
+      if (other !== e) this.dotEnemy(other, 0, damage);
+    }
   }
 
   /** 中毒、灼烧的结算（poison、burn 是这一跳各自的伤害）：不吃护甲、不暴击；只给精英和 Boss 跳数字，免得刷屏 */
   dotEnemy(e: Enemy, poison: number, burn: number) {
     if (!e.alive || this.now < e.invulnUntil) return;
-    const dmg = Math.max(1, Math.round((poison * this.pstats.poisonMult + burn) * this.pstats.dotMult));
+    const dmg = Math.max(1, Math.round((poison * (this.now < e.poisonUntil && e.poisonDeep && this.now < e.poisonDeepUntil ? ON_ENEMY.poison.deepMult : 1) + burn) * this.pstats.dotMult));
     e.hp -= dmg;
     // 灼烧烧死的算火系击杀（残兵不再复活）
     e.lastEl = burn > 0 ? 'fire' : 'wood';
@@ -825,7 +880,7 @@ export class GameScene extends Phaser.Scene {
     if (e.hp <= 0) this.enemies.kill(e);
   }
 
-  /** 敌人的攻击：按元素判定暴击，先乘暴击再减护甲，命中后判定异常 */
+  /** 敌人的攻击：按元素判定暴击，五行与抗性结算后应用护甲减伤，命中后判定异常 */
   hurtPlayer(base: number, el: El, o: HurtOpts = {}) {
     const p = this.player;
     if (!p.alive || this.dbg.god || this.over || this.now < this.iframeUntil) return;
@@ -835,7 +890,7 @@ export class GameScene extends Phaser.Scene {
     const crit = o.forceCrit || Math.random() < (o.crit ?? ENEMY_CRIT[el]);
     const critDmg = crit ? (o.critDmg ?? ENEMY_CRIT_DMG) : 1;
     const incoming = base * critDmg * REL_MULT[rel] * this.pstats.resist[el];
-    const dmg = Math.max(1, Math.ceil(incoming * 0.25), Math.round(incoming - armor));
+    const dmg = armoredDamage(incoming, armor);
     p.hurt();
     audio.sfx('hurt', crit ? { rate: 0.75 } : undefined);
     if (crit) this.cameras.main.shake(90, 0.004);

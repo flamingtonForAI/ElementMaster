@@ -99,31 +99,32 @@ export function tierTex(tex: string, tier: Tier) {
   return tier === 1 ? tex : `${tex}_t${tier}`;
 }
 
+/** 常规快怪（50+）血量 8–14；中速突进怪 18–28；慢速前排 30–42。远程怪以较低血量换射程，Boss 独立配平。 */
 export const ENEMIES: Record<string, EnemyDef> = {
-  shiyong: { id: 'shiyong', name: '石俑', el: 'earth', tex: 'en_shiyong', hp: 30, speed: 26, dmg: 6, armor: 1, radius: 8, xp: 2, behavior: 'walk', inflict: { kind: 'stun', chance: 0.3 } },
-  tengguai: { id: 'tengguai', name: '藤怪', el: 'wood', tex: 'en_tengguai', hp: 18, speed: 34, dmg: 4, armor: 0, radius: 7, xp: 1, behavior: 'regen', regen: 2, inflict: { kind: 'poison', chance: 0.1, dps: 1.5, dur: 4 } },
+  shiyong: { id: 'shiyong', name: '石俑', el: 'earth', tex: 'en_shiyong', hp: 40, speed: 26, dmg: 6, armor: 1, radius: 8, xp: 2, behavior: 'walk', inflict: { kind: 'stun', chance: 0.3 } },
+  tengguai: { id: 'tengguai', name: '藤怪', el: 'wood', tex: 'en_tengguai', hp: 24, speed: 34, dmg: 4, armor: 0, radius: 7, xp: 1, behavior: 'regen', regen: 2, inflict: { kind: 'poison', chance: 0.1, dps: 1.5, dur: 4 } },
   shuigui: { id: 'shuigui', name: '水鬼', el: 'water', tex: 'en_shuigui', hp: 10, speed: 50, dmg: 3, armor: 0, radius: 6, xp: 1, behavior: 'walk', inflict: { kind: 'slow', chance: 0.15 } },
   huoya: { id: 'huoya', name: '火鸦', el: 'fire', tex: 'en_huoya', hp: 8, speed: 52, dmg: 4, armor: 0, radius: 6, xp: 1, behavior: 'explode', inflict: { kind: 'burn', chance: 0.2, dps: 1.5 } },
-  tiejia: { id: 'tiejia', name: '铁甲兵', el: 'metal', tex: 'en_tiejia', hp: 26, speed: 30, dmg: 6, armor: 3, radius: 8, xp: 2, behavior: 'charge', inflict: { kind: 'bleed', chance: 0.25, dps: 1.5 } },
+  tiejia: { id: 'tiejia', name: '铁甲兵', el: 'metal', tex: 'en_tiejia', hp: 34, speed: 30, dmg: 6, armor: 3, radius: 8, xp: 2, behavior: 'charge', inflict: { kind: 'bleed', chance: 0.25, dps: 1.5 } },
   zhushe: { id: 'zhushe', name: '竹叶青', el: 'wood', tex: 'en_zhushe', hp: 14, speed: 58, dmg: 5, armor: 0, radius: 6, xp: 1, behavior: 'charge', inflict: { kind: 'poison', chance: 0.2, dps: 2, dur: 4 } },
-  zhangchan: { id: 'zhangchan', name: '瘴蟾', el: 'earth', tex: 'en_zhangchan', hp: 24, speed: 30, dmg: 4, armor: 1, radius: 7, xp: 2, behavior: 'spit', inflict: { kind: 'poison', chance: 0.25, dps: 2, dur: 4 } },
+  zhangchan: { id: 'zhangchan', name: '瘴蟾', el: 'earth', tex: 'en_zhangchan', hp: 28, speed: 30, dmg: 4, armor: 1, radius: 7, xp: 2, behavior: 'spit', inflict: { kind: 'poison', chance: 0.25, dps: 2, dur: 4 } },
   shanxiao: { id: 'shanxiao', name: '山魈', el: 'earth', tex: 'en_shanxiao', hp: 22, speed: 40, dmg: 5, armor: 0, radius: 7, xp: 2, behavior: 'spit', shot: 'ep_rock', inflict: { kind: 'stun', chance: 0.2 } },
-  chuanshan: { id: 'chuanshan', name: '穿山甲', el: 'earth', tex: 'en_chuanshan', hp: 34, speed: 30, dmg: 7, armor: 2, radius: 7, xp: 2, behavior: 'burrow', inflict: { kind: 'stun', chance: 0.25 } },
+  chuanshan: { id: 'chuanshan', name: '穿山甲', el: 'earth', tex: 'en_chuanshan', hp: 42, speed: 30, dmg: 7, armor: 2, radius: 7, xp: 2, behavior: 'burrow', inflict: { kind: 'stun', chance: 0.25 } },
   chihu: { id: 'chihu', name: '赤狐', el: 'fire', tex: 'en_chihu', hp: 14, speed: 56, dmg: 5, armor: 0, radius: 6, xp: 1, behavior: 'charge', trail: true, inflict: { kind: 'burn', chance: 0.15, dps: 1.5 } },
-  huojing: { id: 'huojing', name: '火精', el: 'fire', tex: 'en_huojing', hp: 16, speed: 34, dmg: 5, armor: 0, radius: 6, xp: 2, behavior: 'spit', shot: 'ep_fire', inflict: { kind: 'burn', chance: 0.2, dps: 1.5 } },
-  canbing: { id: 'canbing', name: '残兵', el: 'metal', tex: 'en_canbing', hp: 22, speed: 30, dmg: 6, armor: 2, radius: 7, xp: 2, behavior: 'walk', revive: 5, inflict: { kind: 'bleed', chance: 0.15, dps: 1.5 } },
+  huojing: { id: 'huojing', name: '火精', el: 'fire', tex: 'en_huojing', hp: 20, speed: 34, dmg: 5, armor: 0, radius: 6, xp: 2, behavior: 'spit', shot: 'ep_fire', inflict: { kind: 'burn', chance: 0.2, dps: 1.5 } },
+  canbing: { id: 'canbing', name: '残兵', el: 'metal', tex: 'en_canbing', hp: 30, speed: 30, dmg: 6, armor: 2, radius: 7, xp: 2, behavior: 'walk', revive: 5, inflict: { kind: 'bleed', chance: 0.15, dps: 1.5 } },
   feilian: { id: 'feilian', name: '飞镰', el: 'metal', tex: 'en_feilian', hp: 18, speed: 38, dmg: 5, armor: 1, radius: 6, xp: 2, behavior: 'spit', shot: 'ep_blade', inflict: { kind: 'bleed', chance: 0.2, dps: 1.5 } },
-  yuyao: { id: 'yuyao', name: '鱼妖', el: 'water', tex: 'en_yuyao', hp: 18, speed: 36, dmg: 5, armor: 0, radius: 6, xp: 2, behavior: 'spit', shot: 'ep_water', inflict: { kind: 'slow', chance: 0.2 } },
-  jiao: { id: 'jiao', name: '蛟', el: 'water', tex: 'en_jiao', hp: 30, speed: 40, dmg: 6, armor: 1, radius: 8, xp: 2, behavior: 'charge', puddle: true, inflict: { kind: 'slow', chance: 0.2 } },
+  yuyao: { id: 'yuyao', name: '鱼妖', el: 'water', tex: 'en_yuyao', hp: 22, speed: 36, dmg: 5, armor: 0, radius: 6, xp: 2, behavior: 'spit', shot: 'ep_water', inflict: { kind: 'slow', chance: 0.2 } },
+  jiao: { id: 'jiao', name: '蛟', el: 'water', tex: 'en_jiao', hp: 26, speed: 40, dmg: 6, armor: 1, radius: 8, xp: 2, behavior: 'charge', puddle: true, inflict: { kind: 'slow', chance: 0.2 } },
   // 第 7 关寒江：冰蚕死时冰爆（自爆按元素走，水系是迟缓），铁螯蟹横着挪过来夹人
-  bingcan: { id: 'bingcan', name: '冰蚕', el: 'water', tex: 'en_bingcan', hp: 30, speed: 24, dmg: 5, armor: 1, radius: 8, xp: 2, behavior: 'explode', inflict: { kind: 'slow', chance: 0.2 } },
-  aoxie: { id: 'aoxie', name: '铁螯蟹', el: 'metal', tex: 'en_aoxie', hp: 32, speed: 34, dmg: 7, armor: 4, radius: 8, xp: 2, behavior: 'sidestep', inflict: { kind: 'bleed', chance: 0.25, dps: 1.5 } },
+  bingcan: { id: 'bingcan', name: '冰蚕', el: 'water', tex: 'en_bingcan', hp: 40, speed: 24, dmg: 5, armor: 1, radius: 8, xp: 2, behavior: 'explode', inflict: { kind: 'slow', chance: 0.2 } },
+  aoxie: { id: 'aoxie', name: '铁螯蟹', el: 'metal', tex: 'en_aoxie', hp: 38, speed: 34, dmg: 7, armor: 4, radius: 8, xp: 2, behavior: 'sidestep', inflict: { kind: 'bleed', chance: 0.25, dps: 1.5 } },
   // 第 8 关大漠：沙蝎贴近了尾针直刺一条线，金蜣隔着距离滚金丸
   shaxie: { id: 'shaxie', name: '沙蝎', el: 'earth', tex: 'en_shaxie', hp: 28, speed: 40, dmg: 6, armor: 2, radius: 7, xp: 2, behavior: 'sting', inflict: { kind: 'poison', chance: 0.25, dps: 2, dur: 4 } },
-  jinqiang: { id: 'jinqiang', name: '金蜣', el: 'metal', tex: 'en_jinqiang', hp: 24, speed: 32, dmg: 6, armor: 3, radius: 7, xp: 2, behavior: 'spit', shot: 'ep_sandball', inflict: { kind: 'stun', chance: 0.2 } },
+  jinqiang: { id: 'jinqiang', name: '金蜣', el: 'metal', tex: 'en_jinqiang', hp: 30, speed: 32, dmg: 6, armor: 3, radius: 7, xp: 2, behavior: 'spit', shot: 'ep_sandball', inflict: { kind: 'stun', chance: 0.2 } },
   // 第 9 关东海归墟：夜叉跳到玩家脚下砸地，焰蛸一次扇形喷三道火
-  yecha: { id: 'yecha', name: '夜叉', el: 'water', tex: 'en_yecha', hp: 30, speed: 42, dmg: 7, armor: 1, radius: 7, xp: 2, behavior: 'leap', inflict: { kind: 'slow', chance: 0.2 } },
-  yanshao: { id: 'yanshao', name: '焰蛸', el: 'fire', tex: 'en_yanshao', hp: 22, speed: 30, dmg: 5, armor: 0, radius: 7, xp: 2, behavior: 'spit', shot: 'ep_fire', spread: 3, inflict: { kind: 'burn', chance: 0.15, dps: 1.5 } },
+  yecha: { id: 'yecha', name: '夜叉', el: 'water', tex: 'en_yecha', hp: 24, speed: 42, dmg: 7, armor: 1, radius: 7, xp: 2, behavior: 'leap', inflict: { kind: 'slow', chance: 0.2 } },
+  yanshao: { id: 'yanshao', name: '焰蛸', el: 'fire', tex: 'en_yanshao', hp: 24, speed: 30, dmg: 5, armor: 0, radius: 7, xp: 2, behavior: 'spit', shot: 'ep_fire', spread: 3, inflict: { kind: 'burn', chance: 0.15, dps: 1.5 } },
   langyao: { id: 'langyao', name: '狼妖', el: 'metal', tex: 'boss_langyao', hp: 2600, speed: 46, dmg: 16, armor: 2, radius: 18, xp: 100, behavior: 'boss_wolf', boss: true, inflict: { kind: 'bleed', chance: 0.5, dps: 3 } },
   shuyao: { id: 'shuyao', name: '千年树妖', el: 'wood', tex: 'boss_shuyao', hp: 5400, speed: 30, dmg: 18, armor: 2, radius: 24, xp: 150, behavior: 'boss_tree', boss: true, regen: 4, inflict: { kind: 'poison', chance: 0.65, dps: 4, dur: 5 } },
   shanxiaowang: { id: 'shanxiaowang', name: '山魈王', el: 'earth', tex: 'boss_shanxiao', hp: 5000, speed: 40, dmg: 18, armor: 3, radius: 20, xp: 150, behavior: 'boss_ape', boss: true, inflict: { kind: 'stun', chance: 0.5 } },

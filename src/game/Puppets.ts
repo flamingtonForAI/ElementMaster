@@ -4,6 +4,7 @@ import { EL_INFO, REL_MULT, relation, type El } from '../config/elements';
 import type { Enemy } from './Enemies';
 import type { GameScene } from '../scenes/GameScene';
 import { audio } from '../audio/Audio';
+import { armoredDamage } from './damage';
 
 /** 傀儡的外壳色：土是石头本色，其余按元素染色 */
 const SHELL_TINT: Record<El, number | null> = { earth: null, metal: 0xdfe6ee, wood: 0x9fe08a, water: 0x9fc0ff, fire: 0xffa080 };
@@ -164,7 +165,7 @@ export class PuppetManager {
   hurt(p: Puppet, base: number, el: El) {
     if (!p.alive) return;
     const incoming = base * STONE * REL_MULT[relation(el, p.el)];
-    const dmg = Math.max(1, Math.ceil(incoming * 0.25), Math.round(incoming - this.g.pstats.armor));
+    const dmg = armoredDamage(incoming, this.g.pstats.armor);
     p.hp -= dmg;
     p.flashUntil = this.g.now + 0.08;
     if (p.hp <= 0) this.remove(p, true);

@@ -154,6 +154,92 @@ function explosion(f: number): PC {
   return p;
 }
 
+/** 寒冰：六向冰脉瞬间铺满判定范围，然后只留下碎晶。 */
+function iceBurst(f: number): PC {
+  const p = new PC(64, 64);
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI / 3;
+    const point = (r: number, side = 0): [number, number] => [32 + Math.cos(a) * r - Math.sin(a) * side, 32 + Math.sin(a) * r + Math.cos(a) * side];
+    if (f < 2) {
+      p.line(...point(4), ...point(29), 0xc8edff, f === 0 ? 1 : 2);
+      for (const r of [13, 22]) for (const side of [-1, 1]) p.line(...point(r), ...point(r - 5, side * 5), 0x75bce8);
+    }
+    const r = [24, 26, 28, 30][f];
+    p.line(...point(r - 4), ...point(r), f < 2 ? 0xf0fbff : 0x86b6cf, 1, 255 - f * 45);
+    p.line(...point(r - 2, -2), ...point(r - 2, 2), 0xc8edff, 1, 255 - f * 50);
+  }
+  return p;
+}
+
+/** 符爆：方印与断开的符笔，白色底图由五行染色，不复用火球。 */
+function sealBurst(f: number): PC {
+  const p = new PC(48, 48);
+  const r = [12, 19, 21, 22][f];
+  const alpha = 255 - f * 50;
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    p.line(24 + sx * r, 24 + sy * (r - 7), 24 + sx * r, 24 + sy * r, 0xffffff, 1, alpha);
+    p.line(24 + sx * (r - 7), 24 + sy * r, 24 + sx * r, 24 + sy * r, 0xffffff, 1, alpha);
+    p.line(24 + sx * (r - 3), 24 + sy * 3, 24 + sx * (r - 7), 24 + sy * 6, 0xffe7a0, 1, alpha);
+  }
+  if (f < 2) {
+    p.line(18, 19, 30, 19, 0xffffff, 2);
+    p.line(24, 15, 24, 33, 0xfff0c0, 2);
+    p.strand([[18, 25], [29, 25], [20, 31], [29, 32]], 0xffffff, 1);
+  }
+  return p;
+}
+
+/** 落石的尘团向外滚开，灰褐色不发光，中心留空让敌人可见。 */
+function dustBurst(f: number): PC {
+  const p = new PC(64, 64);
+  for (let i = 0; i < 9; i++) {
+    const a = i * Math.PI * 2 / 9;
+    const r = [10, 18, 24, 27][f];
+    const size = [4, 6, 5, 3][f];
+    const x = 32 + Math.cos(a) * r, y = 32 + Math.sin(a) * r;
+    p.ellipse(x, y, size, size * 0.7, f < 2 ? 0x9a8262 : 0x746a5a);
+    p.line(x - 2, y - 2, x + 1, y - 2, 0xc0a77f, 1, 180 - f * 35);
+  }
+  return p;
+}
+
+/** 淡淡的毒烟纹理，保留脚下视野；按原半径和椭圆缩放。 */
+function poisonMist(f: number): PC {
+  const p = new PC(64, 64);
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const dx = x - 31.5, dy = y - 31.5, r = Math.hypot(dx, dy);
+    if (r > 31) continue;
+    const swirl = Math.sin(r * 0.48 + Math.atan2(dy, dx) * 3 - f * Math.PI / 4);
+    p.set(x, y, 0x82a74d, Math.round((1 - (r / 32) ** 4) * (90 + swirl * 45)));
+  }
+  return p;
+}
+
+/** 离火环是拖着弯曲火尾的火舌，火头落在贴图中心以贴合碰撞点。 */
+function orbitFlame(f: number): PC {
+  const p = new PC(26, 16);
+  p.strand([[2, 2 + f], [3, 7], [7, 10], [13, 8]], 0xd85a31, 3);
+  p.strand([[4, 5 + f], [7, 9], [13, 8]], 0xffa744, 2);
+  p.ellipse(14, 8, 4, 3, 0xff9138);
+  p.line(12, 7, 16, 7, 0xffe5a0, 2);
+  return p;
+}
+
+function impactMark(rock: boolean): PC {
+  const p = new PC(40, 24);
+  if (rock) {
+    for (let i = 0; i < 7; i++) {
+      const a = i * Math.PI * 2 / 7;
+      p.strand([[20, 12], [20 + Math.cos(a + 0.2) * 10, 12 + Math.sin(a + 0.2) * 6], [20 + Math.cos(a) * 19, 12 + Math.sin(a) * 11]], 0x342b25, 1);
+    }
+  } else {
+    p.ellipse(20, 12, 17, 9, 0x382724);
+    p.ellipse(20, 12, 11, 6, 0x49302a);
+    for (let i = 0; i < 7; i++) p.set(9 + i * 3, 10 + (i % 3) * 2, 0xb15b32, 160);
+  }
+  return p;
+}
+
 function leaf(): PC {
   const p = new PC(9, 7);
   p.ellipse(4.5, 3.5, 4, 2.5, 0x5fc46a);
@@ -217,6 +303,19 @@ function crack(): PC {
   p.strand([[2, 4], [6, 3], [9, 5], [13, 3], [17, 4]], 0x3a2a1a, 1);
   p.strand([[9, 5], [10, 7]], 0x3a2a1a, 1);
   p.strand([[6, 3], [5, 1]], 0x3a2a1a, 1);
+  return p;
+}
+
+/** 地脉刺：窄而硬的灰褐岩脊，沿裂缝逐段升起，区别于落石的圆钝轮廓。 */
+function earthRidge(f: number): PC {
+  const p = new PC(22, 28);
+  const top = 25 - [6, 16, 24][f];
+  p.tri([3, 25], [12, top], [19, 25], 0x6e6555);
+  p.tri([12, 25], [12, top], [19, 25], 0x9c9078);
+  p.line(12, top + 1, 15, 22, 0xc9b898);
+  p.line(9, 18 + f, 12, 21 + f, 0x4c463d);
+  p.outline(OUTLINE);
+  p.under(11, 26, 10, 1.5, 0x000000, 70);
   return p;
 }
 
@@ -1542,6 +1641,20 @@ export function buildFx(scene: Phaser.Scene) {
   single(scene, 'pj_sword', flySword());
   single(scene, 'pj_wave', wave());
   single(scene, 'fx_vine', vine());
+  addSheet(scene, 'fx_poison_mist', Array.from({ length: 8 }, (_, f) => poisonMist(f)));
+  addAnim(scene, 'fx_poison_mist', 'fx_poison_mist', [0, 1, 2, 3, 4, 5, 6, 7], 4);
+  single(scene, 'fx_impact_crack', impactMark(true));
+  single(scene, 'fx_scorch', impactMark(false));
+  for (const [key, draw, fps] of [
+    ['fx_ice_burst', iceBurst, 12],
+    ['fx_seal_burst', sealBurst, 18],
+    ['fx_dust_burst', dustBurst, 12],
+  ] as const) {
+    addSheet(scene, key, [0, 1, 2, 3].map(draw));
+    addAnim(scene, key, key, [0, 1, 2, 3], fps, 0);
+  }
+  addSheet(scene, 'fx_orbit_flame', [0, 1].map(orbitFlame));
+  addAnim(scene, 'fx_orbit_flame', 'fx_orbit_flame', [0, 1], 12);
   addSheet(scene, 'pj_fireball', [0, 1].map(fireball));
   addAnim(scene, 'pj_fireball', 'pj_fireball', [0, 1], 10);
   for (const el of GEN_ORDER) {
@@ -1557,6 +1670,8 @@ export function buildFx(scene: Phaser.Scene) {
   addAnim(scene, 'pj_water', 'pj_water', [0, 1], 8);
   addSheet(scene, 'fx_spike', [0, 1, 2].map(spike));
   addAnim(scene, 'fx_spike', 'fx_spike', [0, 1, 2, 2, 2, 2, 1, 0], 20, 0);
+  addSheet(scene, 'fx_earth_ridge', [0, 1, 2].map(earthRidge));
+  addAnim(scene, 'fx_earth_ridge', 'fx_earth_ridge', [0, 1, 2, 2, 1, 0], 20, 0);
   single(scene, 'fx_crack', crack());
   single(scene, 'gem_s', gem(0x5aa8ff, 0xd8f0ff, 0x2a5aa8));
   single(scene, 'gem_m', gem(0x5fd06a, 0xd8ffd8, 0x2a7a3a));

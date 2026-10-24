@@ -1,8 +1,8 @@
 import { relation, type El } from './elements';
 
 /**
- * 五行异常（敌我共用）：水迟缓（攒寒意冰冻）、木中毒、火灼烧、金流血（叠满撕裂）、土震慑（攒满打晕）。
- * stun 这个 id 指土系的震慑：几率触发的震慑先攒层数，石刺、落石这类必定定身的直接定住
+ * 五行异常保留原有 id，兼容星图、敌人攻击及存档。玩家施加的异常分两阶；敌方施加仍用 ON_PLAYER。
+ * stun 在敌人身上是一阶眩晕乱走、二阶打昏；通用定身独立于异常进阶。
  */
 export type StatusId = 'slow' | 'poison' | 'burn' | 'bleed' | 'stun';
 
@@ -33,19 +33,37 @@ export const MOB_REPEAT = 0.5;
 /** 小怪挂的迟缓持续时间乘这个数：水系小怪多，2 秒的迟缓很容易连成一片 */
 export const MOB_SLOW_DUR = 0.6;
 
-/** 挂在敌人身上：中毒、灼烧的 k 是每秒伤害占本次命中伤害的比例 */
+/** 玩家施加的两阶异常。计数是积累次数，不是异常的阶级。 */
+export const STATUS_TIERS: Record<StatusId, { first: string; second: string }> = {
+  slow: { first: '迟缓', second: '冰冻' },
+  poison: { first: '中毒', second: '剧毒' },
+  burn: { first: '点燃', second: '燃烧' },
+  bleed: { first: '流血', second: '撕裂' },
+  stun: { first: '眩晕', second: '打昏' },
+};
+/** Boss 保留二阶机制但持续减半；水土共享硬控后的免疫，避免交替锁死。 */
+export const BOSS_STATUS = { duration: 0.5, controlImmune: 3 };
+
+export const ADVANCE = { chance: 0.2, perLevel: 0.1 };
+
+/** 首次只挂一阶；之后掷进阶概率，达到积累门槛则保底。 */
+export function advances(count: number, need: number, bonus: number): boolean {
+  return count > 1 && (count >= need || Math.random() < Math.min(1, Math.max(0, ADVANCE.chance + bonus)));
+}
+
+/** 挂在敌人身上：中毒、点燃的 k 是每秒伤害占本次命中伤害的比例 */
 export const ON_ENEMY = {
   slow: { dur: 2, f: 0.5, bossF: 0.75 },
-  /** 水系命中造成迟缓时攒一层寒意，window 秒内攒满 need 层冰冻 dur 秒，之后 immune 秒内不再冰冻；Boss 不冻，改为迟缓 */
+  /** 水系命中造成迟缓时攒一层寒意，间隔 window 秒内积累 need 次保底冰冻 dur 秒，之后 immune 秒内不再冰冻；Boss 冰冻时长减半 */
   chill: { need: 3, window: 5, dur: 1, immune: 3 },
-  poison: { dur: 4, k: 0.3 },
-  burn: { dur: 2, k: 0.2, max: 3 },
+  poison: { dur: 4, k: 0.4, need: 3, deepMult: 2 },
+  burn: { dur: 2, k: 0.3, max: 3, need: 3, radius: 40, aura: 0.5 },
   /** 每层每秒造成本次伤害的 k，无视护甲；叠满 max 层撕裂：剩下的流血一次打完 */
-  bleed: { dur: 3, k: 0.12, max: 5 },
-  /** 必定定身（石刺、落石）：结束后 immune 秒内不会再被定身；Boss 不会被定身，改为迟缓 */
+  bleed: { dur: 3, k: 0.2, max: 5 },
+  /** 直接定身（藤缚、傀儡碎裂等）：结束后 immune 秒内不会再被定身或累积眩晕；特殊直接定身对 Boss 仍改为迟缓，二阶打昏除外 */
   stun: { dur: 0.5, immune: 1 },
-  /** 几率触发的震慑：window 秒内攒满 need 层打晕 dur 秒 */
-  daze: { need: 3, window: 4, dur: 0.8 },
+  /** 眩晕乱走 confuseDur 秒，积累 need 次保底打昏 dur 秒；连续 window 秒未累积则清空 */
+  daze: { need: 3, window: 4, dur: 0.8, confuseDur: 1.5 },
 };
 
 /** 挂在玩家身上 */
@@ -63,7 +81,8 @@ export const ON_PLAYER = {
 /**
  * 异常按五行关系缩放（异常元素 → 目标元素，敌我一样，目标是敌人元素或玩家本命）。没有完全免疫：
  * 被克（如火系敌人身上的流血）最难挂，同系次之。几率乘这个系数；系数低于 1 时，异常的强度
- * （持续伤害、迟缓和定身时长、攒寒意的机会）也乘它
+ * （玩家受到的持续伤害、双方迟缓和定身时长、攒寒意的机会）也乘它。玩家施加的
+ * 持续伤害已经从命中伤害派生，不再额外乘一次强度系数
  */
 const STATUS_REL = { counter: 1.5, fed: 1.2, drain: 0.8, same: 0.5, countered: 0.3 };
 

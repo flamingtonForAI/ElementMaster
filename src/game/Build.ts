@@ -1,6 +1,6 @@
 import { GEN_ORDER, relation, type El, type Rel, type Terrain } from '../config/elements';
 import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS, type SkillId, type PassiveId, type PassiveDef } from '../config/skills';
-import { ON_ENEMY } from '../config/status';
+import { ADVANCE } from '../config/status';
 import type { CharacterDef } from '../config/characters';
 import type { LevelDef } from '../config/levels';
 import { UPGRADES, type MetaLevels, type UpgradeStat } from '../config/meta';
@@ -47,15 +47,8 @@ export interface PlayerStats {
   sigDmg: number;
   /** 能穿透的投射物额外穿透（贯日诀） */
   pierce: number;
-  /** 各系术触发本系异常的几率倍率（本系异常心法） */
-  procMult: Record<El, number>;
-  /** 流血撕裂所需层数、冰冻所需寒意、灼烧上限加层（破军、玄冥、燎原满级） */
-  bleedMax: number;
-  chillNeed: number;
-  burnMaxAdd: number;
-  /** 打晕时长倍率（镇岳诀）、中毒伤害倍率（繁茂诀） */
-  dazeMult: number;
-  poisonMult: number;
+  /** 二阶异常触发率的额外百分点；基础率见 ADVANCE。 */
+  advanceBonus: Record<El, number>;
 }
 
 const EL0 = (v: number): Record<El, number> => ({ metal: v, wood: v, water: v, fire: v, earth: v });
@@ -151,7 +144,6 @@ export class Build {
     const gr = (stat: string) =>
       c.growth.filter((g) => g.stat === stat).reduce((s, g) => s + Math.min(g.cap ?? Infinity, Math.floor(this.level / g.every) * g.v), 0);
     const m = (k: string) => this.mods[k] ?? 0;
-    const full = (id: PassiveId) => (this.passives.get(id) ?? 0) >= PASSIVES[id].maxLv;
     const elDmg = EL0(1);
     const resist = EL0(1);
     const vsEl = EL0(1);
@@ -195,12 +187,7 @@ export class Build {
       puppetDmg: 1 + gr('puppetDmg'),
       sigDmg: 1 + gr('sigDmg'),
       pierce: Math.floor((p('guanri') + 1) / 2),
-      procMult: { metal: 1 + 0.15 * p('pojun'), wood: 1 + 0.15 * p('fanmao'), water: 1 + 0.15 * p('xuanming'), fire: 1 + 0.15 * p('liaoyuan'), earth: 1 + 0.15 * p('zhenyue') },
-      bleedMax: ON_ENEMY.bleed.max - (full('pojun') ? 1 : 0),
-      chillNeed: ON_ENEMY.chill.need - (full('xuanming') ? 1 : 0),
-      burnMaxAdd: full('liaoyuan') ? 2 : 0,
-      dazeMult: 1 + 0.15 * p('zhenyue'),
-      poisonMult: 1 + 0.1 * p('fanmao'),
+      advanceBonus: { metal: ADVANCE.perLevel * p('pojun'), wood: ADVANCE.perLevel * p('fanmao'), water: ADVANCE.perLevel * p('xuanming'), fire: ADVANCE.perLevel * p('liaoyuan'), earth: ADVANCE.perLevel * p('zhenyue') },
     };
   }
 

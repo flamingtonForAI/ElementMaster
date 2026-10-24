@@ -124,17 +124,21 @@ export class SkillSystem {
         p.attack(t.x - p.x, t.y - p.y);
         const speed = 320 * (1 + this.mod('ruan.range'));
         const pierce = st.pierce + this.mod('ruan.pierce');
-        const onHit = st.splash ? (e: Enemy) => this.boltSplash(e, st.dmg * 0.3) : undefined;
         // 远射：贴脸不打折，拉开到 180px 以上 ×1.2，奖励边退边打
         const tid = t.id;
         const dmgAt = (e: Enemy) => 1 + 0.2 * Phaser.Math.Clamp((Math.hypot(e.x - p.x, e.y - p.y) - 60) / 120, 0, 1);
         for (let i = 0; i < st.shots; i++) {
           g.later(i * 0.07, () => {
-            // 目标死了就沿上一箭的方向继续射
-            const tgt = t.alive && t.id === tid ? t : g.enemies.nearest(p.x, p.y - 8, range);
+            // 中期起逐箭分配目标；每箭重新查询，避免追着死敌或对象池复用后的旧目标射。
+            const targets = st.targets > 1 ? g.enemies.nearestN(p.x, p.y - 8, range, st.targets) : [];
+            const tgt = st.targets > 1 ? (targets.length ? targets[i % targets.length] : undefined)
+              : t.alive && t.id === tid ? t : g.enemies.nearest(p.x, p.y - 8, range);
             const ax = tgt ? tgt.x : p.x + p.facing.x;
             const ay = tgt ? tgt.y - 6 : p.y - 8 + p.facing.y;
             const a = Math.atan2(ay - (p.y - 8), ax - p.x) + (Math.random() - 0.5) * 0.06;
+            // 同一支箭贯穿多人时，每个敌人至多承受一次水花伤害；各箭独立。
+            const splashed = new Set<number>();
+            const onHit = st.splash ? (e: Enemy) => this.boltSplash(e, st.dmg * st.splash, st.splashRadius * area, st.splashSlow, splashed) : undefined;
             audio.sfx('sword', { rate: 1.3 });
             g.proj.fire('bolt', 'pj_bolt', p.x, p.y - 8, Math.cos(a) * speed, Math.sin(a) * speed, {
               dmg: st.dmg, el: 'water', life: range / speed, pierce, radius: 4, kb: 15, proc, onHit, dmgAt,
@@ -149,10 +153,9 @@ export class SkillSystem {
         const linger = st.linger + this.mod('qing.cloudDur');
         for (const e of g.enemies.inRadius(p.x, p.y, r, this.tmp)) {
           if (((e.x - p.x) / r) ** 2 + ((e.y - p.y) / (r * AURA_FLAT)) ** 2 > 1) continue;
-          g.poisonEnemy(e, st.dps * g.dmgMult(e, 'wood'), linger, true);
+          g.poisonEnemy(e, st.dps * g.dmgMult(e, 'wood'), linger);
           if (st.slow) g.slowEnemy(e, 0.6);
         }
-        if (Math.random() < 0.7) g.fx.burst(p.x + (Math.random() - 0.5) * r * 1.4, p.y + (Math.random() - 0.5) * r * AURA_FLAT, 0x9fe06a, 2);
         return true;
       }
       case 'puppet':
@@ -205,9 +208,11 @@ export class SkillSystem {
         audio.sfx('water');
         for (const o of offs) {
           const a = base + o;
-          g.proj.fire('water', 'pj_water', cx, cy, Math.cos(a) * 170, Math.sin(a) * 170, {
+          const dragon = g.proj.fire('water', 'pj_water', cx, cy, Math.cos(a) * 170, Math.sin(a) * 170, {
             dmg: st.dmg, el: 'water', life: 1.8, pierce: 999, radius: st.width * area, slow: st.slow, kb: 30, anim: 'pj_water',
           });
+          // 水龙的宽度随技能成长，仍保留细长的穿透轮廓。
+          dragon.sprite.setScale(1, st.width * area / 7);
         }
         return true;
       }
@@ -241,11 +246,10 @@ export class SkillSystem {
       case 'tengfu': {
         const targets = g.enemies.randomIn(p.x, p.y, 180, st.count);
         if (!targets.length) return false;
-        audio.sfx('leaf', { rate: 0.6 });
+        audio.sfx('vine');
         const r = st.radius * area;
         for (const t of targets) {
-          const img = g.add.image(t.x, t.y, 'fx_vine').setDepth(t.y - 40).setScale(r / 20).setAlpha(0);
-          g.tweens.add({ targets: img, alpha: 0.55, duration: 150 });
+          const img = g.add.image(t.x, t.y, 'fx_vine').setDepth(t.y - 40).setScale(r / 20).setAlpha(0.3);
           this.vines.push({ x: t.x, y: t.y, r, t: st.dur, tick: 0, dmg: st.dmg, img });
           g.fx.burst(t.x, t.y - 2, EL_INFO.wood.color, 5);
           if (st.root) for (const e of this.inVine(t.x, t.y, r)) g.stunEnemy(e, st.root);
@@ -256,9 +260,8 @@ export class SkillSystem {
         const r = st.radius * area;
         const near = g.enemies.inRadius(p.x, p.y, r, this.tmp);
         if (!near.length) return false;
-        audio.sfx('water', { rate: 1.4 });
-        g.fx.ring(p.x, p.y - 4, r, 0x9fd0ff, 0.4);
-        for (let i = 0; i < 6; i++) g.fx.droplet(p.x + (Math.random() - 0.5) * r, p.y - 6 + (Math.random() - 0.5) * r * 0.6);
+        audio.sfx('frost');
+        g.fx.impact('ice', p.x, p.y, r);
         for (const e of [...near]) g.hitEnemy(e, st.dmg, 'water', { slow: st.slow, kb: 25, fromX: p.x, fromY: p.y });
         return true;
       }
@@ -270,22 +273,46 @@ export class SkillSystem {
         const spots = cands.map((e) => ({ e, n: g.enemies.inRadius(e.x, e.y, r, this.tmp).length })).sort((a, b) => b.n - a.n);
         for (let i = 0; i < st.count; i++) {
           const t = spots[i % spots.length].e;
-          this.boulder(t.x, t.y, i * 0.15, r, st.dmg, st.stun);
+          this.boulder(t.x, t.y, i * 0.15, r, st.dmg, st.daze);
         }
         return true;
       }
       case 'stonespike': {
-        const targets = g.enemies.randomIn(p.x, p.y, 150, st.count);
-        if (!targets.length) return false;
-        for (const t of targets) {
-          const x = t.x;
-          const y = t.y;
-          g.fx.crack(x, y, 0.25);
-          g.later(0.25, () => {
-            audio.sfx('spike');
-            g.fx.anim('fx_spike', x, y + 2, { originY: 0.92, depth: y + 1, scale: area });
-            for (const e of g.enemies.inRadius(x, y, st.radius * area, this.tmp)) {
-              g.hitEnemy(e, st.dmg, 'earth', { stun: st.stun, kb: 30, fromX: x, fromY: y + 10 });
+        // 整轮锁定起点和朝向；同一敌人不会被相邻岩刺或击退后的后续岩刺重复命中。
+        const ang = Math.atan2(p.facing.y, p.facing.x);
+        const fx = Math.cos(ang), fy = Math.sin(ang);
+        const ox = p.x, oy = p.y;
+        const hit = new Set<number>();
+        const r = st.radius * area;
+        const spread = Math.tan(st.arc * Math.PI / 360);
+        p.attack();
+        for (let i = 0; i < st.count; i++) {
+          const reach = (12 + (st.range - 12) * i / (st.count - 1)) * area;
+          const x = ox + fx * reach, y = oy + fy * reach;
+          // 每排由中间向两侧铺开；近端收拢，远端增宽，范围加成同时放大长宽。
+          const halfWidth = (reach - 12 * area) * spread;
+          const wings = halfWidth < r * 0.5 ? 0 : Math.ceil(halfWidth / (r * 1.5));
+          const points = Array.from({ length: wings * 2 + 1 }, (_, j) => {
+            const side = wings ? (j - wings) * halfWidth / wings : 0;
+            return { x: x - fy * side, y: y + fx * side };
+          });
+          g.later(i * 0.06, () => {
+            for (const point of points) g.fx.crack(point.x, point.y, 0.12, { rotation: ang, scale: area * 1.4 });
+          });
+          g.later(0.12 + i * 0.06, () => {
+            audio.sfx('spike', { vol: 0.65, rate: 0.9 + i * 0.025 });
+            for (const point of points) g.fx.anim('fx_earth_ridge', point.x, point.y + 2, { originY: 0.92, depth: point.y + 1, scale: area });
+            g.fx.burst(x, y - 2, 0x91816a, 2);
+            for (const e of [...g.enemies.inRadius(x, y, r + halfWidth, this.tmp)]) {
+              const id = e.id;
+              if (hit.has(id)) continue;
+              // 横向胶囊覆盖整排，避免岩刺之间漏判；宽圈仅作候选查询。
+              const dx = e.x - x, dy = e.y - y;
+              const along = dx * fx + dy * fy;
+              const across = Math.max(0, Math.abs(-dx * fy + dy * fx) - halfWidth);
+              if (Math.hypot(along, across) > r + e.radius) continue;
+              // 以敌人当前点后方为击退原点，严格沿施放方向开路。
+              if (g.hitEnemy(e, st.dmg, 'earth', { kb: st.kb, fromX: e.x - fx * 10, fromY: e.y - fy * 10 }) > 0) hit.add(id);
             }
           });
         }
@@ -332,13 +359,13 @@ export class SkillSystem {
       if (s.t > 0) continue;
       s.mark.destroy();
       this.sticks.splice(i, 1);
-      const tint = s.el === 'fire' ? undefined : EL_INFO[s.el].color;
+      const tint = s.el === 'fire' ? 0xffd078 : EL_INFO[s.el].color;
       const proc = SKILLS.talisman.proc;
-      g.explode(s.x, s.y, s.radius, s.dmg, s.el, 80, tint, proc);
+      g.explode(s.x, s.y, s.radius, s.dmg, s.el, 80, tint, proc, 'seal');
       // 符海：原地再爆一次
       const echo = this.mod('zhu.echo');
       const { x, y, radius, dmg, el } = s;
-      if (echo) g.later(0.6, () => g.explode(x, y, radius * 0.8, dmg * echo, el, 40, tint, proc));
+      if (echo) g.later(0.6, () => g.explode(x, y, radius * 0.8, dmg * echo, el, 40, tint, proc, 'seal'));
     }
   }
 
@@ -352,7 +379,7 @@ export class SkillSystem {
     const lv = g.build.skills.get('duwu');
     if (!lv) return;
     const p = g.player;
-    if (!this.aura) this.aura = g.add.image(0, 0, 'fx_disc').setTint(0x7ac83a);
+    if (!this.aura) this.aura = g.add.sprite(0, 0, 'fx_poison_mist').play('fx_poison_mist');
     const r = this.auraRadius(SKILLS.duwu.stats(lv));
     const k = r / 31;
     this.aura
@@ -360,7 +387,7 @@ export class SkillSystem {
       .setPosition(p.x, p.y)
       .setDepth(p.y - 40)
       .setScale(k, k * AURA_FLAT)
-      .setAlpha(0.26 + 0.06 * Math.sin(g.now * 3));
+      .setAlpha(0.55 + 0.1 * Math.sin(g.now * 2));
   }
 
   /** 流金剑雨：前进距离等于落高（45°），地面纵深按俯视透视压扁。 */
@@ -384,7 +411,7 @@ export class SkillSystem {
   }
 
   /** 落石：土黄色巨石快速砸下，砸中一片并眩晕 */
-  private boulder(x: number, y: number, delay: number, r: number, dmg: number, stun: number) {
+  private boulder(x: number, y: number, delay: number, r: number, dmg: number, daze: number) {
     const g = this.g;
     g.later(delay, () => {
       const rock = g.add.image(x, y - 160, 'fx_boulder').setOrigin(0.5, 0.9).setScale(r / 18).setTint(0xf0cc80).setDepth(1e6 - 1);
@@ -392,12 +419,11 @@ export class SkillSystem {
         targets: rock, y, duration: 380, ease: 'Quad.in',
         onComplete: () => {
           rock.destroy();
-          audio.sfx('explode', { rate: 0.7, vol: 0.6 });
-          g.cameras.main.shake(90, 0.003);
-          g.fx.crack(x, y, 0.5);
-          g.fx.ring(x, y - 2, r, EL_INFO.earth.color, 0.3);
-          g.fx.burst(x, y - 4, EL_INFO.earth.dark, 10);
-          for (const e of g.enemies.inRadius(x, y, r, this.tmp)) g.hitEnemy(e, dmg, 'earth', { stun, kb: 50, fromX: x, fromY: y });
+          audio.sfx('stoneImpact');
+          g.fx.impact('stone', x, y, r);
+          const near = g.enemies.inRadius(x, y, r, this.tmp);
+          if (near.length) g.cameras.main.shake(90, 0.003);
+          for (const e of near) g.hitEnemy(e, dmg, 'earth', { daze, kb: 50, fromX: x, fromY: y });
         },
       });
     });
@@ -410,7 +436,7 @@ export class SkillSystem {
     if (!lv) return;
     const st = this.stats('lihuo', lv);
     const p = g.player;
-    while (this.orbs.length < st.count) this.orbs.push(g.add.sprite(0, 0, 'pj_fireball', 0).play('pj_fireball').setScale(0.9));
+    while (this.orbs.length < st.count) this.orbs.push(g.add.sprite(0, 0, 'fx_orbit_flame', 0).play('fx_orbit_flame'));
     this.orbAng += (dt * Math.PI * 2) / (st.period * g.pstats.cdMult);
     const R = st.orbit * g.pstats.area;
     const hitR = 9 * g.pstats.area;
@@ -420,7 +446,8 @@ export class SkillSystem {
       const a = this.orbAng + (i / this.orbs.length) * Math.PI * 2;
       const x = p.x + Math.cos(a) * R;
       const y = p.y - 6 + Math.sin(a) * R * AURA_FLAT;
-      this.orbs[i].setPosition(x, y).setDepth(y + 10).setVisible(p.alive);
+      this.orbs[i].setPosition(x, y).setDepth(y + 10).setVisible(p.alive)
+        .setRotation(Math.atan2(Math.cos(a) * AURA_FLAT, -Math.sin(a))).setScale(g.pstats.area);
       if (!p.alive) continue;
       for (const e of g.enemies.inRadius(x, y + 6, hitR, this.tmp)) {
         if ((this.orbHit.get(e.id) ?? 0) > now) continue;
@@ -439,6 +466,9 @@ export class SkillSystem {
       v.tick -= dt;
       if (v.tick <= 0 && v.t > 0) {
         v.tick += 0.5;
+        // 每次结算时藤须向内收紧，再松开，节奏与半秒一跳的伤害一致。
+        v.img.setScale(v.r / 20 * 0.9).setAlpha(0.85);
+        g.tweens.add({ targets: v.img, scale: v.r / 20, alpha: 0.55, duration: 260, ease: 'Cubic.out' });
         for (const e of this.inVine(v.x, v.y, v.r)) {
           g.hitEnemy(e, v.dmg, 'wood', { proc: SKILLS.tengfu.proc });
           if (e.alive) g.slowEnemy(e, 0.6);
@@ -457,13 +487,15 @@ export class SkillSystem {
     return [...this.g.enemies.inRadius(x, y, r, this.tmp)].filter((e) => ((e.x - x) / r) ** 2 + ((e.y - y) / (r * AURA_FLAT)) ** 2 <= 1);
   }
 
-  /** 分水连弩满级：命中溅起水花，减速周围敌人，并波及被射中者以外的敌人 */
-  private boltSplash(e: Enemy, dmg: number) {
+  /** 分水连弩：水花随等级成长，满级才附带迟缓；不暴击或递归触发浪花。 */
+  private boltSplash(e: Enemy, dmg: number, radius: number, slow: number, splashed: Set<number>) {
     const g = this.g;
-    g.fx.ring(e.x, e.y - 6, 22, 0x8fc0ff, 0.25);
-    for (const o of g.enemies.inRadius(e.x, e.y, 22 * g.pstats.area, [])) {
-      g.slowEnemy(o, 0.8);
-      if (o !== e) g.hitEnemy(o, dmg, 'water', { kb: 10, fromX: e.x, fromY: e.y, noCrit: true });
+    g.fx.ring(e.x, e.y - 6, radius, 0x8fc0ff, 0.25);
+    for (const o of g.enemies.inRadius(e.x, e.y, radius, [])) {
+      if (slow) g.slowEnemy(o, slow);
+      if (o === e || splashed.has(o.id)) continue;
+      splashed.add(o.id);
+      g.hitEnemy(o, dmg, 'water', { kb: 10, fromX: e.x, fromY: e.y, noCrit: true });
     }
   }
 

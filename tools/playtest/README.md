@@ -88,7 +88,7 @@ PLAYTEST_PROFILE=level3 PLAYTEST_CHARACTER=xiao PLAYTEST_REGEN=0 PLAYTEST_POLICY
 
 ## 25% 护甲下限：同配置前后对照
 
-正式代码在 `GameScene.hurtPlayer` 和 `PuppetManager.hurt` 使用扣甲前 incoming 的 25% 下限：`max(1, ceil(incoming*0.25), round(incoming-armor))`。玩家 incoming 包含暴击、五行、抗性；傀儡包含石身和外壳五行。此轮未改厚土诀或长生诀。
+该历史对照的代码在 `GameScene.hurtPlayer` 和 `PuppetManager.hurt` 使用扣甲前 incoming 的 25% 下限：`max(1, ceil(incoming*0.25), round(incoming-armor))`。玩家 incoming 包含暴击、五行、抗性；傀儡包含石身和外壳五行。此轮未改厚土诀或长生诀。
 
 新九局使用 `PLAYTEST_VARIANT=armor-floor25`，目录为 `output/playtest/level3-floor25-<character>-regen<0|5>-<stay|jev>`；其他环境参数沿用上一轮。`metadata.json` 增加 variant 与两处战斗源码、桥接及构筑/提问文件的 SHA-256，供核查同批次代码一致性。
 
@@ -116,3 +116,14 @@ node tools/playtest/natural-level3.mjs moheng 20261022
 正常成长增加本体 HP 收支中的 maxHpGains、最低生命比例、傀儡实际掉血、破碎次数、完全无傀儡时间。`natural-report.mjs` 汇总三角色共 12 局及前两关的完整成长账本，验证局内从 1 级开始、每角色所有种子属性与开局存档一致、HP 收支正确。
 
 自动化浏览器过滤 Vite 的 full-reload/update/prune 消息，冻结本局已加载模块，避免开发重载抹掉 __playtest；lifecycle.jsonl 记录导航、崩溃及忽略的热更新。`PLAYTEST_HMR_PROBE=1` 的 smoke 会主动触发 bridge.js 的 mtime 更新并验证控制入口仍在。基础设施中断必须保留为 interrupted 记录，不能当作游戏死亡；重新使用原始存档与种子跑完整一局。
+
+
+## 2026-10-24 技能与护甲定点检查
+
+当前玩家及傀儡护甲已改为递减收益，见 `src/game/damage.ts`；上面的 25% 下限数据是历史样本。
+
+```sh
+node tools/playtest/balance-probe.mjs output/balance-new-run
+```
+
+在隔离浏览器中调用实际技能、投射物和异常结算，六角色各测技能 1/8 级、五种目标元素。角色等级等于技能等级，无修炼、星图或心法；关闭暴击并归一地气。靶固定在前方 35px、无护甲且高血量，玩家和傀儡免伤；预热 2 秒后采样 20 秒，输出直接、毒、火、流血 DPS。这是持续接触的单靶检查，不代表移动怪命中率、范围总伤害或真人通关率。输出目录必须新建，不覆盖旧结果。

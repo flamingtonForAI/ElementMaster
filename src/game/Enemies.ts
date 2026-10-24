@@ -52,6 +52,15 @@ export class Enemy {
   chillImmuneUntil = 0;
   daze = 0;
   dazeAt = 0;
+  confusedUntil = 0;
+  confuseAngle = 0;
+  confuseTurnAt = 0;
+  poisonBuild = 0;
+  poisonDeep = false;
+  burningDeep = false;
+  poisonDeepUntil = 0;
+  burnDeepUntil = 0;
+  burnBuild = 0;
   /** 身上的异常：中毒单层、灼烧叠层（每层 burnDps）、流血叠层（每层 bleedDps） */
   poisonUntil = 0;
   poisonDps = 0;
@@ -155,6 +164,8 @@ const TINTS: Record<number, number> = {
   6: STATUS_INFO.poison.tint,
   7: STATUS_INFO.bleed.tint,
   10: FROZEN.tint,
+  11: 0xff5b20,
+  12: 0x7bcc38,
 };
 
 export interface SpawnOpts {
@@ -232,6 +243,9 @@ export class EnemyManager {
     e.summonAt = this.g.now + (AFFIXES.summon.every ?? 9);
     e.alive = true;
     e.kbx = e.kby = 0;
+    e.poisonDeepUntil = e.burnDeepUntil = e.burnBuild = 0;
+    e.confusedUntil = e.confuseAngle = e.confuseTurnAt = e.poisonBuild = 0;
+    e.poisonDeep = e.burningDeep = false;
     e.slowUntil = e.stunUntil = e.stunImmuneUntil = e.flashUntil = e.contactAt = 0;
     e.poisonUntil = e.poisonDps = e.burnUntil = e.burnStacks = e.burnDps = e.dotTick = 0;
     e.bleedUntil = e.bleedStacks = e.bleedDps = e.frozenUntil = e.chill = e.chillAt = e.chillImmuneUntil = e.daze = e.dazeAt = 0;
@@ -385,6 +399,7 @@ export class EnemyManager {
         if (st) [nx, ny] = st;
       }
       const stunned = now < e.stunUntil;
+      const confused = !e.boss && now < e.confusedUntil;
       // 泥潭、冰面拖慢非水系的普通敌人，流沙拖慢非土系的，和迟缓叠乘
       const grounded = !e.boss && !this.underground(e);
       const soggy = grounded && e.def.el !== 'water';
@@ -403,13 +418,23 @@ export class EnemyManager {
       this.maybeEnrage(e);
       const roaring = now < e.rageUntil;
       const casting = now < e.castUntil;
-      if (!stunned && !roaring && !casting && e.tricks.length) this.tryTrick(e, pdist);
+      if (!stunned && !confused && !roaring && !casting && e.tricks.length) this.tryTrick(e, pdist);
       // 刚开招这一帧也站住
-      if (!stunned && !roaring && now >= e.castUntil) {
+      if (!stunned && !roaring && confused) {
+        if (now >= e.confuseTurnAt) {
+          e.confuseAngle = Math.random() * Math.PI * 2;
+          e.confuseTurnAt = now + 0.35;
+        }
+        vx = Math.cos(e.confuseAngle) * e.speed * slow;
+        vy = Math.sin(e.confuseAngle) * e.speed * slow;
+      } else if (!stunned && !roaring && now >= e.castUntil) {
         const mv = this.behave(e, dt, nx, ny, dist, slow);
         vx = mv[0];
         vy = mv[1];
       }
+      // Boss 二阶毒火有独立短窗口；到期保留一阶伤害，进阶重新积累。
+      if (e.poisonDeep && now >= e.poisonDeepUntil) { e.poisonDeep = false; e.poisonBuild = 0; }
+      if (e.burningDeep && now >= e.burnDeepUntil) { e.burningDeep = false; e.burnBuild = 0; }
       // 中毒期间不回血
       const poisoned = now < e.poisonUntil;
       const burning = now < e.burnUntil;
@@ -423,6 +448,7 @@ export class EnemyManager {
           const mods = g.build.mods;
           const pd = poisoned ? e.poisonDps * (now < e.slowUntil ? 1 + (mods['hh.slowPoison'] ?? 0) : 1) : 0;
           const bd = burning ? e.burnStacks * e.burnDps * (poisoned ? 1 + (mods['hh.poisonBurn'] ?? 0) : 1) : 0;
+          if (burning && e.burningDeep) g.burnAura(e);
           if (pd + bd > 0) g.dotEnemy(e, pd * 0.5, bd * 0.5);
           if (bleeding && e.alive) g.bleedTick(e, e.bleedStacks * e.bleedDps * 0.5);
           if (!e.alive) continue;
@@ -486,13 +512,17 @@ export class EnemyManager {
       const hop = now - e.hopAt < HOP ? Math.sin(((now - e.hopAt) / HOP) * Math.PI) * 4 : 0;
       s.setPosition(e.x, e.y - e.lift - hop);
       s.setDepth(e.y);
-      if (Math.abs(dx) > 2) s.setFlipX(dx < 0);
+      const facingX = confused ? vx : dx;
+      if (Math.abs(facingX) > 2) s.setFlipX(facingX < 0);
       // 着色优先级：受击闪白 > 定身（冰冻）> 冲锋预警 > 灼烧 > 中毒 > 迟缓 > 流血
       const tint =
         now < e.flashUntil ? 1
         : hop > 0 ? 8
         : stunned ? (now < e.frozenUntil ? 10 : 2)
         : now < e.castUntil || (e.state === 1 && (e.def.behavior === 'charge' || e.def.behavior === 'sting' || e.def.behavior === 'leap' || e.boss)) || (e.state === 4 && e.def.behavior === 'boss_xingtian') || (e.state === 2 && e.def.behavior === 'burrow') ? 4
+        : confused ? 2
+        : burning && e.burningDeep ? 11
+        : poisoned && e.poisonDeep ? 12
         : burning ? 5
         : poisoned ? 6
         : slow < 1 ? 3
@@ -852,7 +882,7 @@ export class EnemyManager {
       this.hint('quake', `${e.def.name}会震地：脚下发黄就退开`, '#e8d38a');
       const { id, x, y } = e;
       g.later(Q.warn, () => {
-        if (!e.alive || e.id !== id || g.over || g.now < e.stunUntil) return;
+        if (!e.alive || e.id !== id || g.over || g.now < e.stunUntil || g.now < e.confusedUntil) return;
         audio.sfx('explode', { rate: 1.1, vol: 0.35 });
         g.fx.crack(x, y, 0.4);
         g.fx.ring(x, y - 2, Q.r, 0xdaa53e, 0.3);
@@ -1188,6 +1218,8 @@ export class EnemyManager {
     e.invulnUntil = g.now + HB.ignite;
     e.speed = HANBA_FIRE.speed;
     e.armor = HANBA_FIRE.armor;
+    e.poisonDeepUntil = e.burnDeepUntil = e.burnBuild = e.poisonBuild = e.confusedUntil = e.daze = e.chill = 0;
+    e.poisonDeep = e.burningDeep = false;
     e.poisonUntil = e.burnUntil = e.slowUntil = e.bleedUntil = 0;
     this.reform(e, HANBA_FIRE);
     g.proj.clearEnemyShots();
@@ -1734,6 +1766,8 @@ export class EnemyManager {
     e.kbx = e.kby = 0;
     e.lift = 0;
     e.sprite.setScale(1.1, 0.8);
+    e.poisonDeepUntil = e.burnDeepUntil = e.burnBuild = e.poisonBuild = e.confusedUntil = e.daze = e.chill = 0;
+    e.poisonDeep = e.burningDeep = false;
     e.poisonUntil = e.burnUntil = e.slowUntil = 0;
     g.proj.clearEnemyShots();
     g.fx.burst(e.x, e.y - 16, 0xc8372d, 24);

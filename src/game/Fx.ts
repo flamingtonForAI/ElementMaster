@@ -97,6 +97,19 @@ export class Fx {
     this.g.tweens.add({ targets: s, scale: radius / 31, alpha: 0, duration: dur * 1000, ease: 'Cubic.out', onComplete: () => s.destroy() });
   }
 
+  /** 玩家范围命中：火球翻焰、符印迸裂、冰脉碎晶、落石扬尘。只负责画面。 */
+  impact(kind: 'fire' | 'seal' | 'ice' | 'stone', x: number, y: number, radius: number, tint?: number) {
+    const key = { fire: 'fx_explosion', seal: 'fx_seal_burst', ice: 'fx_ice_burst', stone: 'fx_dust_burst' }[kind];
+    this.anim(key, x, y, { scale: radius / (kind === 'fire' || kind === 'seal' ? 22 : 30), tint, depth: kind === 'ice' ? y - 40 : undefined });
+    if (kind === 'fire' || kind === 'stone') {
+      const mark = this.g.add.image(x, y, kind === 'fire' ? 'fx_scorch' : 'fx_impact_crack')
+        .setDepth(y - 39).setScale(radius / 20).setAlpha(0.65);
+      this.g.tweens.add({ targets: mark, alpha: 0, duration: 650, onComplete: () => mark.destroy() });
+    }
+    const color = tint ?? { fire: 0xffb44a, seal: 0xffe3a0, ice: 0xc8edff, stone: 0x9a8262 }[kind];
+    this.burst(x, y - 3, color, kind === 'stone' ? 8 : 4);
+  }
+
   /** 预警圆盘 */
   disc(x: number, y: number, radius: number, color: number, alpha: number, dur: number) {
     const s = this.g.add.image(x, y, 'fx_disc').setTint(color).setDepth(y - 40).setScale(radius / 31, (radius / 31) * 0.6).setAlpha(alpha);
@@ -121,8 +134,8 @@ export class Fx {
   }
 
   /** 地面裂纹预警 */
-  crack(x: number, y: number, dur: number) {
-    const s = this.g.add.image(x, y, 'fx_crack').setDepth(y - 40);
+  crack(x: number, y: number, dur: number, o: { rotation?: number; scale?: number } = {}) {
+    const s = this.g.add.image(x, y, 'fx_crack').setDepth(y - 40).setRotation(o.rotation ?? 0).setScale(o.scale ?? 1);
     this.g.tweens.add({ targets: s, alpha: 0, delay: dur * 1000, duration: 200, onComplete: () => s.destroy() });
   }
 

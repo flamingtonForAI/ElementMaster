@@ -63,6 +63,33 @@ export const SFX = {
     noise(b, { dur: 0.05, type: 'hp', f: 3000, d: 0.015, vol: 0.35 });
     return finish(b);
   }, 0.1),
+  // 符爆短促清脆；火球保留较长的低频轰鸣。
+  seal: def(0.38, 0.08, 3, () => {
+    const b = buf(0.25);
+    noise(b, { dur: 0.08, type: 'bp', f: 2200, f1: 700, d: 0.025, vol: 0.9 });
+    tone(b, { f: 680, f1: 340, dur: 0.12, wave: 'tri', d: 0.04, vol: 0.4 });
+    bell(b, 1360, 0.22, 0.01, 0.18);
+    return finish(b);
+  }, 0.04),
+  frost: def(0.38, 0.18, 2, () => {
+    const b = buf(0.42);
+    noise(b, { dur: 0.1, type: 'hp', f: 3800, d: 0.025, vol: 0.45 });
+    for (let i = 0; i < 3; i++) bell(b, 1800 + i * 710, 0.3, i * 0.025, 0.3);
+    return finish(b);
+  }, 0.03),
+  stoneImpact: def(0.48, 0.12, 3, () => {
+    const b = buf(0.4);
+    tone(b, { f: 85, f1: 32, dur: 0.3, d: 0.1, vol: 1 });
+    noise(b, { dur: 0.16, type: 'lp', f: 1000, f1: 180, d: 0.045, vol: 1 });
+    noise(b, { at: 0.06, dur: 0.3, type: 'bp', f: 1400, f1: 500, d: 0.09, vol: 0.35 });
+    return finish(b);
+  }, 0.05),
+  vine: def(0.28, 0.2, 2, () => {
+    const b = buf(0.32);
+    noise(b, { dur: 0.28, type: 'bp', f: 650, f1: 1900, q: 4, a: 0.025, d: 0.09, vol: 0.8 });
+    tone(b, { f: 180, f1: 300, dur: 0.18, wave: 'tri', d: 0.06, vol: 0.25 });
+    return finish(b);
+  }, 0.06),
 
   // ---- 命中 / 击杀 ----
   hit: def(0.28, 0.035, 5, () => {

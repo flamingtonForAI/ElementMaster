@@ -17,7 +17,7 @@ export interface SkillDef {
   glyph: string;
   el: El;
   maxLv: number;
-  /** 命中时触发本元素异常的基础几率；水龙、寒冰环自带必定的迟缓，石刺、落石自带必定的眩晕 */
+  /** 命中时触发本元素异常的基础几率；水龙、寒冰环必定迟缓，地脉刺专注击退，落石必定施加一阶眩晕 */
   proc: number;
   /** 专属术只出现在对应角色的升级池 */
   exclusive?: string;
@@ -43,7 +43,7 @@ const at = (arr: number[], lv: number) => arr[Math.min(arr.length, lv) - 1];
 
 export const SKILLS: Record<SkillId, SkillDef> = {
   slash: {
-    id: 'slash', name: '剑气斩', glyph: '斩', el: 'metal', maxLv: 8, proc: 0.2, exclusive: 'xiao',
+    id: 'slash', name: '剑气斩', glyph: '斩', el: 'metal', maxLv: 8, proc: 0.3, exclusive: 'xiao',
     desc: ['向面朝方向挥出扇形剑气', '伤害提高', '范围扩大，冷却缩短', '伤害提高，冷却缩短', '前后双斩，双向各斩出一道剑气波', '伤害提高，范围扩大，冷却缩短', '范围扩大', '伤害大幅提高，范围扩大，冷却缩短'],
     stats: (lv) => ({
       dmg: at([18, 22, 22, 27, 27, 33, 33, 40], lv),
@@ -64,21 +64,24 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   crossbow: {
-    id: 'crossbow', name: '分水连弩', glyph: '弩', el: 'water', maxLv: 8, proc: 0.08, exclusive: 'ruan',
-    desc: ['朝最近的敌人连射三箭，射程最远，可贯穿 1 个', '伤害提高', '贯穿 +1', '伤害提高，每轮 +1 箭', '冷却缩短', '伤害提高，贯穿 +1，冷却缩短', '伤害提高，每轮 +1 箭', '命中溅起水花，减速周围敌人并造成 30% 伤害；伤害提高，冷却缩短'],
+    id: 'crossbow', name: '分水连弩', glyph: '弩', el: 'water', maxLv: 8, proc: 0.15, exclusive: 'ruan',
+    desc: ['朝最近的敌人连射三箭，射程最远，可贯穿 1 个', '伤害提高', '贯穿 +1；命中溅起小水花，对周围敌人造成 25% 伤害', '伤害提高，每轮 +1 箭', '轮流瞄准附近最多 3 个敌人；水花扩大、伤害增至 35%，冷却缩短', '伤害提高，贯穿 +1，冷却缩短', '伤害提高，每轮 +1 箭，水花扩大', '水花进一步扩大、伤害增至 45%，并迟缓周围敌人；伤害提高，冷却缩短'],
     stats: (lv) => ({
       dmg: at([10, 12, 12, 14, 14, 15, 17, 19], lv),
       shots: at([3, 3, 3, 4, 4, 4, 5, 5], lv),
       pierce: at([1, 1, 2, 2, 2, 3, 3, 3], lv),
       cd: at([1.3, 1.3, 1.3, 1.3, 1.2, 1.1, 1.1, 1.0], lv),
-      splash: lv >= 8 ? 1 : 0,
+      targets: lv >= 5 ? 3 : 1,
+      splash: at([0, 0, 0.25, 0.25, 0.35, 0.35, 0.35, 0.45], lv),
+      splashRadius: at([0, 0, 22, 22, 28, 28, 32, 36], lv),
+      splashSlow: lv >= 8 ? 0.8 : 0,
     }),
   },
   duwu: {
     id: 'duwu', name: '毒雾', glyph: '雾', el: 'wood', maxLv: 8, proc: 0, exclusive: 'qingdai',
     desc: ['脚下环绕一圈毒雾，进入的敌人中毒，离开后还会再毒一阵', '毒性增强', '毒雾扩大', '毒性增强，离开后毒得更久', '毒性增强，毒雾扩大', '毒雾扩大', '毒性增强', '毒雾扩大，毒性大幅增强，离开后毒得更久；雾里的敌人迟缓'],
     stats: (lv) => ({
-      dps: at([12, 15, 15, 18, 22, 22, 27, 34], lv),
+      dps: at([16, 19, 19, 22, 26, 26, 30, 38], lv),
       radius: at([48, 48, 56, 56, 62, 68, 68, 78], lv),
       /** 离开毒雾后中毒还持续的秒数 */
       linger: at([2, 2, 2, 3, 3, 3, 3, 4], lv),
@@ -87,8 +90,8 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   puppet: {
-    id: 'puppet', name: '石傀儡', glyph: '傀', el: 'earth', maxLv: 8, proc: 0.15, exclusive: 'moheng',
-    desc: ['召唤石傀儡跟随，扑向最近的敌人砸一圈，并把周围敌人的仇恨吸过去；打碎后会重新捏出来，经过的经验球会飞向你', '傀儡 +1', '生命、伤害提高', '傀儡 +1，扑击范围扩大', '重塑加快，生命、伤害提高', '生命、伤害提高，扑击范围扩大', '生命、伤害提高', '合成一尊巨傀，攻击带震地；伤害提高，扑击范围扩大'],
+    id: 'puppet', name: '石傀儡', glyph: '傀', el: 'earth', maxLv: 8, proc: 0.3, exclusive: 'moheng',
+    desc: ['召唤石傀儡跟随，扑向最近的敌人砸一圈，并把周围敌人的仇恨吸过去；打碎后会重新捏出来，经过的经验球会飞向你', '傀儡 +1', '生命、伤害提高', '傀儡 +1，扑击范围扩大', '重塑加快，生命、伤害提高', '生命、伤害提高，扑击范围扩大', '生命、伤害提高', '合成一尊巨傀并补充两尊普通傀儡，巨傀攻击带震地；伤害提高，扑击范围扩大'],
     stats: (lv) => ({
       count: at([1, 2, 2, 3, 3, 3, 3, 3], lv),
       hp: at([60, 60, 72, 72, 84, 96, 110, 110], lv),
@@ -101,7 +104,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   flysword: {
-    id: 'flysword', name: '飞剑', glyph: '剑', el: 'metal', maxLv: 8, proc: 0.15,
+    id: 'flysword', name: '飞剑', glyph: '剑', el: 'metal', maxLv: 8, proc: 0.25,
     desc: ['追踪最近的敌人，可穿透', '伤害提高', '飞剑 +1', '穿透 +1', '飞剑 +1', '伤害提高，穿透 +1', '飞剑 +1', '伤害大幅提高，冷却缩短'],
     stats: (lv) => ({
       dmg: at([10, 13, 13, 13, 13, 17, 17, 24], lv),
@@ -117,11 +120,11 @@ export const SKILLS: Record<SkillId, SkillDef> = {
       dmg: at([24, 29, 29, 29, 36, 36, 36, 44], lv),
       radius: at([32, 32, 37, 37, 37, 42, 42, 46], lv),
       count: at([1, 1, 1, 2, 2, 2, 3, 3], lv),
-      cd: at([2.8, 2.7, 2.6, 2.5, 2.4, 2.3, 2.2, 2.0], lv),
+      cd: at([2.2, 2.2, 2.2, 2.2, 2.15, 2.1, 2.05, 2.0], lv),
     }),
   },
   leaf: {
-    id: 'leaf', name: '飞叶', glyph: '叶', el: 'wood', maxLv: 8, proc: 0.1,
+    id: 'leaf', name: '飞叶', glyph: '叶', el: 'wood', maxLv: 8, proc: 0.25,
     desc: ['飞叶在敌人之间弹射', '弹射 +1', '伤害提高', '飞叶 +1', '弹射 +2', '伤害提高', '冷却缩短', '飞叶 +1，伤害提高'],
     stats: (lv) => ({
       dmg: at([8, 8, 11, 11, 11, 14, 14, 17], lv),
@@ -142,19 +145,23 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     }),
   },
   stonespike: {
-    id: 'stonespike', name: '石刺', glyph: '刺', el: 'earth', maxLv: 8, proc: 0,
-    desc: ['敌人脚下突起石刺，造成眩晕', '石刺 +1', '伤害提高', '眩晕延长', '石刺 +1', '伤害提高，范围扩大', '石刺 +1', '石刺 +1，伤害提高'],
+    // 保留内部 id，兼容构筑、存档和升级池。
+    id: 'stonespike', name: '地脉刺', glyph: '脉', el: 'earth', maxLv: 8, proc: 0,
+    desc: ['沿朝向逐段裂地突刺，将敌人向前推开、腾出通路；每轮对同一敌人只伤害和击退一次，精英击退减弱，Boss 不受击退', '展开为锥形，岩刺 +1 排，延伸更远', '锥形展开角度扩大，伤害提高', '锥形展开角度扩大，击退增强', '锥形展开角度扩大，岩刺 +1 排，延伸更远', '锥形展开角度扩大，伤害提高，岩刺变宽', '锥形展开角度扩大，岩刺 +1 排，延伸更远', '锥形展开至 48°，岩刺 +1 排，延伸更远，伤害提高'],
     stats: (lv) => ({
       dmg: at([20, 20, 26, 26, 26, 32, 32, 40], lv),
-      count: at([2, 3, 3, 3, 4, 4, 5, 6], lv),
+      count: at([5, 6, 6, 6, 7, 7, 8, 9], lv),
+      range: at([112, 136, 136, 136, 160, 160, 184, 208], lv),
+      arc: at([0, 12, 18, 24, 30, 36, 42, 48], lv),
       radius: at([14, 14, 14, 14, 14, 17, 17, 18], lv),
-      stun: at([0.35, 0.35, 0.35, 0.6, 0.6, 0.6, 0.6, 0.6], lv),
+      // 通用击退以 3 倍初速、指数 9 衰减：静止普通敌人约推出 50→65 像素。
+      kb: lv >= 4 ? 195 : 150,
       cd: at([2.0, 1.95, 1.9, 1.85, 1.8, 1.7, 1.6, 1.5], lv),
     }),
   },
   jinzhen: {
     // 保留内部 id，兼容已有构筑与存档。
-    id: 'jinzhen', name: '流金剑雨', glyph: '雨', el: 'metal', maxLv: 8, proc: 0.12,
+    id: 'jinzhen', name: '流金剑雨', glyph: '雨', el: 'metal', maxLv: 8, proc: 0.18,
     desc: ['锁定施放时的朝向，剑雨以 45° 斜落前方大片区域，不追踪敌人', '伤害提高', '落剑 +2', '伤害提高，冷却缩短', '落剑 +2', '伤害提高，冷却缩短', '落剑 +2', '剑雨向前延伸为两片，每片落剑 +2，伤害提高'],
     stats: (lv) => ({
       dmg: at([10, 12, 12, 14, 14, 16, 16, 18], lv),
@@ -193,9 +200,9 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   },
   hanbing: {
     id: 'hanbing', name: '寒冰环', glyph: '冰', el: 'water', maxLv: 8, proc: 0,
-    desc: ['周身迸发一圈寒气，冻伤并迟缓周围敌人；连续命中攒寒意，攒满冰冻', '伤害提高', '范围扩大，冷却缩短', '伤害提高', '范围扩大', '伤害提高，范围扩大，冷却缩短', '冷却缩短', '伤害大幅提高，范围扩大，冷却缩短'],
+    desc: ['周身迸发一圈寒气，冻伤并迟缓周围敌人；连续命中有几率冰冻，积累 3 次保底冰冻', '伤害提高', '范围扩大，冷却缩短', '伤害提高', '范围扩大', '伤害提高，范围扩大，冷却缩短', '冷却缩短', '伤害大幅提高，范围扩大，冷却缩短'],
     stats: (lv) => ({
-      dmg: at([10, 13, 13, 16, 16, 19, 19, 24], lv),
+      dmg: at([14, 17, 17, 20, 20, 24, 24, 30], lv),
       radius: at([56, 56, 62, 62, 68, 74, 74, 84], lv),
       slow: 1.5,
       cd: at([2.2, 2.2, 2.1, 2.1, 2.1, 1.9, 1.8, 1.7], lv),
@@ -203,12 +210,12 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   },
   luoshi: {
     id: 'luoshi', name: '落石', glyph: '落', el: 'earth', maxLv: 8, proc: 0,
-    desc: ['巨石砸向敌人最密的地方，眩晕一片', '伤害提高', '范围扩大，冷却缩短', '伤害提高，冷却缩短', '落石 +1，范围扩大', '伤害提高，眩晕延长，冷却缩短', '范围扩大，冷却缩短', '伤害大幅提高，范围扩大，眩晕延长'],
+    desc: ['巨石砸向敌人最密的地方，使敌人眩晕乱走；连续命中可进阶打昏', '伤害提高', '范围扩大，冷却缩短', '伤害提高，冷却缩短', '落石 +1，范围扩大', '伤害提高，眩晕延长，冷却缩短', '范围扩大，冷却缩短', '伤害大幅提高，范围扩大，眩晕延长'],
     stats: (lv) => ({
       dmg: at([24, 30, 30, 36, 36, 42, 42, 50], lv),
       radius: at([36, 36, 40, 40, 44, 44, 48, 50], lv),
       count: at([1, 1, 1, 1, 2, 2, 2, 2], lv),
-      stun: at([0.6, 0.6, 0.6, 0.6, 0.6, 0.8, 0.8, 1.0], lv),
+      daze: at([1.5, 1.5, 1.5, 1.5, 1.5, 1.8, 1.8, 2.0], lv),
       cd: at([3.4, 3.4, 3.3, 3.2, 3.2, 3.1, 3.0, 3.0], lv),
     }),
   },
@@ -220,11 +227,11 @@ export const PASSIVES: Record<PassiveId, PassiveDef> = {
   changsheng: { id: 'changsheng', name: '长生诀', glyph: '生', el: 'wood', maxLv: 5, desc: '每秒回复 0.5 生命' },
   roushui: { id: 'roushui', name: '柔水诀', glyph: '柔', el: 'water', maxLv: 5, desc: '技能范围 +8%' },
   houtu: { id: 'houtu', name: '厚土诀', glyph: '厚', el: 'earth', maxLv: 5, desc: '生命上限 +12%，护甲 +1' },
-  pojun: { id: 'pojun', name: '破军诀', glyph: '破', el: 'metal', maxLv: 5, needsEl: true, desc: '流血触发几率 +15%；满 5 级叠 4 层就撕裂' },
-  liaoyuan: { id: 'liaoyuan', name: '燎原诀', glyph: '燎', el: 'fire', maxLv: 5, needsEl: true, desc: '灼烧触发几率 +15%；满 5 级灼烧上限 +2 层' },
-  fanmao: { id: 'fanmao', name: '繁茂诀', glyph: '茂', el: 'wood', maxLv: 5, needsEl: true, desc: '中毒触发几率 +15%，中毒伤害 +10%' },
-  xuanming: { id: 'xuanming', name: '玄冥诀', glyph: '冥', el: 'water', maxLv: 5, needsEl: true, desc: '迟缓触发几率 +15%；满 5 级攒 2 层寒意就冰冻' },
-  zhenyue: { id: 'zhenyue', name: '镇岳诀', glyph: '镇', el: 'earth', maxLv: 5, needsEl: true, desc: '震慑触发几率 +15%，打晕时长 +15%' },
+  pojun: { id: 'pojun', name: '破军诀', glyph: '破', el: 'metal', maxLv: 5, needsEl: true, desc: '流血进阶为撕裂的几率 +10 个百分点/级' },
+  liaoyuan: { id: 'liaoyuan', name: '燎原诀', glyph: '燎', el: 'fire', maxLv: 5, needsEl: true, desc: '点燃进阶为燃烧的几率 +10 个百分点/级；燃烧持续灼伤附近敌人' },
+  fanmao: { id: 'fanmao', name: '繁茂诀', glyph: '茂', el: 'wood', maxLv: 5, needsEl: true, desc: '中毒进阶为剧毒的几率 +10 个百分点/级；剧毒造成双倍毒伤' },
+  xuanming: { id: 'xuanming', name: '玄冥诀', glyph: '冥', el: 'water', maxLv: 5, needsEl: true, desc: '迟缓进阶为冰冻的几率 +10 个百分点/级' },
+  zhenyue: { id: 'zhenyue', name: '镇岳诀', glyph: '镇', el: 'earth', maxLv: 5, requires: ['puppet', 'luoshi'], needsEl: true, desc: '眩晕进阶为打昏的几率 +10 个百分点/级' },
   ningshen: { id: 'ningshen', name: '凝神诀', glyph: '凝', el: null, maxLv: 5, desc: '冷却 −4%' },
   guanri: { id: 'guanri', name: '贯日诀', glyph: '贯', el: null, maxLv: 5, desc: '第 1、3、5 级：穿透 +1（只对能穿透的投射物）', requires: ['flysword', 'crossbow'] },
   qingshen: { id: 'qingshen', name: '轻身诀', glyph: '轻', el: null, maxLv: 5, desc: '移动速度 +7%' },

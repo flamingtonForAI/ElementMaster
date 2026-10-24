@@ -434,7 +434,7 @@ function comboScene(mods) {
   scene.now = 1;
   return scene;
 }
-const enemy = (el, o = {}) => ({ alive: true, def: { el }, x: 0, y: 0, hp: 100, maxHp: 100, armor: 0, flashUntil: 0, bleedUntil: 0, bleedStacks: 0, bleedDps: 0, chill: 0, chillAt: 0, chillImmuneUntil: 0, frozenUntil: 0, daze: 0, dazeAt: 0, invulnUntil: 0, slowUntil: 0, stunUntil: 0, stunImmuneUntil: 0, poisonUntil: 0, burnUntil: 0, sprite: { displayHeight: 16 }, ...o });
+const enemy = (el, o = {}) => ({ alive: true, def: { el }, x: 0, y: 0, hp: 100, maxHp: 100, armor: 0, flashUntil: 0, bleedUntil: 0, bleedStacks: 0, bleedDps: 0, chill: 0, chillAt: 0, chillImmuneUntil: 0, frozenUntil: 0, daze: 0, dazeAt: 0, invulnUntil: 0, slowUntil: 0, poisonDeepUntil: 0, burnDeepUntil: 0, burnBuild: 0, stunUntil: 0, stunImmuneUntil: 0, poisonUntil: 0, poisonBuild: 0, poisonDeep: false, confusedUntil: 0, confuseAngle: 0, confuseTurnAt: 0, burningDeep: false, burnStacks: 0, burnDps: 0, burnUntil: 0, sprite: { displayHeight: 16 }, ...o });
 
 test('水木滋荣：木术命中附带迟缓，同时迟缓、中毒的敌人受伤 +20%', () => {
   const random = Math.random;
@@ -775,7 +775,8 @@ test('Boss 狂暴：血量跌破 30% 且回到普通走位才触发，只触发�
   assert.equal(scene.roarStacks, 3);
 });
 
-test('流血叠满撕裂，剩下的流血一次打完；同系打五折、被克的火系只剩三成，不再完全免疫', () => {
+test('流血叠满撕裂，剩下的流血一次打完；不再重复按元素折损伤害', (t) => {
+  t.mock.method(Math, 'random', () => 0.99);
   const scene = comboScene({});
   scene.fx = { number() {}, text() {}, ring() {} };
   const e = enemy('earth');
@@ -788,10 +789,10 @@ test('流血叠满撕裂，剩下的流血一次打完；同系打五折、被�
   const m = enemy('metal');
   scene.bleedEnemy(m, 2);
   assert.equal(m.bleedStacks, 1);
-  assert.equal(m.bleedDps, 1);
+  assert.equal(m.bleedDps, 2);
   const f = enemy('fire');
   scene.bleedEnemy(f, 10);
-  assert.ok(Math.abs(f.bleedDps - 3) < 1e-9);
+  assert.equal(f.bleedDps, 10);
 });
 
 test('异常几率按五行缩放：克 ×1.5、同系 ×0.5、被克 ×0.3，没有 0', async () => {
@@ -802,7 +803,8 @@ test('异常几率按五行缩放：克 ×1.5、同系 ×0.5、被克 ×0.3，�
   for (const k of ['slow', 'poison', 'burn', 'bleed', 'stun']) for (const el of ['metal', 'wood', 'water', 'fire', 'earth']) assert.ok(statusChance(k, el) > 0);
 });
 
-test('水系迟缓命中攒寒意，满 3 层冰冻；别系的迟缓不攒；玄冥诀满级 2 层就冻', () => {
+test('水系三次积累保底冰冻；别系迟缓不攒；玄冥提高第二次触发率', (t) => {
+  t.mock.method(Math, 'random', () => 0.65);
   // 水克火，寒意在火系敌人身上不打折
   const scene = comboScene({});
   const e = enemy('fire');
@@ -822,9 +824,9 @@ test('水系迟缓命中攒寒意，满 3 层冰冻；别系的迟缓不攒；�
   assert.ok(f.stunUntil > scene.now);
 });
 
-test('几率触发的震慑攒满 3 层才打晕', () => {
+test('二阶判定未中时，土系三次积累保底打昏', () => {
   const random = Math.random;
-  Math.random = () => 0;
+  Math.random = () => 0.99;
   try {
     const scene = comboScene({});
     const e = enemy('water');
@@ -1803,13 +1805,15 @@ test('第3关回复对照：三角色只改变回复，不改变本命、生命�
   }
 });
 
-test('玩家护甲：保留扣甲前伤害的25%，按暴击、五行和抗性后的数值计算', () => {
+test('玩家护甲：递减收益且最多减伤60%，按暴击、五行和抗性后的数值计算', () => {
   const cases = [
     { base: 6.25, el: 'earth', armor: 99, expected: 2 }, // incoming=5
-    { base: 22.5, el: 'earth', armor: 99, expected: 5 }, // incoming=18
-    { base: 25, el: 'earth', armor: 3, expected: 17 }, // 原减甲分支仍然更高
+    { base: 22.5, el: 'earth', armor: 99, expected: 7 }, // incoming=18
+    { base: 25, el: 'earth', armor: 3, expected: 16 },
+    { base: 7.5, el: 'earth', armor: 5, expected: 4 }, // 小怪 incoming=6，不再被5甲压到2伤
+    { base: 7.5, el: 'earth', armor: 10, expected: 3 },
     { base: 0.1, el: 'earth', armor: 99, expected: 1 },
-    { base: 10, el: 'fire', armor: 99, resist: 0.5, forceCrit: true, critDmg: 2, expected: 4 }, // incoming=15
+    { base: 10, el: 'fire', armor: 99, resist: 0.5, forceCrit: true, critDmg: 2, expected: 6 }, // incoming=15
   ];
   for (const row of cases) {
     const g = runScene('xiao', 3);
@@ -1828,9 +1832,9 @@ test('玩家护甲：保留扣甲前伤害的25%，按暴击、五行和抗性�
   }
 });
 
-test('傀儡护甲：25%下限在石身减伤与外壳五行之后计算', async () => {
+test('傀儡护甲：递减收益在石身减伤与外壳五行之后计算', async () => {
   const { PuppetManager } = await import('../src/game/Puppets.ts');
-  for (const [base, armor, expected] of [[12.5, 99, 2], [45, 99, 5], [50, 3, 17], [0.1, 99, 1]]) {
+  for (const [base, armor, expected] of [[12.5, 99, 2], [45, 99, 7], [50, 3, 16], [15, 5, 4], [0.1, 99, 1]]) {
     const manager = new PuppetManager({ now: 2, pstats: { armor } });
     const puppet = { alive: true, hp: 100, el: 'metal' };
     // 土→金×0.8，石身×0.5，所以incoming=base×0.4。
@@ -1914,5 +1918,305 @@ test('评审修复：帝江歌舞中致死仍逐帧补齐五相，最后一相�
     assert.equal(g.kills, 1);
     assert.equal(g.killed.dijiang, 1);
     assert.equal(drops.length, 1);
+  }
+});
+
+test('土系三次积累保底打昏，星图时长加成仍生效', (t) => {
+  t.mock.method(Math, 'random', () => 0.99);
+  const scene = comboScene({});
+  scene.pstats.stunMult = 1.2;
+  const e = enemy('water');
+  for (let i = 0; i < 2; i++) {
+    scene.now = 1 + i * 2;
+    scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+    assert.equal(e.daze, i + 1);
+    assert.equal(e.stunUntil, 0);
+  }
+  scene.now = 5;
+  scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+  assert.equal(e.daze, 0);
+  assert.ok(Math.abs(e.stunUntil - (5 + 0.8 * 1.2)) < 1e-9);
+  assert.ok(Math.abs(e.stunImmuneUntil - e.stunUntil - 1) < 1e-9);
+});
+
+test('特殊直接定身清空旧眩晕积累，眩晕与免疫期不攒层、不续晕', (t) => {
+  t.mock.method(Math, 'random', () => 0.99);
+  const scene = comboScene({});
+  const e = enemy('water');
+  scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+  scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+  assert.equal(e.daze, 2);
+  scene.hitEnemy(e, 1, 'earth', { stun: 0.6 });
+  assert.equal(e.daze, 0);
+  assert.equal(e.stunUntil, 1.6);
+  const immuneUntil = e.stunImmuneUntil;
+  for (const time of [1.2, 1.8, 2.5]) {
+    scene.now = time;
+    scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+    scene.hitEnemy(e, 1, 'earth', { stun: 1 });
+    assert.equal(e.daze, 0);
+    assert.equal(e.stunUntil, 1.6);
+    assert.equal(e.stunImmuneUntil, immuneUntil);
+  }
+  scene.now = immuneUntil;
+  scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+  assert.equal(e.daze, 1);
+});
+
+test('震慑间隔超过四秒重新从一层起，Boss 二阶短打昏，致死或无敌命中不攒层', (t) => {
+  t.mock.method(Math, 'random', () => 0.99);
+  const scene = comboScene({});
+  const e = enemy('water');
+  scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+  scene.now += 4.01;
+  scene.hitEnemy(e, 1, 'earth', { proc: 1 });
+  assert.equal(e.daze, 1);
+  const boss = enemy('water', { boss: true });
+  for (let i = 0; i < 3; i++) scene.hitEnemy(boss, 1, 'earth', { proc: 1 });
+  assert.ok(Math.abs(boss.stunUntil - scene.now - 0.4) < 1e-9);
+  assert.equal(boss.daze, 0);
+  assert.equal(boss.slowUntil, scene.now + 1.5);
+  const dead = enemy('water', { hp: 1 });
+  scene.hitEnemy(dead, 10, 'earth', { proc: 1 });
+  assert.equal(dead.daze, 0);
+  const immune = enemy('water', { invulnUntil: scene.now + 2 });
+  scene.hitEnemy(immune, 1, 'earth', { proc: 1 });
+  assert.equal(immune.daze, 0);
+});
+
+test('持续伤害从已结算的命中伤害派生，不再次乘元素强度；传播不逐跳衰减', async () => {
+  const { ON_ENEMY } = await import('../src/config/status.ts');
+  for (const [el, kind, field] of [['metal', 'bleed', 'bleedDps'], ['wood', 'poison', 'poisonDps'], ['fire', 'burn', 'burnDps']]) {
+    const g = comboScene({});
+    for (const targetEl of ['metal', 'wood', 'water', 'fire', 'earth']) {
+      const e = enemy(targetEl, { hp: 10000, maxHp: 10000, burnStacks: 0, burnDps: 0 });
+      const damage = g.hitEnemy(e, 20, el, { noCrit: true });
+      g.afflict(e, kind, damage);
+      assert.ok(Math.abs(e[field] - damage * ON_ENEMY[kind].k) < 1e-9);
+    }
+    if (kind === 'bleed') continue;
+    const a = enemy(el, { burnStacks: 0 }), b = enemy(el, { burnStacks: 0 });
+    if (kind === 'burn') { g.burnEnemy(a, 10); g.burnEnemy(b, a.burnDps); }
+    else { g.poisonEnemy(a, 10, 4); g.poisonEnemy(b, a.poisonDps, 3); }
+    assert.equal(b[field], 10);
+  }
+});
+
+test('镇岳只提高二阶几率，直接定身与击退不再加成', (t) => {
+  t.mock.method(Math, 'random', () => 0.6);
+  const g = comboScene({});
+  g.build.passives.set('zhenyue', 5);
+  g.pstats = { ...g.build.stats(), crit: 0 };
+  g.player = { x: -10, y: 0, moving: true };
+  const rock = enemy('water', { kbx: 0, kby: 0 });
+  g.hitEnemy(rock, 1, 'earth', { stun: 1, kb: 100 });
+  assert.equal(rock.stunUntil - g.now, 1);
+  assert.equal(rock.kbx, 300);
+  const vine = enemy('water', { kbx: 0, kby: 0 });
+  g.hitEnemy(vine, 1, 'wood', { stun: 1, kb: 100 });
+  assert.equal(vine.stunUntil - g.now, 1);
+  assert.equal(vine.kbx, 300);
+  const stacked = enemy('water');
+  for (let i = 0; i < 3; i++) g.afflict(stacked, 'stun', 1);
+  assert.ok(Math.abs(stacked.stunUntil - g.now - 0.8) < 1e-9);
+});
+
+test('快怪仍脆、慢速前排更耐打，血量成长不反转快慢分工', () => {
+  const fast = ['shuigui', 'huoya', 'zhushe', 'chihu'].map(id => ENEMIES[id]);
+  const heavy = ['shiyong', 'tiejia', 'chuanshan', 'bingcan', 'aoxie'].map(id => ENEMIES[id]);
+  for (const f of fast) for (const h of heavy) {
+    assert.ok(f.speed >= 50 && h.speed <= 34);
+    for (const scale of [1, 1.6 * 1.798, 5.2 * 5.2]) {
+      assert.ok(Math.round(h.hp * scale) >= Math.round(f.hp * scale) * 2);
+    }
+  }
+  assert.ok(ENEMIES.yecha.hp < ENEMIES.shiyong.hp, '跳跃突进怪不同时占据重装血量');
+});
+
+test('护甲收益递减且负护甲不放大伤害，基础护甲和超高护甲都有限度', async () => {
+  const { armoredDamage } = await import('../src/game/damage.ts');
+  assert.equal(armoredDamage(100, -5), 100);
+  assert.equal(armoredDamage(100, 0), 100);
+  assert.equal(armoredDamage(100, 5), 71);
+  assert.equal(armoredDamage(100, 10), 56);
+  assert.equal(armoredDamage(100, 20), 40);
+  assert.equal(armoredDamage(100, 100), 40);
+  for (let a = 0; a < 30; a++) assert.ok(armoredDamage(100, a + 1) <= armoredDamage(100, a));
+});
+
+
+test('二阶概率边界：首次不能跳阶，20% 基础率，加成按百分点，积累保底', async (t) => {
+  const { advances } = await import('../src/config/status.ts');
+  const random = t.mock.method(Math, 'random', () => 0);
+  assert.equal(advances(1, 3, 1), false);
+  assert.equal(advances(2, 3, 0), true);
+  random.mock.mockImplementation(() => 0.2);
+  assert.equal(advances(2, 3, 0), false);
+  assert.equal(advances(2, 3, 0.1), true);
+  random.mock.mockImplementation(() => 0.7);
+  assert.equal(advances(2, 3, 0.5), false);
+  assert.equal(advances(2, 3, 0.6), true);
+  random.mock.mockImplementation(() => 0.999);
+  assert.equal(advances(3, 3, 0), true);
+  assert.equal(advances(5, 5, 0), true);
+  assert.equal(advances(2, 3, 10), true);
+});
+
+test('五系心法各提高对应二阶概率，本系亲和仍为 1.2 倍；镇岳排除纯地脉刺构筑', async () => {
+  const { PASSIVES } = await import('../src/config/skills.ts');
+  for (const [el, id, hero] of [['metal', 'pojun', 'xiao'], ['wood', 'fanmao', 'qingdai'], ['water', 'xuanming', 'ruan'], ['fire', 'liaoyuan', 'zhu'], ['earth', 'zhenyue', 'moheng']]) {
+    for (const [char, expected] of [['xuanyi', 0.5], [hero, 0.6]]) {
+      const b = new Build(character(char), LEVELS[0]);
+      b.passives.set(id, 5);
+      for (const [key, value] of Object.entries(b.stats().advanceBonus)) {
+        assert.ok(Math.abs(value - (key === el ? expected : 0)) < 1e-9);
+      }
+    }
+  }
+  const b = new Build(character('xuanyi'), LEVELS[0]);
+  b.skills = new Map([['stonespike', 1]]);
+  assert.equal(b.unlocked(PASSIVES.zhenyue), false);
+  b.skills.set('luoshi', 1);
+  assert.equal(b.unlocked(PASSIVES.zhenyue), true);
+});
+
+test('五系首次只挂一阶，强化后第二次即可进阶，毒火到期后重新积累', (t) => {
+  t.mock.method(Math, 'random', () => 0.6);
+  for (const [kind, passive, el] of [['slow', 'xuanming', 'fire'], ['stun', 'zhenyue', 'water'], ['poison', 'fanmao', 'earth'], ['burn', 'liaoyuan', 'metal'], ['bleed', 'pojun', 'wood']]) {
+    for (const enhanced of [false, true]) {
+      const g = comboScene({});
+      if (enhanced) g.build.passives.set(passive, 5);
+      g.pstats = { ...g.build.stats(), dotMult: 1 };
+      const e = enemy(el, { hp: 1000 });
+      const deep = () => kind === 'slow' || kind === 'stun' ? e.stunUntil > g.now : kind === 'poison' ? e.poisonDeep : kind === 'burn' ? e.burningDeep : e.hp < 1000;
+      g.afflict(e, kind, 10);
+      assert.equal(deep(), false, kind + ' first');
+      g.afflict(e, kind, 10);
+      assert.equal(deep(), enhanced, kind + ' second');
+      if (enhanced && (kind === 'poison' || kind === 'burn')) {
+        g.now += 5;
+        g.afflict(e, kind, 10);
+        assert.equal(deep(), false, kind + ' expired');
+      }
+    }
+  }
+});
+
+test('剧毒第三次保底双倍毒伤，刷新不重复翻倍，到期恢复一阶且不放大火伤', (t) => {
+  t.mock.method(Math, 'random', () => 0.99);
+  const g = comboScene({});
+  g.pstats.dotMult = 1;
+  const e = enemy('earth', { hp: 1000 });
+  for (let i = 0; i < 3; i++) g.poisonEnemy(e, 10, 4);
+  assert.equal(e.poisonDeep, true);
+  assert.equal(e.poisonDps, 10);
+  g.dotEnemy(e, 5, 5);
+  assert.equal(e.hp, 985);
+  g.poisonEnemy(e, 8, 2);
+  g.dotEnemy(e, 5, 0);
+  assert.equal(e.hp, 975);
+  assert.equal(e.poisonUntil, 5);
+  g.now = 5;
+  g.poisonEnemy(e, 8, 2);
+  assert.equal(e.poisonDeep, false);
+  assert.equal(e.poisonBuild, 1);
+  g.dotEnemy(e, 4, 0);
+  assert.equal(e.hp, 971);
+});
+
+test('燃烧随携带者灼伤附近敌人，不伤自身、不挂异常，尊重无敌与到期', (t) => {
+  t.mock.method(Math, 'random', () => 0.99);
+  const g = comboScene({});
+  g.pstats.dotMult = 1;
+  const source = enemy('metal'), near = enemy('wood', { x: 20 }), far = enemy('wood', { x: 100 }), immune = enemy('wood', { x: 20, invulnUntil: 10 });
+  const all = [source, near, far, immune];
+  g.enemies.inRadius = (x, y, r) => all.filter(e => e.alive && Math.hypot(e.x - x, e.y - y) <= r);
+  for (let i = 0; i < 3; i++) g.burnEnemy(source, 8);
+  assert.equal(source.burningDeep, true);
+  g.burnAura(source);
+  assert.deepEqual(all.map(e => e.hp), [100, 94, 100, 100]);
+  assert.equal(near.burnUntil, 0);
+  assert.equal(near.burningDeep, false);
+  source.x = 90;
+  g.burnAura(source);
+  assert.deepEqual(all.map(e => e.hp), [100, 94, 94, 100]);
+  source.invulnUntil = 10;
+  g.burnAura(source);
+  assert.equal(far.hp, 94);
+  source.invulnUntil = 0;
+  g.now = source.burnUntil;
+  g.burnAura(source);
+  assert.equal(far.hp, 94);
+});
+
+test('落石命中先眩晕乱走，镇岳提高二次打昏率，免疫期间不再积累', (t) => {
+  t.mock.method(Math, 'random', () => 0.6);
+  const g = comboScene({});
+  g.build.passives.set('zhenyue', 5);
+  g.pstats = { ...g.build.stats(), crit: 0 };
+  const e = enemy('water');
+  g.hitEnemy(e, 1, 'earth', { daze: 1.5 });
+  assert.equal(e.confusedUntil, 2.5);
+  assert.equal(g.hasStatus(e, 'stun'), true);
+  assert.equal(e.stunUntil, 0);
+  g.hitEnemy(e, 1, 'earth', { daze: 1.5 });
+  assert.equal(e.confusedUntil, 0);
+  assert.equal(e.daze, 0);
+  assert.equal(e.stunUntil, 1.8);
+  g.now = 2;
+  g.hitEnemy(e, 1, 'earth', { daze: 1.5 });
+  assert.equal(e.daze, 0);
+  assert.equal(e.confusedUntil, 0);
+});
+
+test('Boss 保留二阶冰冻/打昏，持续减半，结束后水土共享三秒免控', (t) => {
+  t.mock.method(Math, 'random', () => 0.99);
+  for (const [kind, el, duration] of [['slow', 'fire', 0.5], ['stun', 'water', 0.4]]) {
+    const g = comboScene({});
+    const e = enemy(el, { boss: true });
+    g.afflict(e, kind, 1);
+    assert.equal(e.slowF, 0.75);
+    assert.equal(e.stunUntil, 0);
+    g.afflict(e, kind, 1);
+    g.afflict(e, kind, 1);
+    assert.ok(Math.abs(e.stunUntil - g.now - duration) < 1e-9);
+    assert.ok(Math.abs(e.stunImmuneUntil - e.stunUntil - 3) < 1e-9);
+    assert.equal(e.frozenUntil > g.now, kind === 'slow');
+    const until = e.stunUntil;
+    g.now = until + 0.1;
+    for (let i = 0; i < 10; i++) { g.afflict(e, 'slow', 1); g.afflict(e, 'stun', 1); }
+    assert.equal(e.stunUntil, until, '不能交替水土绕过免疫');
+    assert.equal(e.chill, 0);
+    assert.equal(e.daze, 0);
+  }
+});
+
+test('Boss 二阶毒火窗口减半，刷新不延长二阶，到期保留一阶并重新积累', (t) => {
+  t.mock.method(Math, 'random', () => 0.99);
+  for (const kind of ['poison', 'burn']) {
+    const g = comboScene({});
+    g.pstats.dotMult = 1;
+    const e = enemy('earth', { hp: 1000, boss: true });
+    const apply = () => g.afflict(e, kind, 10);
+    for (let i = 0; i < 3; i++) apply();
+    const endField = kind === 'poison' ? 'poisonDeepUntil' : 'burnDeepUntil';
+    const flag = kind === 'poison' ? 'poisonDeep' : 'burningDeep';
+    const baseField = kind === 'poison' ? 'poisonUntil' : 'burnUntil';
+    const buildField = kind === 'poison' ? 'poisonBuild' : 'burnBuild';
+    const end = e[endField];
+    assert.equal(end - g.now, kind === 'poison' ? 2 : 1);
+    g.now += 0.5;
+    apply();
+    assert.equal(e[endField], end);
+    g.now = end;
+    assert.ok(e[baseField] > g.now);
+    if (kind === 'poison') { g.dotEnemy(e, 10, 0); assert.equal(e.hp, 990); }
+    apply();
+    assert.equal(e[flag], false);
+    assert.equal(e[buildField], 1);
+    apply();
+    assert.equal(e[flag], false);
+    apply();
+    assert.equal(e[flag], true);
   }
 });
