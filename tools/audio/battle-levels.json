@@ -1,0 +1,313 @@
+{
+  "model": "ace-step-1.5",
+  "direction": "第 1–10 关配乐以战斗节奏为基础，逐关匹配地形与危险感；环境层必须可辨，避免欢快民乐、庆典旋律和凯旋式收束。第一关另有同主题方向的紧张版，第四关沿用用户认可的 battle-v2。",
+  "common_prompt": "Dark Chinese fantasy survival combat instrumental, no vocals and no choir, straight 4/4 battle pulse with persistent rhythmic subdivisions, short repeating motifs and restrained melodic movement, sustained danger with room for weapon sound effects, stable tempo and continuous battle energy through the middle, no festive folk dance or cheerful melody or triumphant resolution, no cinematic silence or EDM drops",
+  "tracks": [
+    {
+      "level": 1,
+      "track": "level1",
+      "name": "荒郊古道",
+      "variant": "normal",
+      "bpm": 128,
+      "key": "D Minor",
+      "seed": 20261061,
+      "duration_sec": 112,
+      "terrain": "荒郊乱石、古碑、枯树枯草、狼妖逼近",
+      "arrangement": "快速古琴短句、强低鼓与连续木质切分、短促低箫；荒风枯草退后 2 dB",
+      "prompt": "D minor one-bar plucked-string riff built from D F G A G F D, forceful low Chinese battle drums interlocked with dry wooden clacks and fast guqin attacks, short rough low-xiao warning phrases between drum accents, ruined ancient road with scattered stone and dead grass, determined pursuit and circling enemies, driving medium-fast combat with a strong forward pulse and repeated offbeat drum attacks, restrained bleak countryside wind behind the music, clear immediate rhythm throughout, Dark Chinese wuxia action combat score, rhythm and attack lead the arrangement from the first bar, straight fast 4/4 with continuous sixteenth-note subdivisions, short sharply articulated repeating riffs instead of sustained lyrical melodies, punchy dry percussion close in the mix, serious urgent danger rather than festive excitement, no ambient intro no long breakdown no half-time section no slow ballad no pastoral flute solo no vocals no choir no triumphant major-key melody no EDM drop",
+      "prompt_is_complete": true,
+      "source": "output/music/early-drive-v2-20261025/level1-mix.wav",
+      "model_source": "output/music/early-drive-v2-20261025/level1-original.wav",
+      "job_id": "f68eafa378d748f695f536d33cb74471",
+      "loop": {
+        "loopStart": 3.74,
+        "loopEnd": 104.99
+      },
+      "loop_processing": {
+        "start_hint": 3.75,
+        "end_limit": 106.95870833333333,
+        "last_active": 110.70870833333333
+      },
+      "sound_design": {
+        "script": "tools/audio/early_ambience.py",
+        "terrain": "road",
+        "seed": 20261051,
+        "relative_rms_db": -16
+      },
+      "revision": 2,
+      "feedback": "第一、二关偏平缓；要求更密集的鼓点和短拨弦动机，减少长音留白，环境层稍退后。"
+    },
+    {
+      "level": 1,
+      "track": "level1_danger",
+      "name": "荒郊古道·紧张",
+      "variant": "danger",
+      "bpm": 144,
+      "key": "D Minor",
+      "seed": 20261061,
+      "duration_sec": 112,
+      "terrain": "荒郊乱石、古碑、枯树枯草、狼妖逼近",
+      "arrangement": "同动机方向的密集战鼓滚奏、持续低弦、短促箫句，144 BPM 高压推进",
+      "prompt": "D minor one-bar plucked-string riff built from D F G A G F D, forceful low Chinese battle drums interlocked with dry wooden clacks and fast guqin attacks, short rough low-xiao warning phrases between drum accents, ruined ancient road with scattered stone and dead grass, determined pursuit and circling enemies, high-pressure urgent combat variation at full speed, relentless double-stroke Chinese drum rolls with emphatic low drum downbeats, tightly chugging low string ostinato, retain the short D F G A G F D riff direction, enemies closing in from all sides and no melodic release, bleak wind behind the foreground percussion, Dark Chinese wuxia action combat score, rhythm and attack lead the arrangement from the first bar, straight fast 4/4 with continuous sixteenth-note subdivisions, short sharply articulated repeating riffs instead of sustained lyrical melodies, punchy dry percussion close in the mix, serious urgent danger rather than festive excitement, no ambient intro no long breakdown no half-time section no slow ballad no pastoral flute solo no vocals no choir no triumphant major-key melody no EDM drop",
+      "prompt_is_complete": true,
+      "source": "output/music/early-drive-v2-20261025/level1_danger-mix.wav",
+      "model_source": "output/music/early-drive-v2-20261025/level1_danger-original.wav",
+      "job_id": "f321f9da14074a7188c7e9fbd02ec5e5",
+      "loop": {
+        "loopStart": 3.31,
+        "loopEnd": 101.73
+      },
+      "loop_processing": {
+        "start_hint": 3.3333333333333335,
+        "end_limit": 104.04860416666668,
+        "last_active": 107.3819375
+      },
+      "sound_design": {
+        "script": "tools/audio/early_ambience.py",
+        "terrain": "road",
+        "seed": 20261051,
+        "relative_rms_db": -16
+      },
+      "revision": 2,
+      "feedback": "第一、二关偏平缓；要求更密集的鼓点和短拨弦动机，减少长音留白，环境层稍退后。"
+    },
+    {
+      "level": 2,
+      "track": "level2",
+      "name": "竹林",
+      "variant": "normal",
+      "bpm": 140,
+      "key": "A Minor",
+      "seed": 20261062,
+      "duration_sec": 112,
+      "terrain": "密竹墙与缺口、苔石、藤怪与竹叶青伏击、根须低语",
+      "arrangement": "快速交错竹梆木鱼、紧鼓与琵琶古琴短 riff；低笛短击，竹叶竹腔声底退后 2 dB",
+      "prompt": "Fast tense bamboo-grove ambush combat, rapid interlocking bamboo clappers and dry wooden fish sixteenth notes, snapping Chinese skin-drum accents and tight low drum pulse, sharply picked pipa and guqin repeating short dark riffs, low dizi staccato bursts only between percussion phrases with no long flute melody, agile zigzag pursuit through narrow gaps in dense bamboo with snakes and moving roots, bamboo leaves swish quietly behind the forward percussion, nervous precise urgent martial motion rather than relaxed exploration, Dark Chinese wuxia action combat score, rhythm and attack lead the arrangement from the first bar, straight fast 4/4 with continuous sixteenth-note subdivisions, short sharply articulated repeating riffs instead of sustained lyrical melodies, punchy dry percussion close in the mix, serious urgent danger rather than festive excitement, no ambient intro no long breakdown no half-time section no slow ballad no pastoral flute solo no vocals no choir no triumphant major-key melody no EDM drop",
+      "prompt_is_complete": true,
+      "source": "output/music/early-drive-v2-20261025/level2-mix.wav",
+      "model_source": "output/music/early-drive-v2-20261025/level2-original.wav",
+      "job_id": "9767b95da95a451e92e6546689a06fa9",
+      "loop": {
+        "loopStart": 3.44,
+        "loopEnd": 106.28
+      },
+      "loop_processing": {
+        "start_hint": 3.4285714285714284,
+        "end_limit": 107.01430357142857,
+        "last_active": 110.442875
+      },
+      "sound_design": {
+        "script": "tools/audio/early_ambience.py",
+        "terrain": "bamboo",
+        "seed": 20261052,
+        "relative_rms_db": -14
+      },
+      "revision": 2,
+      "feedback": "第一、二关偏平缓；要求更密集的鼓点和短拨弦动机，减少长音留白，环境层稍退后。"
+    },
+    {
+      "level": 3,
+      "track": "level3",
+      "name": "山林",
+      "variant": "normal",
+      "bpm": 120,
+      "key": "C Minor",
+      "seed": 20261053,
+      "duration_sec": 112,
+      "terrain": "狭窄山道、两道岩壁、落石、山魈震山",
+      "arrangement": "沉重低鼓、古琴与低弦；空谷山风、低频岩壁回响",
+      "prompt": "Rocky mountain forest survival combat, audible hollow wind threading through pine trees and narrow cliff passages, deep resonant Chinese war drums in heavy forward-driving patterns with dry rolling subdivisions, rough low guqin repeated notes and tense bowed bass strings, sparse dark bronze gong and short strained low xiao calls, massive cliff walls and unstable rubble above a trapped fighter, looming mountain beasts and crushing earth pressure, spacious cold stone echoes behind close percussion, ominous grounded weight without a triumphant mountain vista, no literal falling boulder impacts or monster roars, Chinese dark fantasy survival combat instrumental, audible terrain atmosphere throughout, no singing and no choir, steady 4/4 combat pulse with clear percussion attacks and room for game sound effects, restrained short motifs and unresolved minor pentatonic harmony, continuous battle energy through the middle, no cheerful folk dance no triumphant fanfare no pop melody no EDM drop, no literal enemy calls or impact warning effects",
+      "prompt_is_complete": true,
+      "source": "output/music/early-levels-20261024/level3-mix.wav",
+      "model_source": "output/music/early-levels-20261024/level3-original.wav",
+      "job_id": "3d010c48046841c0ae2ec9a34f2c4aad",
+      "loop": {
+        "loopStart": 7.82,
+        "loopEnd": 99.81
+      },
+      "loop_processing": {
+        "start_hint": 8.0,
+        "end_limit": 105.3471875,
+        "last_active": 109.3471875
+      },
+      "sound_design": {
+        "script": "tools/audio/early_ambience.py",
+        "terrain": "mountain",
+        "seed": 20261053,
+        "relative_rms_db": -14
+      }
+    },
+    {
+      "level": 4,
+      "name": "赤焰谷",
+      "bpm": 132,
+      "key": "G Minor",
+      "source": "output/music/level4-ace-20261024-battle-v2/level4-battle-v2-original.wav",
+      "job_id": "001e0e905e0d4e80b1220569ff50efb1",
+      "terrain": "玄武岩峡谷、周期熔岩喷发、余火、石俑震地、毕方远鸣",
+      "arrangement": "连续低战鼓与滚奏、古琴低音、稀疏唢呐警鸣、沉锣",
+      "loop": {
+        "loopStart": 7.2,
+        "loopEnd": 50.79
+      },
+      "prompt": "Dark Chinese fantasy combat score, relentless straight sixteenth-note battle percussion at 132 BPM in 4/4, massive low Chinese war drums with syncopated heavy accents and short rolling fills, aggressive low guqin ostinato over an ominous G pedal, dark minor pentatonic fragments with tense dissonant sustained tones, sparse harsh low-register suona alarm calls instead of a lyrical lead, bowed low strings grinding beneath the drums, deep bronze gong strikes with short dry metallic clacks, oppressive basalt canyon with erupting lava and choking ash, relentless fire-demon siege with mounting danger and no triumphant resolution, percussion-led repeating combat phrases with room for weapon impacts, instrumental only with no singing and no choir; avoid cheerful folk dance, festive procession, bright flute, bouncy melody, major-key celebration, swing rhythm and EDM drops",
+      "seed": 20261025,
+      "duration_sec": 60,
+      "loop_processing": {
+        "start_hint": 7.27,
+        "end_limit": 52
+      },
+      "track": "level4"
+    },
+    {
+      "level": 5,
+      "name": "兵冢古战场",
+      "bpm": 112,
+      "key": "D Minor",
+      "seed": 20261035,
+      "terrain": "拒马残垒、煞气剑阵、铁甲列阵、复活残兵、刑天战鼓",
+      "arrangement": "沉重行军战鼓、低编钟、干戈金属节奏、低弦与古琴",
+      "prompt": "Undead battlefield siege, oppressive heavy marching Chinese war drums with urgent double-time rolling subdivisions, low bronze bianzhong bells tolling a terse dark motif, dry clashing iron percussion like armored ranks and broken weapons, low guqin repeated notes and grinding bowed bass strings, ancient barricades and sword burial grounds, relentless advancing dead soldiers, grim disciplined weight rather than a heroic parade",
+      "loop": {
+        "loopStart": 8.57,
+        "loopEnd": 89.91
+      },
+      "source": "output/music/battle-levels-20261024/level5-original.wav",
+      "job_id": "5f129b398cd644aaabebfc683e6199cd",
+      "duration_sec": 96,
+      "loop_processing": {
+        "start_hint": 8.571428571428571,
+        "end_limit": 90.06274404761905,
+        "last_active": 94.34845833333334
+      },
+      "track": "level5"
+    },
+    {
+      "level": 6,
+      "name": "云梦泽",
+      "bpm": 120,
+      "key": "A Minor",
+      "seed": 20261036,
+      "terrain": "芦苇迷道、泥潭减速、毒瘴扩散、缠根、水鬼与相柳",
+      "arrangement": "闷鼓与错位木鱼、古琴低弦循环、低箫气息、弓弦暗涌",
+      "prompt": "Poisonous marsh ambush combat, tense muffled Chinese skin drums in a persistent stalking rhythm with syncopated wooden fish ticks, low guqin ostinato with scraped string attacks, breathy low xiao fragments and dissonant bowed low strings, damp fog and sucking mud beneath dead reeds, circling water ghosts and creeping roots, claustrophobic predatory pressure with constant movement, dark submerged resonance but clear percussion attacks, no tranquil meditation or pastoral flute",
+      "loop": {
+        "loopStart": 8.01,
+        "loopEnd": 89.99
+      },
+      "source": "output/music/battle-levels-20261024/level6-original.wav",
+      "job_id": "3ae09c52942b43c18254556466ed8796",
+      "duration_sec": 96,
+      "loop_processing": {
+        "start_hint": 8.0,
+        "end_limit": 90.04452083333334,
+        "last_active": 94.04452083333334
+      },
+      "track": "level6"
+    },
+    {
+      "level": 7,
+      "name": "寒江",
+      "bpm": 128,
+      "key": "D Minor",
+      "seed": 20261047,
+      "terrain": "冰崖缺口、冰面滑行、遮蔽视野的暴风雪、玄冥北风",
+      "arrangement": "持续阵风与冰雪噪声、冰冷弓弦与低箫气息、稀疏裂冰般编钟、紧促闷鼓",
+      "prompt": "Frozen wasteland survival combat soundtrack, audible howling blizzard wind woven continuously through the music from the opening, desolate subzero river and walls of whiteout snow, icy bowed-metal drones and thin dissonant sul ponticello string tremolos, breathy low xiao blowing air and short falling notes with no lyrical melody, widely spaced cracked bronze bell strikes with long frozen echoes, sparse low guqin plucks and cold deep bass pulses, taut muted war drums with relentless dry sixteenth-note rim patterns at 128 BPM in 4/4, swelling crosswinds rising over the percussion every few bars, hollow distant ice fractures and shimmering frost hiss, isolated fighter struggling for footing on treacherous ice while enemies emerge from the storm, threatening cold emptiness around a steady urgent combat pulse, dark D minor and unresolved sparse harmony, instrumental only, no singing no choir no warm brass no suona no lush romantic strings no cheerful melody no festive drums no fairy-tale celesta no major-key heroism",
+      "loop": {
+        "loopStart": 7.51,
+        "loopEnd": 88.13
+      },
+      "source": "output/music/level7-blizzard-v2-20261024/level7-blizzard-mix.wav",
+      "job_id": "b9129e1b41f945c8b2b6a3daf0c0019f",
+      "duration_sec": 96,
+      "loop_processing": {
+        "start_hint": 7.5,
+        "end_limit": 91.79120833333333,
+        "last_active": 95.54120833333333
+      },
+      "prompt_is_complete": true,
+      "revision": 2,
+      "model_source": "output/music/level7-blizzard-v2-20261024/level7-original.wav",
+      "sound_design": {
+        "script": "tools/audio/hanjiang_wind.py",
+        "seed": 20261047,
+        "wind_relative_rms_db": -11
+      },
+      "feedback": "上一版寒冷与暴风雪氛围不够明显；风雪必须成为持续可辨的声音层。",
+      "track": "level7"
+    },
+    {
+      "level": 8,
+      "name": "大漠",
+      "bpm": 126,
+      "key": "F Minor",
+      "seed": 20261038,
+      "terrain": "雅丹土台、向心流沙、沙暴、旱雷、旱魃化火",
+      "arrangement": "干燥低鼓、密集手鼓细分、低笛短句、古琴重复音与稀疏金属铃",
+      "prompt": "Scorched desert survival battle, dry booming Chinese war drums with insistent hand-drum subdivisions and clipped wooden clacks, low bamboo flute in terse descending dark phrases, rough low guqin repeating notes and sparse muted bronze bells, oppressive heat shimmer over eroded stone ridges, sinking quicksand and a violent sandstorm hiding armored attackers, relentless forward drive under crushing drought, gritty dry close percussion, no cheerful caravan dance or exotic lounge music",
+      "loop": {
+        "loopStart": 7.79,
+        "loopEnd": 89.75
+      },
+      "source": "output/music/battle-levels-20261024/level8-original.wav",
+      "job_id": "cb3b27fc863b41088d97e1e00e813312",
+      "duration_sec": 96,
+      "loop_processing": {
+        "start_hint": 7.619047619047619,
+        "end_limit": 89.90385119047619,
+        "last_active": 93.713375
+      },
+      "track": "level8"
+    },
+    {
+      "level": 9,
+      "name": "东海归墟",
+      "bpm": 136,
+      "key": "C Minor",
+      "seed": 20261039,
+      "terrain": "珊瑚礁、涨潮积水、退潮海底火山、水火妖物与九婴",
+      "arrangement": "浪涌式战鼓、古琴低音与唢呐警鸣交替、深锣与震音弦乐",
+      "prompt": "Abyssal sea and volcanic reef combat, surging layered Chinese war drums with a continuous driving pulse, rolling low guqin ostinato answered by short harsh suona warning calls, deep bronze gong pressure and tremolo low strings, recurring swells alternate cold submerged tension and violent fiery percussion without changing tempo, rising tides trap the fighter among reefs while undersea lava erupts, monstrous water-fire confrontation, ominous and relentless, no swashbuckling celebration or triumphant brass",
+      "loop": {
+        "loopStart": 6.92,
+        "loopEnd": 86.25
+      },
+      "source": "output/music/battle-levels-20261024/level9-original.wav",
+      "job_id": "9045846eef574f698995d555bfe44618",
+      "duration_sec": 96,
+      "loop_processing": {
+        "start_hint": 7.0588235294117645,
+        "end_limit": 89.37673406862744,
+        "last_active": 92.90614583333333
+      },
+      "track": "level9"
+    },
+    {
+      "level": 10,
+      "name": "昆仑",
+      "bpm": 144,
+      "key": "D Minor",
+      "seed": 20261040,
+      "terrain": "昆仑玉崖、五气轮转、毒沼熔岩落石剑阵冰面、帝江将至",
+      "arrangement": "五元素乐器轮流显露：古琴、低笛、短唢呐、编钟、层叠战鼓",
+      "prompt": "Kunlun sacred mountain final-stage survival combat, monumental layered Chinese war drums with relentless sixteenth-note propulsion, a dark recurring guqin ostinato anchors rotating terse motifs from low bamboo flute then harsh suona then bronze bianzhong, each instrument emerges in turn while the battle pulse stays constant, grinding low strings and deep gong strikes, vast jade cliffs above storm clouds with poisonous mist lava falling stone and ice shifting around the fighter, ancient cosmic menace and desperate resolve, imposing ritual intensity without a victory fanfare",
+      "loop": {
+        "loopStart": 6.64,
+        "loopEnd": 86.76
+      },
+      "source": "output/music/battle-levels-20261024/level10-original.wav",
+      "job_id": "fac6bf63fd514e4091d578d1c421263b",
+      "duration_sec": 96,
+      "loop_processing": {
+        "start_hint": 6.666666666666667,
+        "end_limit": 87.25466666666667,
+        "last_active": 90.588
+      },
+      "track": "level10"
+    }
+  ],
+  "steps": 8,
+  "instrumental": true,
+  "source_format": "wav"
+}

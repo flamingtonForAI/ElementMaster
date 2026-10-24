@@ -38,10 +38,20 @@ export const BGM_FILES: Record<string, { loopStart: number; loopEnd: number; cal
   // calm：不跟局势强度开合（菜单里没有局势）
   menu: { loopStart: 0.25, loopEnd: 55.101, calm: true },
   // 以下由 tools/audio/loop_intro.py 切出：循环起点之前是只播一次的前奏
-  level1: { loopStart: 8.08, loopEnd: 152.08 },
-  level1_danger: { loopStart: 4.08, loopEnd: 160.08 },
-  level2: { loopStart: 0.25, loopEnd: 71.336 },
-  level3: { loopStart: 4.33, loopEnd: 91.22 },
+  // 第 1–3 关含地形环境声层；第一关紧张版延续相同配器和主题动机。
+  level1: { loopStart: 3.74, loopEnd: 104.99 },
+  level1_danger: { loopStart: 3.31, loopEnd: 101.73 },
+  level2: { loopStart: 3.44, loopEnd: 106.28 },
+  level3: { loopStart: 7.82, loopEnd: 99.81 },
+  // 战斗版：第四关沿用已确认的赤焰谷样段，第 5–10 关按地形分别生成。
+  // 参数、来源与接缝检查见 tools/audio/README.md。
+  level4: { loopStart: 7.2, loopEnd: 50.79 },
+  level5: { loopStart: 8.57, loopEnd: 89.91 },
+  level6: { loopStart: 8.01, loopEnd: 89.99 },
+  level7: { loopStart: 7.51, loopEnd: 88.13 },
+  level8: { loopStart: 7.79, loopEnd: 89.75 },
+  level9: { loopStart: 6.92, loopEnd: 86.25 },
+  level10: { loopStart: 6.64, loopEnd: 86.76 },
   boss: { loopStart: 6.21, loopEnd: 155.01 },
   boss_rage: { loopStart: 3.56, loopEnd: 168.11 },
 };
