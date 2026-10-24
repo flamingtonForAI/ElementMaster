@@ -834,7 +834,8 @@ export class GameScene extends Phaser.Scene {
     const armor = this.pstats.armor + (p.moving ? 0 : this.pstats.stillArmor) + (p.hp < this.pstats.maxHp * 0.5 ? this.build.mods.lowArmor ?? 0 : 0);
     const crit = o.forceCrit || Math.random() < (o.crit ?? ENEMY_CRIT[el]);
     const critDmg = crit ? (o.critDmg ?? ENEMY_CRIT_DMG) : 1;
-    const dmg = Math.max(1, Math.round(base * critDmg * REL_MULT[rel] * this.pstats.resist[el] - armor));
+    const incoming = base * critDmg * REL_MULT[rel] * this.pstats.resist[el];
+    const dmg = Math.max(1, Math.ceil(incoming * 0.25), Math.round(incoming - armor));
     p.hurt();
     audio.sfx('hurt', crit ? { rate: 0.75 } : undefined);
     if (crit) this.cameras.main.shake(90, 0.004);

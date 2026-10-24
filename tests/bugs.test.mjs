@@ -1783,3 +1783,136 @@ test('评审回归：换相后升级三选一按当前地气加权；帝江同�
   assert.equal(b.def.el, 'metal');
   assert.deepEqual(calls, ['metal']);
 });
+
+test('第3关回复对照：三角色只改变回复，不改变本命、生命、护甲和移速', async () => {
+  const { level3Profile } = await import('../tools/playtest/profiles.mjs');
+  for (const id of ['xiao', 'qingdai', 'moheng']) {
+    const builds = [0, 5].map(regen => {
+      const p = level3Profile(id, regen);
+      const b = new Build(character(id), LEVELS[2], p.meta);
+      b.level = p.buildLevel;
+      b.skills = new Map(Object.entries(p.skills));
+      b.passives = new Map(Object.entries(p.passives).filter(([, lv]) => lv > 0));
+      b.recompute();
+      return b;
+    });
+    const [low, high] = builds.map(b => b.stats());
+    assert.equal(builds[0].benming, builds[1].benming);
+    assert.deepEqual({ ...low, regen: high.regen }, high);
+    assert.ok(high.regen - low.regen >= 2.5);
+  }
+});
+
+test('玩家护甲：保留扣甲前伤害的25%，按暴击、五行和抗性后的数值计算', () => {
+  const cases = [
+    { base: 6.25, el: 'earth', armor: 99, expected: 2 }, // incoming=5
+    { base: 22.5, el: 'earth', armor: 99, expected: 5 }, // incoming=18
+    { base: 25, el: 'earth', armor: 3, expected: 17 }, // 原减甲分支仍然更高
+    { base: 0.1, el: 'earth', armor: 99, expected: 1 },
+    { base: 10, el: 'fire', armor: 99, resist: 0.5, forceCrit: true, critDmg: 2, expected: 4 }, // incoming=15
+  ];
+  for (const row of cases) {
+    const g = runScene('xiao', 3);
+    g.now = 1;
+    g.pstats = { ...g.build.stats(), armor: row.armor };
+    if (row.resist) g.pstats.resist[row.el] = row.resist;
+    g.player = { alive: true, moving: true, hp: 100, x: 0, y: 0, hurt() {} };
+    g.fx = { number() {} };
+    g.cameras = { main: { shake() {} } };
+    let damage = 0;
+    g.loseHp = value => { damage += value; };
+    g.hurtPlayer(row.base, row.el, { crit: 0, forceCrit: row.forceCrit, critDmg: row.critDmg });
+    assert.equal(damage, row.expected);
+    g.hurtPlayer(row.base, row.el, { crit: 0 });
+    assert.equal(damage, row.expected, '0.35秒无敌帧仍然挡住第二次命中');
+  }
+});
+
+test('傀儡护甲：25%下限在石身减伤与外壳五行之后计算', async () => {
+  const { PuppetManager } = await import('../src/game/Puppets.ts');
+  for (const [base, armor, expected] of [[12.5, 99, 2], [45, 99, 5], [50, 3, 17], [0.1, 99, 1]]) {
+    const manager = new PuppetManager({ now: 2, pstats: { armor } });
+    const puppet = { alive: true, hp: 100, el: 'metal' };
+    // 土→金×0.8，石身×0.5，所以incoming=base×0.4。
+    manager.hurt(puppet, base, 'earth');
+    assert.equal(puppet.hp, 100 - expected);
+    assert.equal(puppet.flashUntil, 2.08);
+  }
+});
+
+test('正常成长加点只花现有灵石和合法点数，不补造通关或局内技能', async () => {
+  const { spendProgression } = await import('../tools/playtest/progression.js');
+  const { canLight, litSet } = await import('../src/config/startree.ts');
+  const { treeStart } = await import('../src/game/talents.ts');
+  for (const id of ['xiao','qingdai','moheng']) {
+    reset();
+    const save = loadSave();
+    const initial = structuredClone(save);
+    spendProgression(save,id);
+    assert.equal(save.lingshi,0);
+    assert.deepEqual(save.meta,{});
+    assert.deepEqual(save.clears,initial.clears);
+    assert.equal(save.tree[id].length,2);
+    save.clears[id]=[1,2]; save.unlocked=3; save.lingshi=600;
+    const priorSpent=save.spent;
+    const ledger=spendProgression(save,id);
+    assert.equal(save.lingshi + ledger.filter(e=>e.kind==='purchase').reduce((n,e)=>n+e.cost,0),600);
+    assert.equal(save.spent-priorSpent,600-save.lingshi);
+    assert.ok(save.lingshi>=0);
+    assert.equal(save.tree[id].length,8);
+    assert.equal(save.legacy[id].length,1);
+    const start=treeStart(character(id)), lit=litSet(start,[]);
+    for(const node of save.tree[id]) {assert.ok(canLight(node,start,lit));lit.add(node);}
+    assert.deepEqual(save.clears[id],[1,2]);
+    assert.equal(save.unlocked,3);
+  }
+});
+
+test('评审修复：相柳破水按预警椭圆判定上下及左右边界', () => {
+  for (const [x, y, hit] of [[0, 40, false], [0, -40, false], [0, 30, true], [0, -30, true], [50, 0, true], [52, 0, false]]) {
+    const { g, mgr, hurts } = trickScene(6);
+    Object.assign(g, { player: { x, y }, cameras: { main: { shake() {} } }, proj: { enemyShot() {} } });
+    const b = trickMob('xiangliu', 6, { x: 0, y: 0, state: 3, timer: 0, raged: false,
+      sprite: { setAlpha() {} } });
+    mgr.xiangliu(b, 1 / 60, 0, 1, 0, 40);
+    assert.equal(hurts.length, hit ? 1 : 0, `(${x}, ${y})`);
+  }
+});
+
+test('评审修复：帝江歌舞中致死仍逐帧补齐五相，最后一相显示后才结算一次', async () => {
+  const { DIJIANG_FORMS } = await import('../src/config/enemies.ts');
+  const forms = ['earth', 'metal', 'water', 'wood', 'fire'];
+  for (const start of [0, 3, 4]) {
+    const { g, mgr } = trickScene(10);
+    const shots = [], drops = [];
+    Object.assign(g, { anims: { exists: () => true }, proj: { enemyShot: (...args) => shots.push(args) },
+      pickups: { gem: (...args) => drops.push(args) } });
+    const b = Object.assign(new Enemy({ ...sprite(), play() {}, clearTint() {}, anims: { stop() {} } }), {
+      def: DIJIANG_FORMS[forms[start]], tex: DIJIANG_FORMS[forms[start]].tex,
+      alive: true, boss: true, hp: -1000, maxHp: 1000, phase: start, state: 1, timer: 2, xp: 5,
+    });
+    mgr.list.push(b);
+    mgr.kill(b);
+    if (start < 4) {
+      assert.equal(b.alive, true);
+      assert.equal(g.bossKilled, 0);
+      assert.equal(b.hp, 0, '不回血，也不需要玩家额外补刀');
+      for (let phase = start + 1; phase <= 4; phase++) {
+        mgr.update(1 / 60);
+        assert.equal(b.phase, phase);
+        assert.equal(b.def.el, forms[phase]);
+        assert.equal(b.alive, true, '留一帧显示这一相');
+        mgr.kill(b); // 同帧多个伤害入口不能提前结束补相。
+        assert.equal(g.bossKilled, 0);
+      }
+      assert.equal(shots.length, (4 - start) * 10);
+      mgr.update(1 / 60);
+    }
+    assert.equal(b.alive, false);
+    mgr.kill(b);
+    assert.equal(g.bossKilled, 1);
+    assert.equal(g.kills, 1);
+    assert.equal(g.killed.dijiang, 1);
+    assert.equal(drops.length, 1);
+  }
+});

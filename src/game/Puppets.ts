@@ -163,7 +163,8 @@ export class PuppetManager {
   /** 傀儡挨打：用本体护甲，五行关系按傀儡外壳算 */
   hurt(p: Puppet, base: number, el: El) {
     if (!p.alive) return;
-    const dmg = Math.max(1, Math.round(base * STONE * REL_MULT[relation(el, p.el)] - this.g.pstats.armor));
+    const incoming = base * STONE * REL_MULT[relation(el, p.el)];
+    const dmg = Math.max(1, Math.ceil(incoming * 0.25), Math.round(incoming - this.g.pstats.armor));
     p.hp -= dmg;
     p.flashUntil = this.g.now + 0.08;
     if (p.hp <= 0) this.remove(p, true);

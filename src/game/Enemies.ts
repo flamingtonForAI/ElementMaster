@@ -99,6 +99,8 @@ export class Enemy {
   rose = false;
   /** 第几相（旱魃：0 土相，1 焚身化火之后） */
   phase = 0;
+  /** 帝江受到致命伤后逐帧补完未展示的相位，再结算死亡。 */
+  finishingPhases = false;
   noKill = false;
   /** 冲刺留火的里程（赤狐、毕方） */
   trailAcc = 0;
@@ -212,6 +214,7 @@ export class EnemyManager {
     e.invulnUntil = 0;
     e.rose = false;
     e.phase = 0;
+    e.finishingPhases = false;
     e.raged = false;
     e.rageUntil = 0;
     e.combo = 0;
@@ -358,6 +361,14 @@ export class EnemyManager {
 
     for (const e of this.list) {
       if (!e.alive) continue;
+      if (e.finishingPhases) {
+        if (e.phase < GEN_ORDER.length - 1) this.nextDijiangPhase(e);
+        else {
+          e.finishingPhases = false;
+          this.kill(e);
+        }
+        continue;
+      }
       // 近战的普通怪会被傀儡吸走仇恨；Boss 和远程怪只盯本体
       const pp = !e.boss && e.def.behavior !== 'spit' && g.puppets.list.length ? g.puppets.aggroOf(e) : null;
       const pdist = Math.hypot(p.x - e.x, p.y - e.y) || 1;
@@ -1021,7 +1032,7 @@ export class EnemyManager {
         g.fx.ring(e.x, e.y - 4, R, 0x9fc0ff, 0.4);
         g.fx.burst(e.x, e.y - 6, 0x6aa8e8, 18);
         const p = g.player;
-        if (Math.hypot(p.x - e.x, p.y - e.y) < R + PLAYER_RADIUS) g.hurtPlayer(e.dmg, 'water', this.hurtOf(e, true));
+        if (Math.hypot(p.x - e.x, (p.y - e.y) / 0.6) < R + PLAYER_RADIUS) g.hurtPlayer(e.dmg, 'water', this.hurtOf(e, true));
         const n = rage ? 16 : 12;
         const off = Math.random() * Math.PI;
         const hurt = this.hurtOf(e);
@@ -1294,10 +1305,7 @@ export class EnemyManager {
     // 按血量换相：每掉 DJ.step 的生命换下一系（phase 记已经换过几次），打得再快五相也都会出场
     const due = Math.min(GEN_ORDER.length - 1, Math.floor((1 - e.hp / e.maxHp) / DJ.step));
     if (due > e.phase && e.state === 0) {
-      e.phase++;
-      const next = GEN_ORDER[(GEN_ORDER.indexOf(e.def.el) + 1) % GEN_ORDER.length];
-      this.morph(e, DIJIANG_FORMS[next]);
-      this.elementRing(e, next, at(DJ.ring, rage));
+      this.nextDijiangPhase(e);
     }
     // 换相之后再取，同一帧到期的招用新元素
     const el = e.def.el;
@@ -1345,6 +1353,14 @@ export class EnemyManager {
       e.timer = 1;
     }
     return [0, 0];
+  }
+
+  /** 正常掉血与致死后的补相共用：每帧只换一相，并释放对应弹幕。 */
+  private nextDijiangPhase(e: Enemy) {
+    e.phase++;
+    const next = GEN_ORDER[(GEN_ORDER.indexOf(e.def.el) + 1) % GEN_ORDER.length];
+    this.morph(e, DIJIANG_FORMS[next]);
+    this.elementRing(e, next, at(DJ.ring, e.raged));
   }
 
   /** 帝江这一系的招 */
@@ -1866,6 +1882,13 @@ export class EnemyManager {
   kill(e: Enemy) {
     if (!e.alive) return;
     const g = this.g;
+    if (e.def.behavior === 'boss_dijiang' && !g.over && (e.phase < GEN_ORDER.length - 1 || e.finishingPhases)) {
+      e.hp = 0;
+      e.finishingPhases = true;
+      e.invulnUntil = Infinity;
+      e.sprite.clearTint();
+      return;
+    }
     const burnt = e.lastEl === 'fire';
     if (e.def.rise && !e.rose && !burnt && !g.over) return this.rise(e);
     // 土相一口气被打穿也不会直接死：焚身化火，带一截生命接着打
