@@ -43,17 +43,6 @@ function flySword(): PC {
   return p;
 }
 
-/** 金针雨：竖直落下的金针，针尖朝下 */
-function needle(): PC {
-  const p = new PC(5, 14);
-  p.line(2, 0, 2, 3, 0xa07a30);
-  p.line(2, 4, 2, 11, 0xf0d070);
-  p.set(1, 5, 0xfff4c0);
-  p.set(2, 12, 0xffffff);
-  p.outline(0x5a4018);
-  return p;
-}
-
 /** 藤缚：地上盘开的一丛藤蔓，按地面压扁（宽:高 = 1:0.6） */
 function vine(): PC {
   const p = new PC(40, 24);
@@ -1552,7 +1541,6 @@ export function buildFx(scene: Phaser.Scene) {
   addAnim(scene, 'fx_slash', 'fx_slash', [0, 1, 1, 2], 20, 0);
   single(scene, 'pj_sword', flySword());
   single(scene, 'pj_wave', wave());
-  single(scene, 'pj_needle', needle());
   single(scene, 'fx_vine', vine());
   addSheet(scene, 'pj_fireball', [0, 1].map(fireball));
   addAnim(scene, 'pj_fireball', 'pj_fireball', [0, 1], 10);

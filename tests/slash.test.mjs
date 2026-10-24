@@ -1,0 +1,87 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { registerHooks, stripTypeScriptTypes } from 'node:module';
+import { test } from 'node:test';
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === 'phaser') return { url: 'data:text/javascript,export default {}', shortCircuit: true };
+    if (specifier === '../audio/Audio') return { url: 'data:text/javascript,export const audio = { sfx() {} }', shortCircuit: true };
+    if (specifier.startsWith('.') && !/\.[a-z]+$/.test(specifier)) return nextResolve(`${specifier}.ts`, context);
+    return nextResolve(specifier, context);
+  },
+  load(url, context, nextLoad) {
+    if (url.endsWith('.ts')) return {
+      format: 'module', source: stripTypeScriptTypes(readFileSync(new URL(url), 'utf8'), { mode: 'transform' }), shortCircuit: true,
+    };
+    return nextLoad(url, context);
+  },
+});
+
+const { SkillSystem } = await import('../src/game/Skills.ts');
+const { SKILLS } = await import('../src/config/skills.ts');
+
+function scene(mods = {}) {
+  const tasks = [], waves = [], hits = [], slashes = [];
+  const front = { x: 30, y: -2 }, back = { x: -30, y: -2 };
+  const g = {
+    player: { x: 0, y: 0, moving: true, facing: { x: 1, y: 0 }, attack() {} },
+    pstats: { area: 1 }, build: { mods },
+    enemies: { inRadius: () => [front, back] },
+    later: (delay, fn) => tasks.push({ delay, fn }),
+    proj: { fire: (...args) => waves.push(args) },
+    fx: { anim: (...args) => slashes.push(args) },
+    hitEnemy: (enemy, dmg) => hits.push({ enemy, dmg }),
+  };
+  return { g, system: new SkillSystem(g), tasks, waves, hits, slashes, front, back };
+}
+
+for (let lv = 1; lv <= 8; lv++) {
+  test(`剑气斩 Lv${lv}：5 级起前后斩击与双向剑波`, () => {
+    const s = scene(), st = SKILLS.slash.stats(lv);
+    s.system.fire('slash', st);
+    assert.deepEqual(s.hits.map(h => h.enemy), [s.front]);
+    assert.equal(s.waves.length, lv >= 5 ? 1 : 0);
+    assert.equal(s.tasks.length, lv >= 5 ? 1 : 0);
+    if (lv < 5) return;
+    assert.equal(s.tasks[0].delay, 0.12);
+    // 后斩仍沿本轮的相反方向，起点跟随角色，与近战后斩一致。
+    s.g.player.facing = { x: 0, y: 1 };
+    s.g.player.x = 2;
+    s.tasks[0].fn();
+    assert.deepEqual(s.hits.map(h => h.enemy), [s.front, s.back]);
+    assert.equal(s.slashes.length, 2);
+    assert.equal(s.waves.length, 2);
+    assert.equal(s.waves[0][4], 210);
+    assert.equal(s.waves[1][4], -210);
+    assert.equal(s.waves[1][2], s.g.player.x);
+    for (const wave of s.waves) {
+      assert.ok(Math.abs(wave[5]) < 1e-9);
+      assert.equal(wave[6].dmg, st.dmg * 0.8);
+      assert.equal(wave[6].el, 'metal');
+      assert.equal(wave[6].proc, SKILLS.slash.proc);
+    }
+  });
+}
+
+test('连斩传承在 5 级前每三斩发波，双向解锁后不重复追加前向波', () => {
+  for (const lv of [4, 5]) {
+    const s = scene({ 'xiao.chain': 1 });
+    for (let n = 0; n < 3; n++) s.system.fire('slash', SKILLS.slash.stats(lv));
+    for (const task of s.tasks) task.fn();
+    assert.equal(s.waves.length, lv === 4 ? 1 : 6);
+    assert.equal(s.waves[0][6].dmg, SKILLS.slash.stats(lv).dmg * (lv === 4 ? 0.6 : 0.8));
+  }
+});
+
+test('5 级专注形态解锁，6—8 级继续强化，满级数值保持', () => {
+  const levels = Array.from({ length: 8 }, (_, i) => SKILLS.slash.stats(i + 1));
+  assert.equal(levels[4].range, levels[3].range);
+  assert.ok(levels[5].range > levels[4].range);
+  for (let i = 1; i < levels.length; i++) {
+    assert.ok(levels[i].dmg >= levels[i - 1].dmg);
+    assert.ok(levels[i].range >= levels[i - 1].range);
+    assert.ok(levels[i].cd <= levels[i - 1].cd);
+  }
+  assert.deepEqual(levels[7], { dmg: 40, range: 64, cd: 0.75, arc: 160, back: 1 });
+});

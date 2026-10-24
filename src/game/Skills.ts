@@ -87,6 +87,9 @@ export class SkillSystem {
           g.later(0.12, () => {
             audio.sfx('slash', { rate: 0.85 });
             this.slash(ang + Math.PI, st);
+            g.proj.fire('wave', 'pj_wave', p.x, p.y - 8, -Math.cos(ang) * 210, -Math.sin(ang) * 210, {
+              dmg: st.dmg * 0.8, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40, proc,
+            });
           });
           g.proj.fire('wave', 'pj_wave', cx, cy, Math.cos(ang) * 210, Math.sin(ang) * 210, {
             dmg: st.dmg * 0.8, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40, proc,
@@ -209,18 +212,25 @@ export class SkillSystem {
         return true;
       }
       case 'jinzhen': {
-        // 一蓬金针落在敌人周围一片，越靠中心越密
-        const zones = g.enemies.randomIn(p.x, p.y, 220, st.zones);
-        if (!zones.length) return false;
-        audio.sfx('sword', { rate: 1.6 });
-        const spread = 36 * area;
-        for (const z of zones) {
-          const zx = z.x;
-          const zy = z.y;
+        // 施放时锁定方向和落区；移动、转身或敌人死亡都不会改变这轮剑雨。
+        const ang = Math.atan2(p.facing.y, p.facing.x);
+        const fx = Math.cos(ang), fy = Math.sin(ang);
+        const spread = st.spread * area;
+        p.attack();
+        audio.sfx('sword', { rate: 1.2 });
+        for (let z = 0; z < st.zones; z++) {
+          const reach = (st.range + z * st.spread * 1.3) * area;
+          const zx = cx + fx * reach;
+          const zy = p.y + fy * reach;
+          const phase = Math.random() * Math.PI * 2;
           for (let i = 0; i < st.count; i++) {
-            const a = Math.random() * Math.PI * 2;
-            const r = spread * Math.sqrt(Math.random());
-            this.needle(zx + Math.cos(a) * r, zy + Math.sin(a) * r * AURA_FLAT, i * 0.035, st.dmg, 11 * area);
+            // 螺旋均匀铺开，扩大范围后仍能覆盖中心和边缘。
+            const a = phase + i * Math.PI * (3 - Math.sqrt(5));
+            const r = spread * Math.sqrt((i + 0.5) / st.count);
+            const along = Math.cos(a) * r;
+            const across = Math.sin(a) * r * AURA_FLAT;
+            this.rainSword(zx + fx * along - fy * across, zy + fy * along + fx * across,
+              z * 0.12 + i * 0.045, st.dmg, st.radius * area, fx, fy);
           }
         }
         return true;
@@ -353,17 +363,21 @@ export class SkillSystem {
       .setAlpha(0.26 + 0.06 * Math.sin(g.now * 3));
   }
 
-  /** 金针雨的一根针：从空中落下，落地刺中一小圈 */
-  private needle(x: number, y: number, delay: number, dmg: number, r: number) {
+  /** 流金剑雨：前进距离等于落高（45°），地面纵深按俯视透视压扁。 */
+  private rainSword(x: number, y: number, delay: number, dmg: number, r: number, fx: number, fy: number) {
     const g = this.g;
+    const height = 80;
+    const dx = fx * height;
+    const dy = height + fy * height * AURA_FLAT;
     g.later(delay, () => {
-      const s = g.add.image(x, y - 70, 'pj_needle').setOrigin(0.5, 1).setDepth(y + 2);
+      const s = g.add.image(x - dx, y - dy, 'pj_sword')
+        .setOrigin(1, 0.5).setRotation(Math.atan2(dy, dx)).setDepth(y + 2);
       g.tweens.add({
-        targets: s, y, duration: 120, ease: 'Quad.in',
+        targets: s, x, y, duration: 200, ease: 'Quad.in',
         onComplete: () => {
           s.destroy();
           g.fx.burst(x, y - 2, EL_INFO.metal.color, 2);
-          for (const e of g.enemies.inRadius(x, y, r, this.tmp)) g.hitEnemy(e, dmg, 'metal', { kb: 10, fromX: x, fromY: y - 10, proc: SKILLS.jinzhen.proc });
+          for (const e of g.enemies.inRadius(x, y, r, this.tmp)) g.hitEnemy(e, dmg, 'metal', { kb: 10, fromX: x - fx * 10, fromY: y - fy * 10, proc: SKILLS.jinzhen.proc });
         },
       });
     });
