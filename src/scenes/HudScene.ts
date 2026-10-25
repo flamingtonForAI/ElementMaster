@@ -729,6 +729,8 @@ export class HudScene extends Phaser.Scene {
     this.drawPenta(this.modal!, 110, 180, 30, b.lingen, el);
     this.modal!.add(label(this, 110, 226, `本命 ${EL_INFO[el].name}`, hex(EL_INFO[el].color)).setOrigin(0.5, 0));
     this.modal!.add(label(this, 110, 242, `克 ${EL_INFO[counters(el)].name}　畏 ${EL_INFO[counteredBy(el)].name}`, '#b8aec8').setOrigin(0.5, 0));
+    this.modal!.add(label(this, 110, 264, '受伤后 2 秒持续/击杀回复减半', '#b8aec8', 10).setOrigin(0.5, 0));
+    this.modal!.add(label(this, 110, 280, '护盾受击同样触发，药瓶照常', '#8a8494', 10).setOrigin(0.5, 0));
     // 右侧大地图，游戏已暂停，画一次就行
     const S = 156;
     const mx = 540 - S / 2;

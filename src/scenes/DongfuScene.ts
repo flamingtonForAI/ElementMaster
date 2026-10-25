@@ -665,8 +665,9 @@ export class DongfuScene extends Phaser.Scene {
     const left = total - learned.length;
 
     L.add(this.add.rectangle(PX, VY, PW, VH, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, LINE));
-    L.add(label(this, PX + 10, VY + 8, `传承点　${left} / ${total}`, left > 0 ? '#ffd23f' : '#b8aec8'));
-    L.add(label(this, PX + 10, VY + 26, `本角色首通第 ${LEGACY_LEVELS.join('、')} 关各 +1`, '#6a6474'));
+    L.add(label(this, PX + 10, VY + 8, `传承点　剩余 ${left} 点`, left > 0 ? '#ffd23f' : '#b8aec8'));
+    L.add(label(this, PX + 10, VY + 26, `累计获得 ${total} 点 · 每节点 1 点`, '#b8aec8'));
+    L.add(label(this, PX + 10, VY + 46, `最高通关达 ${LEGACY_LEVELS.join('、')} 关各 +1\n按本角色计算，跳关自动补齐`, '#8a8494', 12, false).setLineSpacing(4));
     this.hint(isTouch() ? '点节点查看，再点一次领悟' : '方向键选择　Enter 领悟　X 撤回　Q / E 页签　Esc 返回');
 
     if (!branches) {
@@ -683,7 +684,8 @@ export class DongfuScene extends Phaser.Scene {
         const y = VY + 62 + ni * 64;
         const on = bi === this.lgBranch && ni === this.lgNode;
         const has = learned.includes(nd.id);
-        const can = !has && (ni === 0 || learned.includes(b.nodes[ni - 1].id));
+        const needsPrevious = ni > 0 && !learned.includes(b.nodes[ni - 1].id);
+        const can = !has && !needsPrevious && left > 0;
         if (ni > 0) L.add(this.add.rectangle(x + 20, y - 18, 2, 18, has ? col : DIM).setOrigin(0.5, 0));
         const bg = this.add.rectangle(x, y, 188, 46, on ? 0x2a2238 : PANEL, 0.95).setOrigin(0).setStrokeStyle(1, on ? 0xffd23f : has ? col : LINE);
         bg.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
@@ -694,7 +696,8 @@ export class DongfuScene extends Phaser.Scene {
         L.add(this.add.circle(x + 20, y + 23, 12, has ? col : 0x0e0b14).setStrokeStyle(1.5, can || has ? col : dark));
         L.add(label(this, x + 20, y + 23, nd.glyph, has ? '#120c18' : can ? '#f4eee0' : '#6a6474', 12, false).setOrigin(0.5, 0.5));
         L.add(label(this, x + 40, y + 8, nd.name, has ? '#f4eee0' : '#b8aec8'));
-        L.add(label(this, x + 40, y + 26, has ? '已领悟' : can ? '可领悟' : '需先领悟上一层', has ? hex(col) : '#6a6474'));
+        const status = has ? '已领悟' : needsPrevious ? `需先领悟「${b.nodes[ni - 1].name}」` : can ? '可领悟 · 1 点' : '传承点不足';
+        L.add(label(this, x + 40, y + 26, status, has ? hex(col) : can ? '#b8aec8' : '#6a6474'));
       });
     });
 
@@ -706,18 +709,18 @@ export class DongfuScene extends Phaser.Scene {
   private renderLegacyDetail(nd: LegacyNode, chain: LegacyNode[], learned: string[], left: number) {
     const L = this.layer;
     const x = PX + 10;
-    L.add(label(this, x, VY + 50, nd.name, '#f4eee0', 24));
+    L.add(label(this, x, VY + 98, nd.name, '#f4eee0', 24));
     const lines = nd.note ? [nd.note] : describe(nd.mods);
-    L.add(label(this, x, VY + 84, wrap(lines.join('\n'), PW - 20), '#d8d0e4', 12, false).setLineSpacing(4));
+    L.add(label(this, x, VY + 132, wrap(lines.join('\n'), PW - 20), '#d8d0e4', 12, false).setLineSpacing(4));
     const i = chain.indexOf(nd);
     const has = learned.includes(nd.id);
-    const ay = VY + 194;
+    const ay = VY + 220;
     if (has) {
       const last = !chain.slice(i + 1).some((n) => learned.includes(n.id));
       if (last) this.button(x, ay, PW - 20, 26, '撤回　返还 1 传承点', true, () => this.unlearn());
-      else L.add(label(this, PX + PW / 2, ay + 6, '已领悟（先撤回下一层）', '#8a8494').setOrigin(0.5, 0));
+      else L.add(label(this, PX + PW / 2, ay + 6, `先撤回「${chain[i + 1].name}」`, '#8a8494').setOrigin(0.5, 0));
     } else if (i > 0 && !learned.includes(chain[i - 1].id)) {
-      L.add(label(this, PX + PW / 2, ay + 6, '需先领悟上一层', '#6a6474').setOrigin(0.5, 0));
+      L.add(label(this, PX + PW / 2, ay + 6, `需先领悟「${chain[i - 1].name}」`, '#6a6474').setOrigin(0.5, 0));
     } else {
       this.button(x, ay, PW - 20, 26, left > 0 ? '领悟　1 传承点' : '传承点不足', left > 0, () => this.learn());
     }

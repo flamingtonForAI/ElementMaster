@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { ENEMIES, TRICKS, AFFIXES, TIERS, HANBA_FIRE, PHASE_FORMS, DIJIANG_FORMS, BOSS_MOVES, MOB_MOVES, tierTex, type EnemyDef, type Trick, type Affix, type Tier } from '../config/enemies';
-import { enemyTex, roarBuff, tricksOf, type RoarBuff } from '../config/levels';
+import { ENEMIES, ENEMY_PROJECTILE_DAMAGE, LATE_MOB_ROLES, TRICKS, AFFIXES, TIERS, HANBA_FIRE, PHASE_FORMS, DIJIANG_FORMS, BOSS_MOVES, MOB_MOVES, tierTex, type EnemyDef, type Trick, type Affix, type Tier } from '../config/enemies';
+import { enemyTex, roarBuff, tricksOf, eliteAffixCount, type RoarBuff } from '../config/levels';
 import { STATUS_INFO, STATUS_OF, FROZEN, type Inflict } from '../config/status';
 import { EL_INFO, GEN_ORDER, type El } from '../config/elements';
 import { SpatialGrid } from './SpatialGrid';
@@ -106,6 +106,8 @@ export class Enemy {
   combo = 0;
   /** 已经复起过（刑天） */
   rose = false;
+  /** 普通残兵已经复活过一次；与刑天的复起独立 */
+  revived = false;
   /** 第几相（旱魃：0 土相，1 焚身化火之后） */
   phase = 0;
   /** 帝江受到致命伤后逐帧补完未展示的相位，再结算死亡。 */
@@ -176,6 +178,8 @@ export interface SpawnOpts {
   noXp?: boolean;
   /** 不计击杀（复活的残兵：同一只兵反复打不能刷灵石） */
   noKill?: boolean;
+  /** 复活后的残兵用尽复活次数；对象池复用时重置 */
+  revived?: boolean;
   /** 升阶，精英和 Boss 忽略 */
   tier?: Tier;
 }
@@ -211,19 +215,22 @@ export class EnemyManager {
     e.boss = !!def.boss;
     e.tier = e.elite || e.boss ? 1 : o.tier ?? 1;
     const T = e.tier === 1 ? null : TIERS[e.tier];
-    const hpMult = (o.hpMult ?? 1) * (e.elite ? 10 : 1) * (T?.hp ?? 1);
+    const role = !e.elite && !e.boss && def.lateRole && this.g.levelDef.id >= LATE_MOB_ROLES.fromLevel ? LATE_MOB_ROLES[def.lateRole] : null;
+    const hpMult = (o.hpMult ?? 1) * (e.elite ? 10 : 1) * (T?.hp ?? 1) * (role?.hp ?? 1);
     e.maxHp = e.hp = Math.round(def.hp * hpMult);
-    e.dmg = def.dmg * (e.elite ? 1.5 : 1) * (T?.dmg ?? 1) * (e.boss ? 1 : this.g.dmgScale());
+    e.dmg = def.dmg * (e.elite ? 1.8 : 1) * (T?.dmg ?? 1) * (e.boss ? 1 : this.g.dmgScale());
     e.armor = def.armor + (T?.armor ?? 0);
     const scale = e.elite ? 1.5 : T?.scale ?? 1;
     e.radius = def.radius * scale;
-    e.speed = def.speed * (T?.speed ?? 1) * (0.9 + Math.random() * 0.2);
-    e.xp = o.noXp ? 0 : e.elite ? 20 : def.xp * (T?.xp ?? 1);
-    e.atkDps = (def.inflict?.dps ?? 0) * (e.elite ? 1.5 : 1) * (T?.dmg ?? 1) * (e.boss ? 1 : this.g.dmgScale());
+    const roleSpeed = !e.boss && def.lateRole && this.g.levelDef.id >= LATE_MOB_ROLES.fromLevel ? LATE_MOB_ROLES[def.lateRole].speed : 1;
+    e.speed = def.speed * (T?.speed ?? 1) * roleSpeed * (0.9 + Math.random() * 0.2);
+    e.xp = o.noXp ? 0 : e.elite ? 20 : def.xp * (T?.xp ?? 1) * (role?.xp ?? 1);
+    e.atkDps = (def.inflict?.dps ?? 0) * (e.elite ? 1.8 : 1) * (T?.dmg ?? 1) * (e.boss ? 1 : this.g.dmgScale());
     e.dropStage = 0;
     e.lastEl = null;
     e.invulnUntil = 0;
     e.rose = false;
+    e.revived = !!o.revived;
     e.phase = 0;
     e.finishingPhases = false;
     e.raged = false;
@@ -235,10 +242,10 @@ export class EnemyManager {
     e.cdMul = e.windMul = e.dashMul = e.blastMul = e.regenMul = 1;
     e.trailAdd = e.reviveSub = e.chanceAdd = 0;
     e.hopAt = -1;
-    e.tricks = e.boss ? [] : tricksOf(this.g.levelDef, defId);
+    e.tricks = e.boss ? [] : tricksOf(this.g.levelDef, defId, this.g.elapsed ?? 0);
     e.trickAt = this.g.now + 2 + Math.random() * 3;
     e.castUntil = e.guardUntil = e.guardArmor = 0;
-    e.affixes = e.elite ? this.rollAffixes(this.g.levelDef.eliteAffixes ?? 0) : [];
+    e.affixes = e.elite ? this.rollAffixes(eliteAffixCount(this.g.levelDef, this.g.elapsed ?? 0)) : [];
     e.affixTick = e.frostTick = 0;
     e.summonAt = this.g.now + (AFFIXES.summon.every ?? 9);
     e.alive = true;
@@ -546,16 +553,14 @@ export class EnemyManager {
 
     this.updateAuras(dt);
 
-    // 移除死亡的
+    // 甩开的普通怪留在原处追赶；足够远才无奖励回收，不能传送到前方堵路。
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];
+      if (e.alive && !e.boss && !e.elite && (e.x - p.x) ** 2 + (e.y - p.y) ** 2 > 900 ** 2) this.deactivate(e);
       if (!e.alive) {
         this.list[i] = this.list[this.list.length - 1];
         this.list.pop();
         this.pool.push(e);
-      } else if (!e.boss && !e.elite && (Math.abs(e.x - p.x) > 520 || Math.abs(e.y - p.y) > 380)) {
-        // 离得太远的普通怪拉回玩家附近，保持压力
-        [e.x, e.y] = g.ringPos(390);
       }
     }
   }
@@ -920,7 +925,7 @@ export class EnemyManager {
     const col = el === 'fire' ? 0xff7a2a : el === 'water' ? 0x5a9ae8 : 0x7ac04a;
     g.fx.telegraph(tx, ty, L.aoe, col, L.dur);
     const hurt = this.hurtOf(e);
-    const dmg = e.dmg;
+    const dmg = e.dmg * ENEMY_PROJECTILE_DAMAGE;
     const left = L.left + e.trailAdd;
     this.hint(`lob_${e.def.id}`, `${e.def.name}的弹会落地：${el === 'fire' ? '留下余火' : el === 'water' ? '留下水洼' : '冒出毒气'}，看准落点`, EL_INFO[el].css);
     g.proj.enemyLob(e.def.shot ?? 'ep_poison', e.x, e.y - 8, tx, ty, L.dur, (x, y) => {
@@ -1775,7 +1780,7 @@ export class EnemyManager {
     audio.sfx('boss');
   }
 
-  /** 残兵倒地：留下尸骸，几秒后原地复活（不再掉经验） */
+  /** 残兵首次倒地：留下尸骸，几秒后原地复活一次（不再掉经验） */
   private corpse(e: Enemy) {
     const g = this.g;
     const { x, y, def, tier } = e;
@@ -1799,11 +1804,11 @@ export class EnemyManager {
       if (this.count >= g.spawnCap()) return g.later(1, revive);
       this.corpses--;
       img.destroy();
-      this.spawn(def.id, x, y, { hpMult: g.hpScale(), noXp: true, noKill: true, tier });
+      this.spawn(def.id, x, y, { hpMult: g.hpScale(), noXp: true, noKill: true, revived: true, tier });
       g.fx.burst(x, y - 6, 0x9aa4b8, 8);
       if (!this.reviveHinted) {
         this.reviveHinted = true;
-        g.hud.toast(`${def.name}又爬起来了！用火系击杀（灼烧也算）才不会复活`, '#ffa060');
+        g.hud.toast(`${def.name}只会复活一次！火系击杀（灼烧也算）可阻止复活`, '#ffa060');
       }
     };
     g.later(t, revive);
@@ -1913,6 +1918,17 @@ export class EnemyManager {
     if (m['kx.water'] && e.def.el === 'fire') g.regenPlayer(0.3);
   }
 
+  /** 只停用表现；远处回收不触发击杀、掉落、尸骸或死亡爆炸。 */
+  private deactivate(e: Enemy) {
+    e.alive = false;
+    e.sprite.setVisible(false).setActive(false);
+    e.sprite.anims.stop();
+    e.glyph?.destroy();
+    e.glyph = null;
+    e.aura?.destroy();
+    e.aura = null;
+  }
+
   kill(e: Enemy) {
     if (!e.alive) return;
     const g = this.g;
@@ -1930,17 +1946,7 @@ export class EnemyManager {
       e.hp = Math.round(e.maxHp * 0.4);
       return this.ignite(e);
     }
-    e.alive = false;
-    e.sprite.setVisible(false).setActive(false);
-    e.sprite.anims.stop();
-    if (e.glyph) {
-      e.glyph.destroy();
-      e.glyph = null;
-    }
-    if (e.aura) {
-      e.aura.destroy();
-      e.aura = null;
-    }
+    this.deactivate(e);
     if (!e.noKill) g.kills++;
     // 图鉴按真的打死算，召唤物、复活的残兵也收录
     g.killed[e.def.id] = (g.killed[e.def.id] ?? 0) + 1;
@@ -1986,8 +1992,8 @@ export class EnemyManager {
         if (Math.hypot(p.x - x, (p.y - y) / 0.6) < R + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale(), el, { inflict });
       });
     }
-    // 残兵：不是被火系击杀就会复活；精英不复活
-    if (e.def.revive && !e.elite && !g.over) {
+    // 残兵最多复活一次，火系终结直接阻止；精英不复活。
+    if (e.def.revive && !e.revived && !e.elite && !g.over) {
       if (burnt) {
         g.fx.text(e.x, e.y - 18, '焚', '#ffa060', 0.6);
         g.fx.burst(e.x, e.y - 6, 0xff8a3a, 6);

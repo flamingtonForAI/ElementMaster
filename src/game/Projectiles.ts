@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { ENEMY_PROJECTILE_DAMAGE } from '../config/enemies';
 import type { El } from '../config/elements';
 import { PLAYER_RADIUS } from './Player';
 import type { Enemy } from './Enemies';
@@ -170,7 +171,7 @@ export class ProjectileManager {
     p.vx = vx;
     p.vy = vy;
     p.ax = p.ay = 0;
-    p.dmg = dmg;
+    p.dmg = dmg * ENEMY_PROJECTILE_DAMAGE;
     p.el = el;
     p.life = 5;
     p.radius = 4;

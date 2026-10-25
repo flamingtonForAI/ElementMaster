@@ -78,7 +78,7 @@ function traits(d: EnemyDef) {
   if (d.trail) t.push('冲刺时身后留火');
   if (d.puddle) t.push('冲刺时身后留下水洼');
   if (d.spread) t.push(`一次扇形吐 ${d.spread} 道`);
-  if (d.revive) t.push(`死后 ${d.revive} 秒原地复活，火系击杀则不会`);
+  if (d.revive) t.push(`死后 ${d.revive} 秒原地复活一次，火系击杀则不会`);
   if (d.rise) t.push('第一次被打倒会复起，火系击杀则不会');
   for (const [k, lv] of trickLevels(d.id)) t.push(`第 ${lv} 关起${TRICK_TEXT[k](d)}`);
   if (d.inflict) t.push(`攻击 ${Math.round(d.inflict.chance * 100)}% 附带${STATUS_INFO[d.inflict.kind].name}`);

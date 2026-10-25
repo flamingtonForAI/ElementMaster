@@ -64,7 +64,9 @@ export function install(seed = 20261022, profile = null) {
   const metrics = { hpDamage: 0, damageHits: 0, regenRequested: 0, regenEffective: 0,
     consumableHealing: 0, chestHealing: 0, minimumHp: g.player.hp, minimumHpFraction: 1, secondsBelowHalf: 0, secondsFull: 0,
     blockedAttackAttempts: 0, puppetDamage: 0, puppetHits: 0, puppetBreaks: 0,
-    secondsWithoutPuppets: 0, maxHpGains: 0 };
+    secondsWithoutPuppets: 0, maxHpGains: 0,
+    xpDropped: 0, xpCollected: 0, otherXp: 0, delayedXp: 0, revisitedXp: 0, denseXp: 0, distanceWalked: 0,
+    denseSeconds: 0, stationarySeconds: 0 };
   let clock = game.loop.now;
   let source = null;
   let result = null;
@@ -75,6 +77,40 @@ export function install(seed = 20261022, profile = null) {
     const original = object[key].bind(object);
     object[key] = (...args) => fn(original, ...args);
   };
+  // Track real gems, including pooled reuse. These are observations, never injected XP.
+  const gemHistory = new WeakMap();
+  const recentTrail = [];
+  let nextGemId = 1, pickupUpdate = false;
+  wrap(g.pickups, 'gem', (original, x, y, value) => {
+    const count = g.pickups.gems.length;
+    const result = original(x, y, value);
+    metrics.xpDropped += value;
+    if (g.pickups.gems.length > count) {
+      const gem = g.pickups.gems.at(-1);
+      gemHistory.set(gem, {id: nextGemId++, born: g.now, x: gem.x, y: gem.y,
+        seenAt: null, approached: false, leftAfterApproach: false, collected: false, distanceAtBirth: metrics.distanceWalked});
+    }
+    return result;
+  });
+  wrap(g.pickups, 'update', (original, dt) => {
+    pickupUpdate = true;
+    try { return original(dt); } finally { pickupUpdate = false; }
+  });
+  wrap(g, 'gainXp', (original, value) => {
+    const gem = pickupUpdate && g.pickups.gems.find(o => !o.active && gemHistory.get(o) && !gemHistory.get(o).collected);
+    if (gem) {
+      const h = gemHistory.get(gem);
+      h.collected = true;
+      const dense = g.enemies.list.filter(e => e.alive && Math.hypot(e.x-g.player.x,e.y-g.player.y)<200).length >= 30;
+      const age = g.now - h.born, walked = metrics.distanceWalked - h.distanceAtBirth;
+      metrics.xpCollected += value;
+      if (age >= 8 && walked >= 300) metrics.delayedXp += value;
+      if (h.leftAfterApproach) metrics.revisitedXp += value;
+      if (dense) metrics.denseXp += value;
+      emit('xp_pickup', {id:h.id, value, age, walked, revisited:h.leftAfterApproach, dense, bornX:h.x, bornY:h.y, x:g.player.x, y:g.player.y});
+    } else metrics.otherXp += value;
+    return original(value);
+  });
   // Cosmetic effects use an independent stream; combat still uses the original game code.
   for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(g.fx))) {
     if (key === 'constructor' || typeof g.fx[key] !== 'function') continue;
@@ -194,10 +230,10 @@ export function install(seed = 20261022, profile = null) {
     }
     return original(win);
   });
-  // First-level threat warnings: explosions and aimed charge lines are also visible to the bot.
+  // Include the same ground telegraphs used by later-level hazards and leaping enemies.
   let warnings = [];
-  for (const kind of ['disc', 'line']) wrap(g.fx, kind, (original, x, y, ...args) => {
-    if (kind === 'disc') warnings.push({ kind, x, y, radius: args[0], until: g.now + args[3] });
+  for (const kind of ['disc', 'line', 'telegraph']) wrap(g.fx, kind, (original, x, y, ...args) => {
+    if (kind === 'disc' || kind === 'telegraph') warnings.push({ kind:'disc', x, y, radius: args[0], until: g.now + args[kind === 'telegraph' ? 2 : 3] });
     else warnings.push({ kind, x, y, angle: args[0], length: args[1], width: args[4] ?? 6, until: g.now + args[3] });
     return original(x, y, ...args);
   });
@@ -227,22 +263,45 @@ export function install(seed = 20261022, profile = null) {
     const pickups = [
       ...g.pickups.gems.map(o => ({ x: o.x, y: o.y, kind: 'xp', value: o.value })),
       ...g.pickups.pills.map(o => ({ x: o.x, y: o.y, kind: 'heal' })),
+      ...g.pickups.antidotes.map(o => ({ x: o.x, y: o.y, kind: 'antidote' })),
       ...g.pickups.chests.map(o => ({ x: o.img.x, y: o.img.getData('y') ?? o.img.y, kind: o.kind + '_chest' })),
       ...g.pickups.items.map(o => ({ x: o.img.x, y: o.img.y, kind: o.kind, talisman: o.talisman })),
     ].filter(o => dist(o) < 370).sort((a, b) => dist(a) - dist(b));
     const projectiles = g.proj.list.filter(o => o.active && o.kind === 'enemy');
     warnings = warnings.filter(o => o.until >= g.now);
+    const groundAt = (x, y) => {
+      const risks = [];
+      if (g.world.inMud(x,y)) risks.push('mud_slow');
+      if (g.hazards.onIce(x,y)) risks.push('ice_inertia');
+      const sand = g.hazards.sandAt(x,y);
+      if (sand) risks.push(sand.d < sand.r * sand.def.core ? 'sand_core_damage' : 'sand_pull_slow');
+      for (const f of g.hazards.fogs) if (f.until>g.now && Math.hypot(x-f.x,(y-f.y)/0.7)<f.r+4) risks.push('poison_fog');
+      for (const f of g.hazards.patches) if (f.until>g.now && Math.hypot(x-f.x,(y-f.y)/0.6)<f.r+4) risks.push(f.kind==='fire'?'fire_damage':f.kind+'_slow');
+      return [...new Set(risks)];
+    };
+    const clusters = new Map();
+    for (const gem of g.pickups.gems) {
+      const h=gemHistory.get(gem);
+      if(!h || h.seenAt===null) continue;
+      const key=Math.floor(gem.x/80)+','+Math.floor(gem.y/80);
+      const c=clusters.get(key)??{value:0,n:0,x:0,y:0,oldestAge:0};
+      c.value+=gem.value;c.n++;c.x+=gem.x;c.y+=gem.y;c.oldestAge=Math.max(c.oldestAge,g.now-h.born);clusters.set(key,c);
+    }
+    const xpClusters=[...clusters.values()].map(c=>({value:c.value,count:c.n,dx:r(c.x/c.n-p.x),dy:r(c.y/c.n-p.y),oldestAge:r(c.oldestAge)}))
+      .sort((a,b)=>b.value/(60+Math.hypot(b.dx,b.dy))-a.value/(60+Math.hypot(a.dx,a.dy))).slice(0,12);
     const speed = g.pstats.speed * Math.max(0.6, g.status.speedMult);
     const movement = Object.entries(DIRECTIONS).map(([id, [dx, dy]]) => {
       const length = Math.hypot(dx, dy) || 1;
       dx /= length; dy /= length;
       let minClearance = 999, blocked = false, projectileClearance = 999, warning = false;
+      const groundHazards = new Set();
       // Compute geometric facts in code, rather than asking Jev to do vector arithmetic.
       for (let i = 0; i <= 5; i++) {
         const t = i / 10;
         const x = p.x + dx * speed * t, y = p.y + dy * speed * t;
         const probe = { x, y };
         if (g.world.push(probe, 7)) blocked = true;
+        for (const risk of groundAt(x,y)) groundHazards.add(risk);
         for (const e of nearby) {
           const d = Math.hypot(x - e.x, y - e.y) - e.radius - 7;
           minClearance = Math.min(minClearance, d);
@@ -266,9 +325,9 @@ export function install(seed = 20261022, profile = null) {
           (id === 'STAY' || (ex * dx + ey * dy) / (Math.hypot(ex, ey) || 1) > Math.cos(80 * Math.PI / 180));
       }).length;
       return { id, blocked, minEnemyClearance: r(minClearance), minProjectileClearance: r(projectileClearance),
-        warning, nearestXpDistanceAfter: r(nearestXp), slashTargetsAfter: facingTargets };
+        warning, groundHazards:[...groundHazards], nearestXpDistanceAfter: r(nearestXp), slashTargetsAfter: facingTargets };
     });
-    return { character: g.char.id, characterTrait: g.char.trait, levelId: g.levelDef.id, metrics: { ...metrics }, time: r(g.elapsed), over: g.over, result, level: g.build.level, xp: g.build.xp, xpNeeded: g.build.xpNeeded(),
+    return { character: g.char.id, characterTrait: g.char.trait, levelId: g.levelDef.id, duration:g.levelDef.duration, metrics: { ...metrics }, time: r(g.elapsed), over: g.over, result, level: g.build.level, xp: g.build.xp, xpNeeded: g.build.xpNeeded(),
       hp: r(p.hp), maxHp: g.pstats.maxHp, x: r(p.x), y: r(p.y), facing: p.facing,
       shield: g.shield, armor: g.pstats.armor, pickupRadius: g.pstats.pickup, kills: g.kills,
       benming: g.build.benming, stats: g.pstats, enemyCount: enemies.length,
@@ -282,9 +341,14 @@ export function install(seed = 20261022, profile = null) {
         elite: e.elite, boss: e.boss, state: e.state, timer: r(e.timer), dashX: r(e.dashX), dashY: r(e.dashY) })),
       boss: g.boss ? { hp: r(g.boss.hp), maxHp: g.boss.maxHp, raged: g.boss.raged, distance: r(dist(g.boss)) } : null,
       pickups: pickups.slice(0, 12).map(o => ({ ...o, x: undefined, y: undefined, dx: r(o.x - p.x), dy: r(o.y - p.y) })),
+      resources:pickups.filter(o=>o.kind!=='xp').slice(0,8).map(o=>({...o,x:undefined,y:undefined,dx:r(o.x-p.x),dy:r(o.y-p.y)})),
+      xpClusters, xpOnGround:g.pickups.gems.reduce((sum,o)=>sum+o.value,0),
+      recentTrail:recentTrail.map(o=>({ago:r(g.now-o.time),dx:r(o.x-p.x),dy:r(o.y-p.y)})),
+      crowd:Array.from({length:8},(_,i)=>{const a=i*Math.PI/4;return {direction:Object.keys(DIRECTIONS)[(i+2)%8],enemies:nearby.filter(e=>Math.cos(Math.atan2(e.y-p.y,e.x-p.x)-a)>Math.cos(Math.PI/8)).length};}),
       projectiles: projectiles.slice(0, 12).map(o => ({ dx: r(o.x - p.x), dy: r(o.y - p.y), vx: r(o.vx), vy: r(o.vy) })),
       movement, options: hud.mode === 'levelup' ? hud.options.map(describe) : [],
-      terrain: g.levelDef.id === 3 ? 'Level 3 mountain forest: dense rock ridges block movement; falling rocks and ground attack warnings cause damage. Up is negative y.' : 'Level 1: bounded map with sparse solid rocks; no damaging ground hazards. Up is negative y.',
+      terrain:{name:g.levelDef.name,lesson:g.levelDef.lesson,halfSize:g.world.half,phase:g.hazards.phaseEl,
+        storm:g.now<g.hazards.stormUntil,wind:[g.hazards.windX,g.hazards.windY],velocity:[r(p.vx),r(p.vy)],ground:groundAt(p.x,p.y)},
     };
   }
   function step(delta) {
@@ -296,8 +360,21 @@ export function install(seed = 20261022, profile = null) {
   function tick() {
     clock += 1000 / 60;
     const active = !g.over;
+    const beforeX=g.player.x,beforeY=g.player.y;
     step(1000 / 60);
     if (active) {
+      const moved=Math.hypot(g.player.x-beforeX,g.player.y-beforeY);
+      metrics.distanceWalked+=moved;
+      if(moved<0.05)metrics.stationarySeconds+=1/60;
+      if(g.enemies.list.filter(e=>e.alive&&Math.hypot(e.x-g.player.x,e.y-g.player.y)<200).length>=30)metrics.denseSeconds+=1/60;
+      for(const gem of g.pickups.gems) {
+        const h=gemHistory.get(gem);if(!h)continue;
+        const d=Math.hypot(gem.x-g.player.x,gem.y-g.player.y);
+        if(d<370 && h.seenAt===null)h.seenAt=g.now;
+        if(d<100)h.approached=true;
+        if(h.approached&&d>180)h.leftAfterApproach=true;
+      }
+      if(!recentTrail.length||g.now-recentTrail.at(-1).time>=2){recentTrail.push({time:g.now,x:g.player.x,y:g.player.y});if(recentTrail.length>12)recentTrail.shift();}
       if (g.char.id === 'moheng' && !g.puppets.list.length) metrics.secondsWithoutPuppets += 1 / 60;
       if (g.player.hp < g.pstats.maxHp / 2) metrics.secondsBelowHalf += 1 / 60;
       if (g.player.hp >= g.pstats.maxHp - 0.01) metrics.secondsFull += 1 / 60;

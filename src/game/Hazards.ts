@@ -436,7 +436,7 @@ export class Hazards {
     if (!this.fogs.length) return;
     const now = g.now;
     const p = g.player;
-    const m = g.levelDef.miasma ?? { tick: 0.7, chance: 0.6, dps: 2, enemy: 0.05 };
+    const m = g.levelDef.miasma ?? { tick: 0.7, chance: 0.6, dps: 2, enemy: 0.025 };
     let onPlayer = false;
     for (let i = this.fogs.length - 1; i >= 0; i--) {
       const f = this.fogs[i];
@@ -467,9 +467,14 @@ export class Hazards {
     // 雾里非木系的普通敌人掉血：引怪进雾是正当打法
     if (now >= this.fogEnemyAt && !g.over) {
       this.fogEnemyAt = now + FOG_ENEMY_TICK;
+      const damaged = new Set<Enemy>();
       for (const f of this.fogs)
         for (const e of g.enemies.inRadius(f.x, f.y, f.r, this.tmp))
-          if (!e.boss && e.def.el !== 'wood' && this.covers(f, e.x, e.y)) g.envDamage(e, e.maxHp * m.enemy * (e.elite ? 0.25 : 1), 'wood');
+          if (!damaged.has(e) && !e.boss && e.def.el !== 'wood' && this.covers(f, e.x, e.y)) {
+            // 同一轮只结算一次，多片毒泽重叠也不会倍增伤害。
+            damaged.add(e);
+            g.envDamage(e, e.maxHp * m.enemy * (e.elite ? 0.25 : 1), 'wood');
+          }
     }
   }
 

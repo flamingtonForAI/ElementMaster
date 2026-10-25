@@ -130,6 +130,93 @@ test('图鉴：结算把本局击杀累加进存档，未知敌人和非正数�
   assert.deepEqual(scene.killed, {});
 });
 
+test('传承按本角色最高通关补齐里程碑，关卡解锁仍共享', () => {
+  reset();
+  const c = character('ruan');
+  const save = loadSave();
+  save.unlocked = 11;
+  save.clears.xiao = [10];
+  for (const [clears, total] of [[[], 0], [[1], 0], [[2], 1], [[4], 1], [[5], 2], [[7, 1], 2], [[8], 3], [[10], 3]]) {
+    save.clears.ruan = clears;
+    assert.equal(legacyPoints(save, c), total, JSON.stringify(clears));
+  }
+  assert.equal(legacyPoints(save, character('qingdai')), 0);
+});
+
+test('跳关结算补齐传承，补低关、重复通关和失败不再增加传承', () => {
+  reset();
+  const c = character('ruan');
+  runScene(c.id, 7).endRun(true);
+  let save = loadSave();
+  assert.equal(save.unlocked, 8);
+  assert.deepEqual(save.clears.ruan, [7]);
+  assert.equal(legacyPoints(save, c), 2);
+  assert.equal(daoPoints(save, c), 5);
+  assert.equal(legacyPoints(save, character('xiao')), 0);
+  for (const [level, win] of [[2, true], [5, true], [7, true], [8, false]]) {
+    runScene(c.id, level).endRun(win);
+    assert.equal(legacyPoints(loadSave(), c), 2);
+  }
+  runScene(c.id, 10).endRun(true);
+  save = loadSave();
+  assert.equal(legacyPoints(save, c), 3);
+  assert.deepEqual(save.clears.ruan, [7, 2, 5, 10]);
+});
+
+test('现有存档读入和导入自动补齐传承，不改已学节点、实际通关或星图', () => {
+  reset();
+  const old = { unlocked: 8, ver: 6, clears: { ruan: [1, 4, 5] }, legacy: { ruan: ['ruan.a1'] }, tree: { ruan: ['water.s1'] } };
+  // 直接模拟既有 localStorage；不是只测导入时的迁移。
+  memory.set('elementmaster.slot.1', JSON.stringify(old));
+  const c = character('ruan');
+  const save = loadSave();
+  assert.equal(legacyPoints(save, c) - save.legacy.ruan.length, 1);
+  assert.deepEqual(save.legacy.ruan, old.legacy.ruan);
+  assert.deepEqual(save.clears.ruan, old.clears.ruan);
+  assert.deepEqual(save.tree.ruan, old.tree.ruan);
+  assert.equal(save.unlocked, old.unlocked);
+  assert.equal(save.notice, '');
+  writeSave(save);
+  assert.equal(legacyPoints(loadSave(), c), 2);
+  assert.ok(importSlot(2, exportSlot(1)));
+  assert.deepEqual(readSlot(2).legacy.ruan, old.legacy.ruan);
+  assert.equal(legacyPoints(readSlot(2), c), 2);
+  assert.ok(importSlot(3, encode({ unlocked: 8, ver: 3, clears: { ruan: 7 }, legacy: old.legacy })));
+  assert.equal(legacyPoints(readSlot(3), c), 2);
+  assert.deepEqual(readSlot(3).legacy.ruan, old.legacy.ruan);
+});
+
+test('补齐后可依次学习第二层，每层耗一点，撤回退款且不能跳过前置', () => {
+  reset();
+  const scene = new DongfuScene();
+  scene.char = character('ruan');
+  scene.save = loadSave();
+  scene.save.clears.ruan = [5];
+  scene.commit = () => writeSave(scene.save);
+  let denied = 0;
+  scene.deny = () => denied++;
+  scene.lgNode = 1;
+  scene.learn();
+  assert.equal(denied, 1);
+  assert.deepEqual(scene.save.legacy.ruan ?? [], []);
+  scene.lgNode = 0;
+  scene.learn();
+  scene.lgNode = 1;
+  scene.learn();
+  assert.deepEqual(loadSave().legacy.ruan, ['ruan.a1', 'ruan.a2']);
+  assert.equal(legacyPoints(scene.save, scene.char) - scene.save.legacy.ruan.length, 0);
+  scene.lgNode = 2;
+  scene.learn();
+  assert.equal(denied, 2);
+  scene.lgNode = 0;
+  scene.unlearn();
+  assert.equal(denied, 3);
+  scene.lgNode = 1;
+  scene.unlearn();
+  assert.deepEqual(loadSave().legacy.ruan, ['ruan.a1']);
+  assert.equal(legacyPoints(scene.save, scene.char) - scene.save.legacy.ruan.length, 1);
+});
+
 test('v3 最高关记录迁移保留已有点数，星图重绘清空已点星位，EM6 导出再导入保留逐关记录', () => {
   reset();
   assert.ok(importSlot(1, encode({ unlocked: 3, ver: 3, clears: { xiao: 2 }, wudao: { xiao: 1 }, tree: { xiao: ['metal.s1', 'metal.s2'] }, legacy: { xiao: ['xiao.a1'] } })));
@@ -512,7 +599,7 @@ test('残兵：非火系击杀 5 秒后原地复活且不再掉经验；火系�
   assert.equal(spawned.length, 1);
 });
 
-test('复活的残兵再被打死不计击杀（不能刷灵石），同屏满了就晚点再起', () => {
+test('残兵最多复活一次，再被打死不计击杀、不再复活；同屏满了就晚点再起', () => {
   const { g, mgr, spawned, run } = killScene();
   mgr.kill(mob('canbing', { lastEl: 'metal' }));
   assert.equal(g.kills, 1);
@@ -525,11 +612,88 @@ test('复活的残兵再被打死不计击杀（不能刷灵石），同屏满�
   run();
   assert.equal(spawned.length, 1);
   assert.equal(spawned[0].o.noKill, true);
-  mgr.kill(mob('canbing', { lastEl: 'metal', noKill: true }));
+  assert.equal(spawned[0].o.revived, true);
+  mgr.kill(mob('canbing', { lastEl: 'metal', noKill: true, revived: true }));
   assert.equal(g.kills, 1);
+  run();
+  assert.equal(spawned.length, 1);
 });
 
 const { NavGrid: Nav } = await import('../src/game/nav.ts');
+
+test('甩开的普通怪留在后方，900 外无奖励回收，精英和 Boss 不回收', () => {
+  const visual = () => { const o = new Proxy({ anims: { stop() {} } }, { get: (t, k) => k in t ? t[k] : () => o }); return o; };
+  const g = { now: 1, player: { x: 0, y: 0, alive: false }, levelDef: LEVELS[0], puppets: { list: [] }, hazards: {},
+    world: { inMud: () => null, push: () => false, clamp: () => false },
+    ringPos: () => { throw Error('不能把甩开的怪传送回来'); } };
+  const mgr = new EnemyManager(g);
+  const make = (x, y, extra = {}) => Object.assign(new Enemy(visual()), {
+    def: ENEMIES.canbing, alive: true, x, y, hp: 100, maxHp: 100, radius: 7, stunUntil: Infinity, ...extra,
+  });
+  const behind = make(600, 0);
+  const below = make(0, 600);
+  const far = make(901, 0, { aura: visual(), glyph: visual() });
+  const elite = make(-1000, 0, { elite: true });
+  const boss = make(0, -1000, { boss: true });
+  mgr.list.push(behind, below, far, elite, boss);
+  // 没有击杀、掉落、结算等场景桩：回收不能调用这些副作用。
+  mgr.update(0);
+  assert.deepEqual([behind.x, behind.y, below.x, below.y], [600, 0, 0, 600]);
+  assert.equal(far.alive, false);
+  assert.equal(far.aura, null);
+  assert.equal(far.glyph, null);
+  assert.equal(mgr.count, 4);
+  assert.ok(mgr.list.includes(elite) && mgr.list.includes(boss));
+});
+
+function spawnScene(x = 0, y = 0) {
+  const g = new GameScene();
+  const spawned = [];
+  Object.assign(g, { player: { x, y }, elapsed: 300, spawnAcc: 0, dbg: { spawnMult: 1 }, levelDef: LEVELS[4],
+    world: { inside: (x, y, pad) => Math.abs(x) < 2300 - pad && Math.abs(y) < 2300 - pad, blocked: () => false },
+    enemies: { get count() { return spawned.length; }, spawn: (_id, x, y) => spawned.push([x, y]) },
+    scene: { get: () => ({ toast() {} }) }, pickEnemy: () => 'canbing', hpScale: () => 1 });
+  return { g, spawned };
+}
+function largestSpawnGap(points, x = 0, y = 0, ry = 1) {
+  const angles = points.map(([px, py]) => (Math.atan2((py - y) / ry, px - x) + 2 * Math.PI) % (2 * Math.PI)).sort((a, b) => a - b);
+  return Math.max(...angles.map((a, i) => (i + 1 < angles.length ? angles[i + 1] : angles[0] + Math.PI * 2) - a));
+}
+
+test('常规刷怪和怪潮完整合围，不预留安全扇区，刷怪速率与上限仍生效', () => {
+  const random = Math.random;
+  let seed = 31;
+  Math.random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  try {
+    const { g, spawned } = spawnScene();
+    const [rate, cap] = g.spawnCurve();
+    for (let i = 0; i < 10; i++) g.spawnUpdate(1);
+    assert.equal(spawned.length, Math.floor(rate * 10));
+    assert.ok(largestSpawnGap(spawned) < Math.PI / 2, '空旷场地四周均能来敌');
+    assert.ok(spawned.every(([x, y]) => Math.abs(Math.hypot(x, y) - 390) < 1e-6));
+    g.spawnUpdate(1000);
+    assert.equal(spawned.length, Math.ceil(cap));
+    spawned.length = 0;
+    g.swarm();
+    assert.equal(spawned.length, 28);
+    assert.ok(largestSpawnGap(spawned, 0, 0, 150 / 230) < Math.PI / 8, '28只怪潮完整围成一圈');
+  } finally { Math.random = random; }
+});
+
+test('贴边和角落仍有分方向来敌，不把怪夹到脚下或塞进障碍；完全无合法位置就跳过', () => {
+  for (const [x, y] of [[0, 0], [2270, 0], [2270, 2270], [-2270, -2270]]) {
+    const { g, spawned } = spawnScene(x, y);
+    g.world.blocked = (px, py) => px > x && Math.abs(py - y) < 60;
+    for (let i = 0; i < 6; i++) { g.elapsed = 300 + i * 20; g.spawnUpdate(1); }
+    assert.ok(spawned.length > 20);
+    assert.ok(spawned.every(([px, py]) => g.world.inside(px, py, 20) && !g.world.blocked(px, py) && Math.hypot(px - x, py - y) > 389));
+    spawned.length = 0;
+    g.world.blocked = () => true;
+    g.spawnUpdate(1);
+    g.swarm();
+    assert.equal(spawned.length, 0);
+  }
+});
 
 test('寻路只算玩家附近：窗口内和全图结果一致，窗口外当作没走到', () => {
   const full = new Nav(3000, 1e9);
@@ -614,7 +778,7 @@ test('熔岩口、剑阵、泥潭、冰面、流沙点位固定：离出生点�
   }
 });
 
-test('煞气剑阵里的敌人护甲 +3，出阵恢复', () => {
+test('煞气剑阵里的敌人初始护甲 +2，出阵恢复', () => {
   const level = LEVELS.find((l) => l.id === 5);
   const world = Object.assign(Object.create(World.prototype), { level, half: level.size / 2, spotCache: new Map() });
   let spot = null;
@@ -622,8 +786,8 @@ test('煞气剑阵里的敌人护甲 +3，出阵恢复', () => {
   assert.ok(spot);
   const [x, y] = spot;
   const r = level.swordZones.radius;
-  assert.equal(world.zoneArmor(x, y), 3);
-  assert.equal(world.zoneArmor(x + r - 4, y), 3);
+  assert.equal(world.zoneArmor(x, y), 2);
+  assert.equal(world.zoneArmor(x + r - 4, y), 2);
   assert.equal(world.zoneArmor(x + r + 4, y), 0);
   const scene = comboScene({});
   scene.dmgMult = () => 1;
@@ -632,11 +796,11 @@ test('煞气剑阵里的敌人护甲 +3，出阵恢复', () => {
   scene.hitEnemy(inside, 10, 'fire');
   const outside = enemy('metal', { x: x + r + 40, y });
   scene.hitEnemy(outside, 10, 'fire');
-  assert.equal(inside.hp, 93);
+  assert.equal(inside.hp, 92);
   assert.equal(outside.hp, 90);
 });
 
-test('第 1 关分批进场：开场只有石俑、藤怪，25/75/135 秒依次加入水鬼、铁甲兵、火鸦；其他关不受影响', async () => {
+test('分批进场按时解锁：古道保留教学顺序，昆仑不在单术开局混入六种复杂怪', async () => {
   const { enemyPool } = await import('../src/config/levels.ts');
   const ids = (level, t) => enemyPool(LEVELS.find((l) => l.id === level), t).map((e) => e.id).sort();
   assert.deepEqual(ids(1, 0), ['shiyong', 'tengguai']);
@@ -644,7 +808,11 @@ test('第 1 关分批进场：开场只有石俑、藤怪，25/75/135 秒依次�
   assert.deepEqual(ids(1, 25), ['shiyong', 'shuigui', 'tengguai']);
   assert.deepEqual(ids(1, 75), ['shiyong', 'shuigui', 'tengguai', 'tiejia']);
   assert.deepEqual(ids(1, 135), ['huoya', 'shiyong', 'shuigui', 'tengguai', 'tiejia']);
-  for (const l of LEVELS.filter((l) => l.available && l.id > 1)) assert.deepEqual(ids(l.id, 0), l.enemies.map((e) => e.id).sort());
+  for (const l of LEVELS.filter((l) => l.available && l.id > 1 && l.id < 7)) assert.deepEqual(ids(l.id, 0), l.enemies.map((e) => e.id).sort());
+  assert.deepEqual(ids(10, 0), ['chihu', 'chuanshan', 'feilian', 'huojing', 'huoya', 'shiyong', 'shuigui', 'tengguai', 'tiejia', 'yuyao', 'zhushe']);
+  assert.ok(!ids(10, 119.9).includes('shaxie') && ids(10, 120).includes('shaxie'));
+  assert.ok(!ids(10, 389.9).includes('bingcan') && ids(10, 390).includes('bingcan'));
+  assert.deepEqual(ids(10, 390), LEVELS[9].enemies.map(e => e.id).sort());
   // 配置写错、一个都没到点时退回第一种
   assert.deepEqual(enemyPool({ enemies: [{ id: 'a', w: 1, from: 10 }, { id: 'b', w: 1, from: 20 }] }, 0).map((e) => e.id), ['a']);
 
@@ -903,7 +1071,7 @@ test('瘴雾：慢慢扩开，雾里玩家按 tick 中毒，非木系普通敌�
     hz.update();
     assert.equal(inflicts.length, 1, '按 tick 结算，不是每帧');
     assert.deepEqual(env.map((e) => e[0]), ['shuigui', 'shuigui']);
-    assert.equal(env[0][1], 5);
+    assert.equal(env[0][1], 2.5);
     assert.equal(env[0][2], 'wood');
     // 到时散掉，不再结算
     g.now = 17;
@@ -915,6 +1083,29 @@ test('瘴雾：慢慢扩开，雾里玩家按 tick 中毒，非木系普通敌�
   } finally {
     Math.random = random;
   }
+});
+
+test('重叠瘴雾每半秒只伤同一敌人一次，精英仍只受四分之一，离开后不伤', async () => {
+  const { g, hz, env, list } = await fogScene();
+  hz.miasmaAt(0, 0, 80, 1, 16);
+  hz.miasmaAt(5, 0, 80, 1, 16);
+  list.push(
+    { def: ENEMIES.shuigui, x: 10, y: 0, maxHp: 100, elite: false },
+    { def: ENEMIES.shuigui, x: 10, y: 0, maxHp: 400, elite: true },
+  );
+  g.now = 2;
+  hz.update();
+  assert.deepEqual(env.map((v) => v[1]), [2.5, 2.5]);
+  g.now = 2.2;
+  hz.update();
+  assert.equal(env.length, 2);
+  g.now = 2.5;
+  hz.update();
+  assert.equal(env.length, 4);
+  list.forEach((e) => e.x = 200);
+  g.now = 3;
+  hz.update();
+  assert.equal(env.length, 4);
 });
 
 test('瘴雾：远吼从玩家附近的泥潭里冒，已经在冒的泥潭不重复冒', async () => {
@@ -1091,6 +1282,16 @@ test('小怪升阶：数值按阶加强、换同阶贴图；精英和 Boss 不�
   assert.equal(elite.sprite.key, 'en_shiyong_lava');
   const boss = mgr.spawn('bifang', 0, 0, { tier: 2 });
   assert.equal(boss.tier, 1);
+
+  const revived = mgr.spawn('canbing', 0, 0, { revived: true, noXp: true, noKill: true });
+  assert.equal(revived.revived, true);
+  mgr.list.splice(mgr.list.indexOf(revived), 1);
+  mgr.pool.push(revived);
+  const fresh = mgr.spawn('canbing', 20, 20);
+  assert.equal(fresh, revived);
+  assert.equal(fresh.revived, false, '对象池复用不能把新残兵的复活次数耗掉');
+  assert.equal(fresh.noKill, false);
+  assert.ok(fresh.xp > 0);
 
   // 残兵复活带着原来的阶
   const { mgr: m2, spawned, run } = killScene();
@@ -2219,4 +2420,183 @@ test('Boss 二阶毒火窗口减半，刷新不延长二阶，到期保留一阶
     apply();
     assert.equal(e[flag], true);
   }
+});
+
+test('第 7–9 关新怪分批入池；大漠留出构筑窗口，亮相后持续可刷', async () => {
+  const { enemyPool } = await import('../src/config/levels.ts');
+  const groups = [[7, 'bingcan', 'aoxie', 30, 90], [8, 'shaxie', 'jinqiang', 90, 180], [9, 'yecha', 'yanshao', 30, 90]];
+  for (const [level, first, second, firstAt, secondAt] of groups) {
+    const l = LEVELS[level - 1];
+    const ids = t => enemyPool(l, t).map(e => e.id);
+    assert.ok(!ids(firstAt - 0.1).includes(first) && !ids(secondAt - 0.1).includes(second));
+    assert.ok(ids(firstAt).includes(first) && ids(secondAt).includes(second));
+    assert.ok(ids(l.duration - 60).includes(first) && ids(l.duration - 60).includes(second));
+    for (const id of [first, second]) {
+      const g = runScene('ruan', level), spawned = [], hints = [];
+      g.ringPos = () => [300, 0]; g.hpScale = () => 2;
+      g.enemies = { spawn: (id, x, y, opts) => spawned.push({id, x, y, opts}) };
+      Object.defineProperty(g, 'hud', {value: {toast: text => hints.push(text)}});
+      g.introEnemy(id);
+      assert.equal(spawned.length, 6);
+      assert.ok(spawned.every(e => e.id === id && !e.opts.elite));
+      assert.ok(hints[0].includes(ENEMIES[id].name) && hints[0].length > ENEMIES[id].name.length + 4, '说明新怪招式，而非只有名字');
+    }
+  }
+});
+
+test('后期普通前排减血增经验、快怪更耐打且更快；早期、远程、精英生命和 Boss 保持原曲线', () => {
+  const chain = new Proxy({}, {get: (_t, k) => k === 'anims' ? {stop() {}} : () => chain});
+  const make = level => new EnemyManager({levelDef: {...LEVELS[level - 1], eliteAffixes: 0}, now: 0, roarStacks: 0,
+    dmgScale: () => 1, add: {sprite: () => chain, image: () => chain, text: () => chain}, anims: {exists: () => true}, hud: {toast() {}}});
+  const random = Math.random; Math.random = () => 0.5;
+  try {
+    const early = make(5), late = make(7);
+    const tank = late.spawn('bingcan', 0, 0, {hpMult: 10, tier: 3});
+    const runner = late.spawn('shuigui', 0, 0, {hpMult: 10, tier: 3});
+    assert.equal(tank.maxHp, 884);
+    assert.equal(tank.xp, 9);
+    assert.equal(runner.maxHp, 338);
+    assert.ok(Math.abs(runner.speed - 60.5) < 1e-8);
+    assert.equal(runner.xp, 3);
+    assert.ok(tank.maxHp > runner.maxHp && tank.speed < runner.speed, '保留前排与快怪的分工');
+    for (const id of ['shiyong', 'tiejia', 'chuanshan', 'canbing', 'bingcan', 'aoxie']) {
+      const a = early.spawn(id, 0, 0), b = late.spawn(id, 0, 0);
+      assert.ok(b.maxHp < a.maxHp && b.xp > a.xp);
+      assert.equal(a.maxHp, ENEMIES[id].hp);
+      assert.equal(b.speed, a.speed);
+    }
+    for (const id of ['shuigui', 'huoya', 'zhushe', 'chihu']) {
+      const a = early.spawn(id, 0, 0), b = late.spawn(id, 0, 0);
+      assert.ok(b.maxHp > a.maxHp && b.speed > a.speed && b.dmg === a.dmg);
+    }
+    for (const [id, opts] of [['yuyao', {}], ['bingcan', {elite: true}], ['xuanming', {}]]) {
+      const a = early.spawn(id, 0, 0, opts), b = late.spawn(id, 0, 0, opts);
+      assert.deepEqual([a.hp, a.speed, a.xp], [b.hp, b.speed, b.xp]);
+    }
+    assert.equal(late.spawn('canbing', 0, 0, {revived: true, noXp: true, noKill: true}).xp, 0);
+  } finally {Math.random = random;}
+});
+
+test('昆仑开局减压平滑恢复，其他关卡和 Boss 基础血量保持', () => {
+  const g = runScene('ruan', 10);
+  g.elapsed = 0;
+  assert.ok(Math.abs(g.hpScale() - 2.6) < 1e-9);
+  g.elapsed = 300;
+  assert.ok(Math.abs(g.hpScale() - 11.18) < 1e-9);
+  g.elapsed = 840;
+  assert.ok(Math.abs(g.hpScale() - 31.1168) < 1e-9, '十五分钟关卡使用较缓的长期成长');
+  let previous = 0;
+  for (let t = 0; t <= 300; t++) {
+    g.elapsed = t;
+    assert.ok(g.hpScale() >= previous, '不能在过渡结束时突降');
+    if (t > 0) assert.ok(g.hpScale() - previous < 0.08, '每秒增长连续，无恢复原倍率时的跳变');
+    previous = g.hpScale();
+  }
+  for (const lv of [6, 7, 8, 9]) {
+    const unchanged = runScene('ruan', lv); unchanged.elapsed = 0;
+    assert.equal(unchanged.hpScale(), unchanged.levelDef.hpMult);
+  }
+  let bossHpMult;
+  Object.assign(g, { boss: null, ringPos: () => [250, 0],
+    enemies: {spawn: (_id, _x, _y, opts) => {bossHpMult = opts.hpMult; return {}; }},
+    hazards: {}, cameras: {main: {shake() {}}} });
+  Object.defineProperty(g, 'hud', {value: {toast() {}}});
+  g.spawnBoss();
+  assert.equal(bossHpMult, 5.2);
+});
+
+test('增援按战斗时间获得招式和精英词缀，存量敌人不会突然强化', () => {
+  const chain = new Proxy({}, {get: (_t, k) => k === 'anims' ? {stop() {}} : () => chain});
+  const g = {levelDef: {...LEVELS[7], trickStarts: {quake: 60, formation: 90}, eliteAffixStages: [[0, 1], [120, 2]]},
+    now: 0, elapsed: 59, roarStacks: 0, dmgScale: () => 1, add: {sprite: () => chain, image: () => chain, text: () => chain},
+    anims: {exists: () => true}, hud: {toast() {}}};
+  const mgr = new EnemyManager(g);
+  const early = mgr.spawn('shiyong', 0, 0);
+  assert.deepEqual(early.tricks, []);
+  g.elapsed = 60;
+  assert.deepEqual(mgr.spawn('shiyong', 0, 0).tricks, ['quake']);
+  assert.deepEqual(early.tricks, [], '旧怪保留出生时的招式');
+  g.elapsed = 89;
+  assert.equal(mgr.spawn('tiejia', 0, 0).aura, null, '未列阵就不显示护甲光环');
+  g.elapsed = 90;
+  assert.ok(mgr.spawn('tiejia', 0, 0).aura);
+  g.elapsed = 119;
+  const elite = mgr.spawn('shiyong', 0, 0, {elite: true});
+  assert.equal(elite.affixes.length, 1);
+  g.elapsed = 120;
+  assert.equal(mgr.spawn('shiyong', 0, 0, {elite: true}).affixes.length, 2);
+  assert.equal(elite.affixes.length, 1);
+  const boss = mgr.spawn('hanba', 0, 0);
+  assert.deepEqual(boss.tricks, []);
+  assert.deepEqual(boss.affixes, []);
+});
+
+test('精英继承本体快怪移速，伤害高于同类煞怪；Boss 的追击和接触伤害提升', () => {
+  const chain = new Proxy({}, {get: (_t, k) => k === 'anims' ? {stop() {}} : () => chain});
+  const g = {levelDef: {...LEVELS[6], eliteAffixes: 0}, now: 0, roarStacks: 0, dmgScale: () => 1,
+    add: {sprite: () => chain, image: () => chain, text: () => chain}, anims: {exists: () => true}, hud: {toast() {}}};
+  const mgr = new EnemyManager(g), random = Math.random; Math.random = () => 0.5;
+  try {
+    const ordinary = mgr.spawn('shuigui', 0, 0), elite = mgr.spawn('shuigui', 0, 0, {elite: true});
+    assert.equal(elite.speed, ordinary.speed);
+    assert.ok(Math.abs(elite.speed - 55) < 1e-8);
+    assert.ok(elite.dmg > mgr.spawn('shuigui', 0, 0, {tier: 3}).dmg);
+    assert.ok(Math.abs(elite.dmg - 5.4) < 1e-8);
+    assert.equal(elite.maxHp, 100, '精英仍为基础血量十倍，不继承普通快怪额外血量');
+    const boss = mgr.spawn('xuanming', 0, 0);
+    assert.ok(Math.abs(boss.speed - 41) < 1e-8);
+    assert.equal(boss.dmg, 25);
+    assert.equal(boss.maxHp, 5800);
+  } finally {Math.random = random;}
+});
+
+test('敌弹直射、回旋、抛射均提高命中伤害，只应用一次，不改变弹速和预警', async () => {
+  const {ProjectileManager} = await import('../src/game/Projectiles.ts');
+  const spr = new Proxy({anims: {stop() {}}}, {get: (t,k) => k in t ? t[k] : () => spr});
+  const hits = [], g = {add: {sprite: () => spr}, player: {x: 0, y: 0, alive: true}, hurtPlayer: v => hits.push(v)};
+  const pm = new ProjectileManager(g);
+  const straight = pm.enemyShot('ep_water', 0, -8, 90, 0, 5, 'water');
+  assert.equal(straight.vx, 90);
+  pm.update(0);
+  assert.deepEqual(hits, [7]);
+  const back = pm.enemyBoomerang('ep_blade', 0, -8, 1, 0, 130, 65, 5, 'metal');
+  pm.update(0);
+  assert.deepEqual(hits, [7, 7]);
+  assert.equal(back.vx, 130);
+  const {g: scene, mgr, land, hurts} = trickScene(6);
+  const e = trickMob('yuyao', 6, {dmg: 5});
+  mgr.lobShot(e);
+  land();
+  assert.deepEqual(hurts, [[7, 'water', 'slow']]);
+});
+
+test('受伤含护盾受击后两秒持续回复减半，脱离后全额恢复，药瓶不受影响', () => {
+  const g = runScene('qingdai', 7);
+  Object.assign(g, {now: 10, shield: 20, pstats: {maxHp: 100}, player: {hp: 100, x: 0, y: 0}, fx: {text() {}}});
+  g.build.mods['qing.shield'] = 0.35;
+  g.loseHp(10);
+  assert.equal(g.player.hp, 100);
+  g.regenPlayer(4);
+  assert.equal(g.shield, 12, '护盾不能在受击后靠满速回复立刻补满');
+  g.now = 11.99;
+  g.regenPlayer(4);
+  assert.equal(g.shield, 14);
+  g.now = 12;
+  g.regenPlayer(4);
+  assert.equal(g.shield, 18);
+  g.loseHp(28);
+  assert.equal(g.player.hp, 90);
+  g.regenPlayer(4);
+  assert.equal(g.player.hp, 92);
+  g.healPlayer(0.05);
+  assert.equal(g.player.hp, 97, '药瓶即时治疗保留完整收益');
+  g.now = 13; g.loseHp(1);
+  g.now = 14; g.regenPlayer(2);
+  assert.equal(g.player.hp, 97, '连续受伤刷新两秒窗口');
+  g.now = 15; g.loseHp(0); g.regenPlayer(2);
+  assert.equal(g.player.hp, 99, '零伤害不触发减疗');
+  g.init({char: 'qingdai', level: 7});
+  g.now = 0; g.shield = 0; g.player.hp = 80;
+  g.regenPlayer(4);
+  assert.equal(g.player.hp, 84, '重开清除旧战斗窗口');
 });

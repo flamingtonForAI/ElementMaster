@@ -167,5 +167,5 @@ export const LEGACIES: Record<string, LegacyBranch[]> = {
   ],
 };
 
-/** 首通这些关各得 1 点传承点；劫数上线后再加第 5 劫 */
+/** 本角色最高通关达到这些关卡时各得 1 点，跳关自动补齐此前奖励。 */
 export const LEGACY_LEVELS = [2, 5, 8];

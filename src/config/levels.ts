@@ -18,6 +18,10 @@ export interface LevelDef {
   /** [秒, 每秒刷怪数, 同屏上限]，中间线性插值 */
   spawn: [number, number, number][];
   hpMult: number;
+  /** 新生成普通怪与精英的开局血量折扣，until 秒内线性恢复；Boss 使用独立基础倍率。 */
+  openingHp?: { mult: number; until: number };
+  /** 长关可单独放缓时间成长；省略则沿用 DIFF，Boss 不使用此曲线。 */
+  hpGrowth?: { lin: number; quad: number };
   boss: string;
   bossName: string;
   /** BGM 曲名，见 audio/tracks.ts */
@@ -88,8 +92,12 @@ export interface LevelDef {
   storm?: { look: StormLook; start: number; every: [number, number]; dur: [number, number]; warn: number; vision: number; wind: number; boost?: { el: El; amt: number } };
   /** 本关给哪些敌人开哪些手段（见 config/enemies.ts 的 Trick）；前几关不配，敌人保持最朴素的打法 */
   tricks?: Record<string, Trick[]>;
+  /** 从指定秒数起生成的增援才携带该招式；存量敌人不在途中换招。 */
+  trickStarts?: Partial<Record<Trick, number>>;
   /** 本关精英随机带几个词缀（见 Affix），不配为 0 */
   eliteAffixes?: number;
+  /** [开始秒数, 词缀数]；未配则直接使用 eliteAffixes，阶段数不超过该上限。 */
+  eliteAffixStages?: [number, number][];
   /**
    * 小怪升阶：[第几秒开始出现, Boss 现身时的占比]，中间线性涨。先按三阶的占比掷，没中再掷二阶。
    * 只管普通刷怪和成群来袭，新怪亮相、精英、召唤物都是一阶
@@ -204,17 +212,18 @@ export const LEVELS: LevelDef[] = [
   {
     id: 3, name: '山林', duration: 480,
     terrain: T({ earth: 0.7, wood: 0.2, metal: 0.1 }),
-    enemies: [{ id: 'shiyong', w: 3 }, { id: 'shanxiao', w: 2 }, { id: 'chuanshan', w: 2 }, { id: 'zhangchan', w: 1 }, { id: 'tengguai', w: 2 }],
+    enemies: [{ id: 'shiyong', w: 2.5 }, { id: 'shanxiao', w: 2 }, { id: 'chuanshan', w: 1.5 }, { id: 'zhangchan', w: 1.5 }, { id: 'tengguai', w: 2.5 }],
     skins: { shiyong: 'en_shiyong_rock', tengguai: 'en_tengguai_grove' },
     spawn: [[0, 1.1, 45], [90, 2.2, 110], [180, 3.4, 170], [300, 4.8, 250], [400, 6.2, 330], [420, 3.6, 330]],
     hpMult: 1.6, boss: 'shanxiaowang', bossName: '山魈王', bgm: 'level3',
+    openingHp: { mult: 0.85, until: 180 },
     ground: 'ground_3',
     decor: [{ tex: 'dc_pine', w: 4 }, { tex: 'dc_mossrock', w: 3 }, { tex: 'dc_rock', w: 2 }, { tex: 'dc_fern', w: 3 }, { tex: 'dc_tuft', w: 3 }],
     decorPerChunk: 7,
-    size: 4200, edge: 'dc_cliff', elites: { first: 60, every: [60, 32] },
+    size: 4200, edge: 'dc_cliff', elites: { first: 75, every: [60, 32] },
     // 两道岩壁，比竹林密，但山道缺口宽、隔得不远
     ridges: { tex: 'dc_cliff', radius: 11, bands: [0.4, 0.6], scale: 560, gap: 0.56 },
-    rockfall: { start: 20, every: [7, 3.5], count: [1, 3], radius: 20, warn: 1.1, dmg: 12 },
+    rockfall: { start: 35, every: [7, 3.5], count: [1, 3], radius: 20, warn: 1.1, dmg: 12 },
     // 后半程才零星出现凶
     tiers: { 2: [240, 0.12] },
     roar: {
@@ -260,20 +269,21 @@ export const LEVELS: LevelDef[] = [
   {
     id: 5, name: '兵冢古战场', duration: 600,
     terrain: T({ metal: 0.6, earth: 0.25, fire: 0.15 }),
-    // 金 75%、土 25%
-    enemies: [{ id: 'canbing', w: 4 }, { id: 'tiejia', w: 2 }, { id: 'feilian', w: 1.5 }, { id: 'shiyong', w: 1.5 }, { id: 'chuanshan', w: 1 }],
-    skins: { shiyong: 'en_shiyong_armor', chuanshan: 'en_chuanshan_armor' },
+    // 金 65%、土 15%、火 20%：残兵与重甲仍是主力，火鸦留出清怪缺口。
+    enemies: [{ id: 'canbing', w: 3 }, { id: 'tiejia', w: 1.5 }, { id: 'feilian', w: 2 }, { id: 'shiyong', w: 1 }, { id: 'chuanshan', w: 0.5 }, { id: 'huoya', w: 2 }],
+    skins: { shiyong: 'en_shiyong_armor', chuanshan: 'en_chuanshan_armor', huoya: 'en_huoya_ember' },
     spawn: [[0, 1.2, 50], [90, 2.4, 125], [200, 3.7, 200], [340, 5.1, 280], [480, 6.5, 360], [540, 3.9, 360]],
     hpMult: 2.4, boss: 'xingtian', bossName: '刑天', bgm: 'level5',
     ground: 'ground_5',
     decor: [{ tex: 'dc_sword', w: 4 }, { tex: 'dc_bones', w: 3 }, { tex: 'dc_tablet', w: 2 }, { tex: 'dc_deadtree', w: 2 }, { tex: 'dc_tuft', w: 3 }],
     decorPerChunk: 6,
-    size: 4600, edge: 'dc_barricade', elites: { first: 60, every: [60, 30] },
+    size: 4600, edge: 'dc_barricade', elites: { first: 75, every: [60, 30] },
     // 一道拒马残垒
     ridges: { tex: 'dc_barricade', radius: 9, bands: [0.5], scale: 560, gap: 0.55 },
-    swordZones: { cell: 420, chance: 0.5, radius: 64, armor: 3 },
+    swordZones: { cell: 420, chance: 0.5, radius: 64, armor: 2 },
     // 铁甲兵列阵给周围加护甲，石俑照样震地
     tricks: { tiejia: ['formation'], shiyong: ['quake'] },
+    trickStarts: { quake: 60, formation: 120 },
     eliteAffixes: 1,
     tiers: { 2: [120, 0.3], 3: [420, 0.08] },
     roar: {
@@ -283,7 +293,7 @@ export const LEVELS: LevelDef[] = [
       buffs: { metal: { cd: 0.15, dash: 0.15 }, other: { dmg: 0.08 }, canbing: { revive: 0.8 } },
       zoneArmor: 1,
     },
-    lesson: '用火终结复活的残兵；煞气剑阵里的敌人护甲 +3，引出来打',
+    lesson: '用火终结复活的残兵；剑阵初始护甲 +2，战鼓会继续加甲，引出来打',
     available: true,
   },
   {
@@ -301,7 +311,7 @@ export const LEVELS: LevelDef[] = [
     // 一道芦苇荡，缺口不少：泥潭和瘴雾已经够逼走位
     ridges: { tex: 'dc_reed', radius: 9, bands: [0.5], scale: 600, gap: 0.56 },
     mud: { cell: 300, chance: 0.6, radius: 48, player: 0.65, enemy: 0.6 },
-    miasma: { start: 30, every: [14, 8], count: [1, 2], radius: 80, grow: 6, life: 16, tick: 0.7, chance: 0.6, dps: 2, enemy: 0.05 },
+    miasma: { start: 30, every: [14, 8], count: [1, 2], radius: 80, grow: 6, life: 16, tick: 0.7, chance: 0.6, dps: 2, enemy: 0.025 },
     // 鱼妖的水弹落地留水洼，藤怪在玩家脚下催生缠根；精英带两个词缀
     tricks: { yuyao: ['lob'], tengguai: ['roots'] },
     eliteAffixes: 2,
@@ -321,7 +331,7 @@ export const LEVELS: LevelDef[] = [
     id: 7, name: '寒江', duration: 720,
     terrain: T({ water: 0.55, metal: 0.35, earth: 0.1 }),
     // 水 50%、金 50%：海贼打金顺手、打水平平，剑客两头吃亏，符师打金猛、打水被克；补土（克水）或火（克金）
-    enemies: [{ id: 'shuigui', w: 3 }, { id: 'bingcan', w: 2 }, { id: 'yuyao', w: 1.5 }, { id: 'tiejia', w: 2 }, { id: 'aoxie', w: 2 }, { id: 'feilian', w: 2 }],
+    enemies: [{ id: 'shuigui', w: 3 }, { id: 'bingcan', w: 2, from: 30 }, { id: 'yuyao', w: 1.5 }, { id: 'tiejia', w: 2 }, { id: 'aoxie', w: 2, from: 90 }, { id: 'feilian', w: 2 }],
     skins: { shuigui: 'en_shuigui_marsh' },
     spawn: [[0, 1.3, 60], [90, 2.6, 135], [220, 3.9, 210], [380, 5.3, 290], [540, 6.8, 370], [660, 4.2, 370]],
     hpMult: 3.3, boss: 'xuanming', bossName: '玄冥', bgm: 'level7',
@@ -332,7 +342,7 @@ export const LEVELS: LevelDef[] = [
     // 一道冰崖，缺口比芦苇荡少一点：冰上滑起来要找准山道
     ridges: { tex: 'dc_icecliff', radius: 9, bands: [0.5], scale: 640, gap: 0.5 },
     ice: { cell: 320, chance: 0.6, radius: 66, grip: 2.2, boost: 1.2, enemy: 0.7 },
-    storm: { look: 'snow', start: 60, every: [55, 38], dur: [10, 15], warn: 2.5, vision: 120, wind: 22 },
+    storm: { look: 'snow', start: 75, every: [55, 38], dur: [10, 15], warn: 2.5, vision: 120, wind: 22 },
     // 鱼妖照旧抛射留水洼，铁甲兵列阵，飞镰的刃会折回来；精英带两个词缀（第 7 关起有寒）
     tricks: { yuyao: ['lob'], tiejia: ['formation'], feilian: ['boomerang'] },
     eliteAffixes: 2,
@@ -350,26 +360,29 @@ export const LEVELS: LevelDef[] = [
   {
     id: 8, name: '大漠', duration: 720,
     terrain: T({ earth: 0.6, metal: 0.3, fire: 0.1 }),
-    // 土 50%、金 40%、火 10%：土生金，一种元素顾不过来两类敌人；木克土、火克金，双修最顺
+    // 土/金仍是主力，约三分之一火系快怪提供清怪与回收窗口，避免厚怪持续堆墙。
     enemies: [
-      { id: 'shiyong', w: 2 }, { id: 'shaxie', w: 2.5 }, { id: 'chuanshan', w: 1.5 }, { id: 'shanxiao', w: 1 },
-      { id: 'tiejia', w: 1.5 }, { id: 'jinqiang', w: 2 }, { id: 'feilian', w: 1.5 }, { id: 'chihu', w: 1 },
+      { id: 'shiyong', w: 1 }, { id: 'shaxie', w: 1.75, from: 90 }, { id: 'chuanshan', w: 0.75 }, { id: 'shanxiao', w: 1 },
+      { id: 'tiejia', w: 1 }, { id: 'jinqiang', w: 1.5, from: 180 }, { id: 'feilian', w: 1.5 },
+      { id: 'chihu', w: 2 }, { id: 'huoya', w: 2.5 },
     ],
-    skins: { shiyong: 'en_shiyong_rock' },
-    spawn: [[0, 1.4, 62], [90, 2.7, 140], [220, 4.0, 215], [380, 5.4, 295], [540, 6.9, 375], [660, 4.3, 375]],
+    skins: { shiyong: 'en_shiyong_rock', huoya: 'en_huoya_ember' },
+    spawn: [[0, 1.15, 55], [90, 2.1, 115], [220, 3.7, 200], [380, 5.4, 295], [540, 6.9, 375], [660, 4.3, 375]],
     hpMult: 3.9, boss: 'hanba', bossName: '旱魃', bgm: 'level8',
     ground: 'ground_8',
     decor: [{ tex: 'dc_poplar', w: 2 }, { tex: 'dc_sandrock', w: 3 }, { tex: 'dc_camelthorn', w: 5 }, { tex: 'dc_bones', w: 1 }],
     decorPerChunk: 5,
-    size: 5200, edge: 'dc_yardang', elites: { first: 60, every: [60, 30] },
+    size: 5200, edge: 'dc_yardang', elites: { first: 75, every: [60, 30] },
     // 一道雅丹土台，缺口不少：流沙和沙暴已经够逼走位
     ridges: { tex: 'dc_yardang', radius: 9, bands: [0.5], scale: 660, gap: 0.54 },
     quicksand: { cell: 340, chance: 0.55, radius: 56, player: 0.75, enemy: 0.6, pull: 26, core: 0.35, tick: 0.8, dmg: 3 },
-    storm: { look: 'sand', start: 75, every: [60, 40], dur: [10, 14], warn: 2.5, vision: 135, wind: 26, boost: { el: 'metal', amt: 0.15 } },
+    storm: { look: 'sand', start: 120, every: [60, 40], dur: [10, 14], warn: 2.5, vision: 135, wind: 26, boost: { el: 'metal', amt: 0.15 } },
     // 石俑震地、铁甲兵列阵、飞镰回旋，穿山甲破土留流沙；精英带两个词缀
     tricks: { shiyong: ['quake'], tiejia: ['formation'], feilian: ['boomerang'], chuanshan: ['sinkhole'] },
+    trickStarts: { boomerang: 40, quake: 60, formation: 105, sinkhole: 135 },
     eliteAffixes: 2,
-    tiers: { 2: [60, 0.45], 3: [210, 0.25] },
+    eliteAffixStages: [[0, 1], [210, 2]],
+    tiers: { 2: [120, 0.45], 3: [240, 0.25] },
     roar: {
       name: '旱雷', times: [150, 330, 480],
       lines: ['大漠深处滚过一声干雷……', '地面龟裂，热气蒸腾……', '赤地千里，旱魃将至……'],
@@ -386,8 +399,8 @@ export const LEVELS: LevelDef[] = [
     terrain: T({ water: 0.5, fire: 0.3, earth: 0.2 }),
     // 水 50%、火 50%：两系互克，金木火水都只占一头的便宜；土打水 ×1.5、打火 ×1.2，是唯一两头都顺的答案
     enemies: [
-      { id: 'shuigui', w: 2.5 }, { id: 'yuyao', w: 1.5 }, { id: 'jiao', w: 1.5 }, { id: 'yecha', w: 2 },
-      { id: 'huoya', w: 2 }, { id: 'huojing', w: 1.5 }, { id: 'chihu', w: 1.5 }, { id: 'yanshao', w: 2 },
+      { id: 'shuigui', w: 2.5 }, { id: 'yuyao', w: 1.5 }, { id: 'jiao', w: 1.5 }, { id: 'yecha', w: 2, from: 30 },
+      { id: 'huoya', w: 2 }, { id: 'huojing', w: 1.5 }, { id: 'chihu', w: 1.5 }, { id: 'yanshao', w: 2, from: 90 },
     ],
     skins: { shuigui: 'en_shuigui_marsh', huoya: 'en_huoya_ember' },
     spawn: [[0, 1.5, 65], [90, 2.8, 145], [220, 4.1, 220], [380, 5.5, 300], [540, 7.0, 380], [660, 4.4, 380]],
@@ -428,23 +441,26 @@ export const LEVELS: LevelDef[] = [
     // 期末考：五系小怪全来，按相生每 3 分钟换一气当令，当令那一系刷得多、跑得快；轮转流跟着换本命，专精流靠克制硬打
     enemies: [
       { id: 'tengguai', w: 2 }, { id: 'zhushe', w: 1.5 },
-      { id: 'huoya', w: 1.5 }, { id: 'huojing', w: 1 }, { id: 'chihu', w: 1 }, { id: 'yanshao', w: 1 },
-      { id: 'shiyong', w: 1.5 }, { id: 'shaxie', w: 1.5 }, { id: 'chuanshan', w: 1 },
-      { id: 'tiejia', w: 1.5 }, { id: 'feilian', w: 1 }, { id: 'aoxie', w: 1 }, { id: 'jinqiang', w: 1 },
-      { id: 'shuigui', w: 1.5 }, { id: 'yuyao', w: 1 }, { id: 'bingcan', w: 1 }, { id: 'yecha', w: 1 },
+      { id: 'huoya', w: 1.5 }, { id: 'huojing', w: 1 }, { id: 'chihu', w: 1 }, { id: 'yanshao', w: 1, from: 150 },
+      { id: 'shiyong', w: 1.5 }, { id: 'shaxie', w: 1.5, from: 120 }, { id: 'chuanshan', w: 1 },
+      { id: 'tiejia', w: 1.5 }, { id: 'feilian', w: 1 }, { id: 'aoxie', w: 1, from: 330 }, { id: 'jinqiang', w: 1, from: 270 },
+      { id: 'shuigui', w: 1.5 }, { id: 'yuyao', w: 1 }, { id: 'bingcan', w: 1, from: 390 }, { id: 'yecha', w: 1, from: 210 },
     ],
     skins: { tengguai: 'en_tengguai_grove', huoya: 'en_huoya_ember', shiyong: 'en_shiyong_rock', shuigui: 'en_shuigui_marsh' },
-    spawn: [[0, 1.6, 70], [120, 3.0, 150], [300, 4.4, 230], [480, 5.8, 310], [660, 7.2, 390], [840, 4.6, 390]],
+    spawn: [[0, 1.3, 60], [120, 2.6, 135], [300, 4.2, 220], [480, 5.8, 310], [660, 7.2, 390], [840, 4.6, 390]],
     hpMult: 5.2, boss: 'dijiang', bossName: '帝江', bgm: 'level10',
+    // 混编逐步成形，五分钟恢复完整倍率；十五分钟关卡的长期生命成长另行放缓。
+    openingHp: { mult: 0.5, until: 300 },
+    hpGrowth: { lin: 0.16, quad: 0.014 },
     ground: 'ground_10',
     decor: [{ tex: 'dc_pine', w: 2 }, { tex: 'dc_mossrock', w: 2 }, { tex: 'dc_tablet', w: 1 }, { tex: 'dc_tuft', w: 4 }, { tex: 'dc_icerock', w: 2 }],
     decorPerChunk: 5,
-    size: 5600, edge: 'dc_kunlun', elites: { first: 60, every: [55, 28] },
+    size: 5600, edge: 'dc_kunlun', elites: { first: 75, every: [65, 35] },
     // 一道昆仑玉崖
     ridges: { tex: 'dc_kunlun', radius: 9, bands: [0.5], scale: 700, gap: 0.54 },
     // 五气各管一种地形：木气毒沼冒瘴雾、火气熔岩口喷发、土气落石、金气剑阵加甲、水气冰面
     mud: { cell: 320, chance: 0.4, radius: 46, player: 0.7, enemy: 0.65, phase: 'wood' },
-    miasma: { start: 0, every: [12, 8], count: [1, 2], radius: 70, grow: 5, life: 14, tick: 0.7, chance: 0.5, dps: 2, enemy: 0.05, phase: 'wood' },
+    miasma: { start: 0, every: [12, 8], count: [1, 2], radius: 70, grow: 5, life: 14, tick: 0.7, chance: 0.5, dps: 2, enemy: 0.025, phase: 'wood' },
     lava: { cell: 380, chance: 0.45, radius: 30, start: 0, every: [8, 5], count: [1, 3], warn: 1.3, dmg: 14, burn: 3, phase: 'fire' },
     rockfall: { start: 0, every: [6, 3.5], count: [1, 3], radius: 20, warn: 1.1, dmg: 12, phase: 'earth' },
     swordZones: { cell: 440, chance: 0.45, radius: 64, armor: 3, phase: 'metal' },
@@ -469,8 +485,10 @@ export const LEVELS: LevelDef[] = [
     },
     // 前几关的手段全开；精英带三个词缀
     tricks: { shiyong: ['quake'], tiejia: ['formation'], tengguai: ['roots'], yuyao: ['lob'], huojing: ['lob'], feilian: ['boomerang'], chuanshan: ['sinkhole'] },
+    trickStarts: { roots: 45, lob: 75, quake: 105, boomerang: 135, formation: 165, sinkhole: 225 },
     eliteAffixes: 3,
-    tiers: { 2: [40, 0.55], 3: [150, 0.35] },
+    eliteAffixStages: [[0, 1], [240, 2], [480, 3]],
+    tiers: { 2: [120, 0.55], 3: [270, 0.35] },
     roar: {
       name: '帝江歌', times: [200, 420, 640],
       lines: ['昆仑之巅传来歌声，不知从何而起……', '歌声里夹着六足踏地的舞步……', '混沌起舞，帝江将至……'],
@@ -527,8 +545,17 @@ export function rollTier(level: Pick<LevelDef, 'tiers' | 'duration'>, t: number,
 const NO_TRICKS: Trick[] = [];
 
 /** 本关这种敌人开了哪些手段 */
-export function tricksOf(level: Pick<LevelDef, 'tricks'>, defId: string): Trick[] {
-  return level.tricks?.[defId] ?? NO_TRICKS;
+export function tricksOf(level: Pick<LevelDef, 'tricks' | 'trickStarts'>, defId: string, elapsed = Infinity): Trick[] {
+  const tricks = level.tricks?.[defId] ?? NO_TRICKS;
+  return level.trickStarts ? tricks.filter(t => elapsed >= (level.trickStarts![t] ?? 0)) : tricks;
+}
+
+/** 出生时确定精英词缀数，后续阶段不追加强化已经在场的精英。 */
+export function eliteAffixCount(level: Pick<LevelDef, 'eliteAffixes' | 'eliteAffixStages'>, elapsed: number): number {
+  const max = level.eliteAffixes ?? 0;
+  let count = level.eliteAffixStages ? 0 : max;
+  for (const [from, n] of level.eliteAffixStages ?? []) if (elapsed >= from) count = n;
+  return Math.max(0, Math.min(max, count));
 }
 
 /** 本关该用的敌人贴图：配了地域外观就用它，否则用敌人默认贴图 */

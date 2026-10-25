@@ -14,9 +14,10 @@ export function daoPoints(s: Save, c: CharacterDef) {
   return DAO_START + 3 * cleared(s, c).length + (s.wudao[c.id] ?? 0);
 }
 
-/** 传承点：这个角色首通里程碑关卡各 +1 */
+/** 传承点：本角色最高通关达到里程碑各 +1，跳关及旧存档自动补齐。 */
 export function legacyPoints(s: Save, c: CharacterDef) {
-  return LEGACY_LEVELS.filter((n) => cleared(s, c).includes(n)).length;
+  const highest = Math.max(0, ...cleared(s, c));
+  return LEGACY_LEVELS.filter((n) => highest >= n).length;
 }
 
 export function treeStart(c: CharacterDef) {

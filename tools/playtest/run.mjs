@@ -23,7 +23,7 @@ mkdirSync(resolve(out, '..'), { recursive: true });
 mkdirSync(out); // Refuse to append to or overwrite an existing experiment.
 const key = smoke || replay || stationary || scripted ? null : readKey(readFileSync(process.env.TYPESAFE_KEY_FILE ?? resolve('..', 'harness.md'), 'utf8'));
 const started = Date.now();
-const sourceHashes = Object.fromEntries(['src/scenes/GameScene.ts', 'src/game/Puppets.ts', 'tools/playtest/bridge.js', 'tools/playtest/profiles.mjs', 'tools/playtest/protocol.mjs'].map(file => [file, createHash('sha256').update(readFileSync(file)).digest('hex')]));
+const sourceHashes = Object.fromEntries(['src/scenes/GameScene.ts', 'src/game/Enemies.ts', 'src/game/Projectiles.ts', 'src/game/Hazards.ts', 'src/game/Pickups.ts', 'src/game/Skills.ts', 'src/game/Build.ts', 'src/game/Puppets.ts', 'src/config/enemies.ts', 'src/config/levels.ts', 'src/config/skills.ts', 'src/config/characters.ts', 'src/config/legacy.ts', 'src/config/meta.ts', 'src/config/startree.ts', 'src/game/save.ts', 'src/game/talents.ts', 'src/game/damage.ts', 'tools/playtest/bridge.js', 'tools/playtest/profiles.mjs', 'tools/playtest/protocol.mjs'].map(file => [file, createHash('sha256').update(readFileSync(file)).digest('hex')]));
 const metadata = { variant: process.env.PLAYTEST_VARIANT ?? 'unspecified', sourceHashes, seed, profile, policy: stationary ? 'STAY' : scripted ? 'script' : 'Jev', model: stationary || scripted ? null : MODEL, level: profile?.level ?? 1, character: profile?.character ?? 'xiao', save: 'fresh isolated browser context',
   dt: 1 / 60, actionSeconds: 0.5, decisionClock: 'frozen during API calls', startedAt: new Date().toISOString(),
   limitations: ['One AI-controlled run is not a human skill or balance estimate.',
@@ -85,7 +85,7 @@ try {
     const frozen = await page.evaluate(() => window.__playtest.snapshot().time);
     await new Promise(r => setTimeout(r, 300));
     if (await page.evaluate(() => window.__playtest.snapshot().time) !== frozen) throw Error('Game advanced during decision wait');
-    if (profile) {
+    if (profile?.skills) {
       if (snapshot.stats.regen <= 0 || snapshot.stats.speed <= 90 || snapshot.stats.armor < 8) throw Error('Preset stats invalid');
       console.log(JSON.stringify({ profileSmokePassed: true, stats: snapshot.stats, benming: snapshot.benming }));
     }
@@ -133,7 +133,10 @@ try {
     writeFileSync(`${out}/replay-verification.json`, JSON.stringify({ matchedDecisions: calls, result: snapshot.result, source: replayDir, apiCalls: 0 }, null, 2));
     console.log(JSON.stringify({ replayPassed: true, matchedDecisions: calls }));
   } else {
-    while (!snapshot.over && snapshot.time < 720 && calls < 1800) {
+    // 第 10 关本身长 15 分钟；原先的 720 秒限额会把正常局误记成中断。
+    const maxSeconds = (snapshot.duration ?? 600) + 180;
+    const maxDecisions = maxSeconds * 2 + 300;
+    while (!snapshot.over && snapshot.time < maxSeconds && calls < maxDecisions) {
       const request = decisionRequest(snapshot, calls);
       let response, answer, ms;
       if (stationary || scripted) {

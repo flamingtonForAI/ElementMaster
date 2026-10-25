@@ -119,6 +119,8 @@ export class GameScene extends Phaser.Scene {
   puppets!: PuppetManager;
   /** 药师·护心：溢出回复存成的护盾 */
   shield = 0;
+  /** 生命或护盾受伤后两秒，持续/击杀回复减半；即时药物治疗不受影响。 */
+  private recoveryAt = 0;
   /** 散人·周天：当前轮到的元素和下次轮转的时间 */
   zhoutian: El | null = null;
   /** 点亮的合化要穴：相生的母、子，进局时算一次 */
@@ -163,6 +165,7 @@ export class GameScene extends Phaser.Scene {
     this.iframeUntil = 0;
     this.spawnAcc = 0;
     this.shield = 0;
+    this.recoveryAt = 0;
     this.zhoutian = null;
     this.tasks = [];
     this.affixSeen = new Set();
@@ -326,7 +329,11 @@ export class GameScene extends Phaser.Scene {
 
   hpScale() {
     const t = this.elapsed / 60;
-    return this.levelDef.hpMult * (1 + DIFF.hpLin * t + DIFF.hpQuad * t * t);
+    const opening = this.levelDef.openingHp;
+    const ramp = opening ? opening.mult + (1 - opening.mult) * Math.min(1, Math.max(0, this.elapsed / opening.until)) : 1;
+    const lin = this.levelDef.hpGrowth?.lin ?? DIFF.hpLin;
+    const quad = this.levelDef.hpGrowth?.quad ?? DIFF.hpQuad;
+    return this.levelDef.hpMult * ramp * (1 + lin * t + quad * t * t);
   }
 
   /** 敌人伤害随时间上升 */
@@ -424,37 +431,54 @@ export class GameScene extends Phaser.Scene {
     return fallback ?? this.world.clampPt(x, y, 20);
   }
 
+  /** 普通怪从四周进入；只排除地图外与障碍，不人为预留安全扇区。 */
+  private mobSpawnPositions(rx: number, ry = rx): [number, number][] {
+    const points: [number, number][] = [];
+    const step = Math.PI * 2 / 48;
+    const start = Math.random() * step;
+    for (let i = 0; i < 48; i++) {
+      const a = start + i * step;
+      const x = this.player.x + Math.cos(a) * rx;
+      const y = this.player.y + Math.sin(a) * ry;
+      if (this.world.inside(x, y, 20) && !this.world.blocked(x, y)) points.push([x, y]);
+    }
+    // 保留全部合法方向；贴边时仍有来敌，不夹回玩家脚下。
+    return points;
+  }
+
   private spawnUpdate(dt: number) {
     const [rate, cap] = this.spawnCurve();
     this.spawnAcc += rate * dt * this.dbg.spawnMult;
+    const positions = this.spawnAcc >= 1 && this.enemies.count < cap ? this.mobSpawnPositions(390) : [];
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
-      if (this.enemies.count >= cap) continue;
-      const [x, y] = this.ringPos(390);
+      if (this.enemies.count >= cap || !positions.length) continue;
+      const [x, y] = positions[Math.floor(Math.random() * positions.length)];
       this.enemies.spawn(this.pickEnemy(), x, y, { hpMult: this.hpScale(), tier: rollTier(this.levelDef, this.elapsed) });
     }
   }
 
   private swarm() {
+    const positions = this.mobSpawnPositions(230, 150);
+    if (!positions.length) return;
     const id = this.pickEnemy();
     const n = 28;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      let [x, y] = this.world.clampPt(this.player.x + Math.cos(a) * 230, this.player.y + Math.sin(a) * 150, 20);
-      if (this.world.blocked(x, y)) [x, y] = this.ringPos(230);
+      const [x, y] = positions[Math.floor(i * positions.length / n)];
       this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), tier: rollTier(this.levelDef, this.elapsed) });
     }
     audio.sfx('warn');
-    this.hud.toast(`${ENEMIES[id].name}成群来袭！`, EL_INFO[ENEMIES[id].el].css);
+    this.hud.toast(`${ENEMIES[id].name}成群来袭！集中火力突围`, EL_INFO[ENEMIES[id].el].css);
   }
 
   /** 新敌人进池时先来一小群，让玩家看清它长什么样、怎么动 */
   private introEnemy(id: string) {
-    for (let i = 0; i < 3; i++) {
+    const def = ENEMIES[id];
+    for (let i = 0; i < (def.intro ? 6 : 3); i++) {
       const [x, y] = this.ringPos(300);
       this.enemies.spawn(id, x, y, { hpMult: this.hpScale() });
     }
-    this.hud.toast(`${ENEMIES[id].name}出没`, EL_INFO[ENEMIES[id].el].css);
+    this.hud.toast(def.intro ? `${def.name}出没：${def.intro}` : `${def.name}出没`, EL_INFO[def.el].css);
   }
 
   /**
@@ -910,6 +934,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   loseHp(dmg: number) {
+    if (dmg > 0) this.recoveryAt = this.now + 2;
     const p = this.player;
     // 护盾先挡
     const block = Math.min(this.shield, dmg);
@@ -941,8 +966,9 @@ export class GameScene extends Phaser.Scene {
     this.hud.toast(`续命！剩余 ${this.revives} 次`, '#ffd23f');
   }
 
-  /** 持续回复；护心：生命满了以后溢出的部分存成护盾 */
+  /** 持续与击杀回复：受击后两秒减半；护心把满血溢出存成护盾。 */
   regenPlayer(v: number) {
+    if (this.now < this.recoveryAt) v *= 0.5;
     const p = this.player;
     const max = this.pstats.maxHp;
     const over = p.hp + v - max;
