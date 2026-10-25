@@ -101,6 +101,8 @@ export const SKILLS: Record<SkillId, SkillDef> = {
       atkCd: 0.75,
       cd: at([4, 4, 4, 4, 3, 3, 3, 3], lv),
       giant: lv >= 8 ? 1 : 0,
+      /** 早成巨傀的震地威力逐级长到普通满级巨傀，避免 Lv5 直接获得满额倍率。 */
+      giantDmg: at([1.75, 1.75, 1.75, 1.75, 1.75, 2, 2.25, 2.5], lv),
     }),
   },
   flysword: {

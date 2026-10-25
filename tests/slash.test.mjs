@@ -64,13 +64,18 @@ for (let lv = 1; lv <= 8; lv++) {
   });
 }
 
-test('连斩传承在 5 级前每三斩发波，双向解锁后不重复追加前向波', () => {
-  for (const lv of [4, 5]) {
+test('连斩传承每三斩生效：5 级前追加波，5 级后强化双向波且不增加弹数', () => {
+  for (const lv of [4, 5, 8]) {
     const s = scene({ 'xiao.chain': 1 });
     for (let n = 0; n < 3; n++) s.system.fire('slash', SKILLS.slash.stats(lv));
     for (const task of s.tasks) task.fn();
     assert.equal(s.waves.length, lv === 4 ? 1 : 6);
     assert.equal(s.waves[0][6].dmg, SKILLS.slash.stats(lv).dmg * (lv === 4 ? 0.6 : 0.8));
+    if (lv >= 5) {
+      // 前三条是即时前波，后三条是延迟后波；只有第三轮得到强化。
+      for (const i of [2, 5]) assert.ok(Math.abs(s.waves[i][6].dmg / SKILLS.slash.stats(lv).dmg - 1.4) < 1e-9);
+      for (const i of [0, 1, 3, 4]) assert.equal(s.waves[i][6].dmg, SKILLS.slash.stats(lv).dmg * 0.8);
+    }
   }
 });
 

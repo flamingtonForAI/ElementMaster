@@ -166,7 +166,7 @@ export class Build {
       speed: c.speed * (1 + 0.07 * p('qingshen') + u('speed') + gr('speed') + m('speed') + 0.1 * taiji),
       armor,
       regen: ((c.regen ?? 0) + 0.5 * p('changsheng') + u('regen') + gr('regen') + m('regen')) * (1 + m('regenMult')),
-      dmgMult: 1 + 0.08 * p('yanyang') + m('dmg') + variety + even + 0.15 * taiji,
+      dmgMult: 1 + 0.08 * p('yanyang') + m('dmg') + gr('dmg') + variety + even + 0.15 * taiji,
       crit: m('noCrit') ? 0 : 0.05 + (c.crit ?? 0) + 0.06 * p('ruijin') + m('crit') + gr('crit'),
       area: 1 + (c.area ?? 0) + 0.08 * p('roushui') + m('area') + gr('area'),
       pickup: 30 * (1 + (c.pickup ?? 0) + 0.25 * p('juling') + u('pickup') + m('pickup')),

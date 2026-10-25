@@ -282,7 +282,7 @@ export class PuppetManager {
         s.play(`${tex}_atk`);
         s.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => p.alive && s.play(`${tex}_move`));
         const shell = p.el !== 'earth';
-        const dmg = st.dmg * g.pstats.puppetDmg * (p.giant ? 2.5 : 1) * (shell ? 1 + (mods['mo.shellDmg'] ?? 0) : 1);
+        const dmg = st.dmg * g.pstats.puppetDmg * (p.giant ? st.giantDmg * (1 + (mods['mo.giantDmg'] ?? 0)) : 1) * (shell ? 1 + (mods['mo.shellDmg'] ?? 0) : 1);
         const proc = shell && mods['mo.shellProc'] ? 1 : SKILLS.puppet.proc;
         const col = EL_INFO[p.el].color;
         // 落点：小傀儡就是目标脚下（不超过出手距离），巨傀砸在身前

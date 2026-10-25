@@ -84,15 +84,17 @@ export class SkillSystem {
           });
         }
         if (st.back) {
+          // 连斩升级后强化现有双向波，避免传承失效或额外增加同屏弹数。
+          const waveDmg = st.dmg * (chain ? 1.4 : 0.8);
           g.later(0.12, () => {
             audio.sfx('slash', { rate: 0.85 });
             this.slash(ang + Math.PI, st);
             g.proj.fire('wave', 'pj_wave', p.x, p.y - 8, -Math.cos(ang) * 210, -Math.sin(ang) * 210, {
-              dmg: st.dmg * 0.8, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40, proc,
+              dmg: waveDmg, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40, proc,
             });
           });
           g.proj.fire('wave', 'pj_wave', cx, cy, Math.cos(ang) * 210, Math.sin(ang) * 210, {
-            dmg: st.dmg * 0.8, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40, proc,
+            dmg: waveDmg, el: 'metal', life: 0.7, pierce: 99, radius: 9, kb: 40, proc,
           });
         }
         return true;
@@ -108,7 +110,8 @@ export class SkillSystem {
         for (let i = 0; i < n; i++) {
           const t = targets[i % targets.length];
           const el = this.drawFu(t);
-          const dmg = st.dmg * (el === 'fire' ? 1 : 1 + this.mod('zhu.alt'));
+          const extraDmg = i >= st.count ? (g.build.mods['zhu.extraDmg'] ?? 1) : 1;
+          const dmg = st.dmg * extraDmg * (el === 'fire' ? 1 : 1 + this.mod('zhu.alt'));
           const a = Math.atan2(t.y - 6 - (cy - 6), t.x - cx) + (i - (n - 1) / 2) * 0.6;
           g.proj.fire('fu', `pj_fu_${el}`, cx, cy - 6, Math.cos(a) * 190, Math.sin(a) * 190, {
             dmg: 0, el, life: 1.6, radius: 6, target: t, stick: true, anim: `pj_fu_${el}`,

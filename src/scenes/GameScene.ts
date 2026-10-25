@@ -191,7 +191,8 @@ export class GameScene extends Phaser.Scene {
     this.puppets = new PuppetManager(this);
     this.hazards = new Hazards(this);
     if (this.char.balanced) {
-      this.zhoutian = GEN_ORDER[Math.floor(Math.random() * 5)];
+      const elements = this.zhoutianElements();
+      this.zhoutian = elements[Math.floor(Math.random() * elements.length)];
       this.zhoutianAt = this.zhoutianPeriod();
     }
 
@@ -1085,9 +1086,18 @@ export class GameScene extends Phaser.Scene {
     return Math.max(10, 30 + (this.build.mods['xuan.period'] ?? 0));
   }
 
+  /** 小周天略过未学术的元素；重复同系术、心法和灵根都不增加轮转次数。 */
+  private zhoutianElements(): El[] {
+    if (!this.build.mods['xuan.known']) return GEN_ORDER;
+    const known = new Set([...this.build.skills.keys()].map((id) => SKILLS[id].el));
+    const elements = GEN_ORDER.filter((el) => known.has(el));
+    return elements.length ? elements : GEN_ORDER;
+  }
+
   /** 按相生顺序轮到下一系；归元：轮转时以新的一系爆发 */
   private rotateZhoutian() {
-    const el = GEN_ORDER[(GEN_ORDER.indexOf(this.zhoutian!) + 1) % 5];
+    const elements = this.zhoutianElements();
+    const el = elements[(elements.indexOf(this.zhoutian!) + 1) % elements.length];
     this.zhoutian = el;
     this.zhoutianAt = this.now + this.zhoutianPeriod();
     this.build.version++;

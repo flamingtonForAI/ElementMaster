@@ -5,12 +5,12 @@ import type { Mods } from './startree';
  * 传承点来自里程碑（见 legacyPoints），总数少于节点数，必须取舍。
  *
  * 剑客专用加成：
- * xiao.turn 剑气斩与上一斩方向相差 90° 以上时的伤害加成；xiao.chain 每第 3 斩带剑气波；
+ * xiao.turn 剑气斩与上一斩方向相差 90° 以上时的伤害加成；xiao.chain 每第 3 斩追加剑气波，Lv5 起强化该轮双向波；
  * slashCd 剑气斩冷却缩短；slashArea 剑气斩范围；xiao.armorMelee 每点护甲的近身伤害加成
  *
  * 符师专用加成：
  * zhu.draw 画符概率；zhu.alt 异色符伤害；zhu.thunder 每第 5 张符画成克制目标的元素；
- * zhu.extra 每次多抛的符数；zhu.area 火符爆炸范围；zhu.echo 原地再爆一次的伤害比例
+ * zhu.extra 每次多抛的符数；zhu.extraDmg 追加符伤害比例；zhu.area 火符爆炸范围；zhu.echo 原地再爆一次的伤害比例
  *
  * 海贼专用加成：
  * ruan.splash 浪花伤害比例；ruan.splashArea 浪花范围；ruan.chain 浪花可暴击并再溅的层数；
@@ -22,10 +22,10 @@ import type { Mods } from './startree';
  *
  * 傀儡师专用加成：
  * mo.shellDmg 元素外壳傀儡伤害；mo.shellProc 外壳傀儡攻击必定触发该系异常；mo.shellCleave 外壳傀儡扑击范围；
- * mo.hp 傀儡生命；mo.giantLv 提前到这一级合成巨傀；mo.quake 巨傀震地范围
+ * mo.hp 傀儡生命；mo.giantLv 提前到这一级合成巨傀；mo.giantDmg 巨傀攻击伤害加成；mo.quake 巨傀震地范围
  *
  * 散人专用加成：
- * xuan.period 周天轮转间隔（秒，负数是缩短）；xuan.bonus 周天加成；xuan.burst 轮转时爆发；
+ * xuan.period 周天轮转间隔（秒，负数是缩短）；xuan.known 只轮转已学术元素；xuan.bonus 周天加成；xuan.burst 轮转时爆发；
  * xuan.variety 每个不同元素的术给的伤害；xuan.even 五系灵根相差不超过 3 时的伤害；xuan.taiji 五系灵根都不低于 2 时全面加成
  */
 export interface LegacyNode {
@@ -51,7 +51,7 @@ export const LEGACIES: Record<string, LegacyBranch[]> = {
       desc: '靠走位转身出剑，越会操作越强',
       nodes: [
         { id: 'xiao.a1', name: '回锋', glyph: '回', note: '剑气斩与上一斩方向相差 90° 以上时，伤害 +40%', mods: { 'xiao.turn': 0.4 } },
-        { id: 'xiao.a2', name: '连斩', glyph: '连', note: '每第 3 次剑气斩额外斩出一道剑气波', mods: { 'xiao.chain': 1 } },
+        { id: 'xiao.a2', name: '连斩', glyph: '连', note: '每第 3 斩追加剑气波；剑气斩 Lv5 起改为该轮双向剑气波伤害 +75%', mods: { 'xiao.chain': 1 } },
         { id: 'xiao.a3', name: '剑心', glyph: '心', note: '剑气斩冷却 −15%，范围 +10%', mods: { slashCd: 0.15, slashArea: 0.1 } },
       ],
     },
@@ -79,7 +79,7 @@ export const LEGACIES: Record<string, LegacyBranch[]> = {
       name: '符海',
       desc: '只修火符，越抛越多，越炸越大',
       nodes: [
-        { id: 'zhu.b1', name: '连符', glyph: '连', note: '每次多抛 1 张火符', mods: { 'zhu.extra': 1 } },
+        { id: 'zhu.b1', name: '连符', glyph: '连', note: '每次多抛 1 张火符，追加符造成 50% 伤害', mods: { 'zhu.extra': 1, 'zhu.extraDmg': 0.5 } },
         { id: 'zhu.b2', name: '烈符', glyph: '烈', note: '火符爆炸范围 +20%', mods: { 'zhu.area': 0.2 } },
         { id: 'zhu.b3', name: '符海', glyph: '海', note: '火符爆炸后原地再爆一次，伤害 50%', mods: { 'zhu.echo': 0.5 } },
       ],
@@ -140,7 +140,7 @@ export const LEGACIES: Record<string, LegacyBranch[]> = {
       desc: '把傀儡捏得更大更硬',
       nodes: [
         { id: 'mo.b1', name: '坚壁', glyph: '壁', note: '傀儡生命 +30%', mods: { 'mo.hp': 0.3 } },
-        { id: 'mo.b2', name: '早成', glyph: '成', note: '石傀儡 Lv5 就合成巨傀', mods: { 'mo.giantLv': 5 } },
+        { id: 'mo.b2', name: '早成', glyph: '成', note: '石傀儡 Lv5 合成巨傀，震地威力逐级成长；巨傀攻击伤害 +15%，满级仍有效', mods: { 'mo.giantLv': 5, 'mo.giantDmg': 0.15 } },
         { id: 'mo.b3', name: '撼地', glyph: '撼', note: '巨傀震地范围 +50%', mods: { 'mo.quake': 0.5 } },
       ],
     },
@@ -150,8 +150,8 @@ export const LEGACIES: Record<string, LegacyBranch[]> = {
       name: '周天',
       desc: '轮转更快、加成更高',
       nodes: [
-        { id: 'xuan.a1', name: '小周天', glyph: '小', note: '周天轮转间隔 30 → 20 秒', mods: { 'xuan.period': -10 } },
-        { id: 'xuan.a2', name: '大周天', glyph: '大', note: '周天加成再 +15%', mods: { 'xuan.bonus': 0.15 } },
+        { id: 'xuan.a1', name: '小周天', glyph: '小', note: '周天轮转间隔 30 → 20 秒，只在已学术的元素间轮转', mods: { 'xuan.period': -10, 'xuan.known': 1 } },
+        { id: 'xuan.a2', name: '大周天', glyph: '大', note: '周天当令元素伤害加成从 +25% 提高到 +65%', mods: { 'xuan.bonus': 0.4 } },
         { id: 'xuan.a3', name: '归元', glyph: '归', note: '每次轮转，以新的一系在身边爆发一次', mods: { 'xuan.burst': 1 } },
       ],
     },
