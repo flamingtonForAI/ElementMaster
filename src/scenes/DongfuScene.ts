@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { coverView, configureView, viewPoint } from '../config/view';
 import { UPGRADES, price, wudaoPrice, WUDAO_MAX, type UpgradeDef } from '../config/meta';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
 import { EL_INFO, GEN_ORDER, type El } from '../config/elements';
@@ -80,6 +81,7 @@ export class DongfuScene extends Phaser.Scene {
   }
 
   create() {
+    configureView(this);
     this.save = loadSave();
     this.tab = 'star';
     this.lgBranch = 0;
@@ -91,8 +93,8 @@ export class DongfuScene extends Phaser.Scene {
     this.modal = null;
     this.glyphs.clear();
     this.elLabels = [];
-    this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey()).setOrigin(0).setAlpha(0.65);
-    this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.52).setOrigin(0);
+    coverView(this, this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey()).setOrigin(0), true).setAlpha(0.65);
+    coverView(this, this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.52).setOrigin(0));
     this.layer = this.add.container(0, 0).setDepth(2);
     this.input.addPointer(1);
     this.openMap();
@@ -102,7 +104,8 @@ export class DongfuScene extends Phaser.Scene {
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.onMove(p));
     this.input.on('pointerup', (p: Phaser.Input.Pointer) => this.onUp(p));
     this.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
-      if (this.tab === 'star' && this.inView(p.x, p.y)) this.zoomAt(p.x, p.y, dy > 0 ? 0.88 : 1.14);
+      const point = viewPoint(p);
+      if (this.tab === 'star' && this.inView(point.x, point.y)) this.zoomAt(point.x, point.y, dy > 0 ? 0.88 : 1.14);
     });
     if (this.save.notice) this.showNotice(this.save.notice);
   }
@@ -192,7 +195,7 @@ export class DongfuScene extends Phaser.Scene {
 
   private showNotice(s: string) {
     const m = this.add.container(0, 0).setDepth(10);
-    const bg = this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.75).setOrigin(0).setInteractive();
+    const bg = coverView(this, this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.75).setOrigin(0)).setInteractive();
     m.add(bg);
     m.add(this.add.rectangle(160, 120, 320, 120, PANEL, 1).setOrigin(0).setStrokeStyle(1, 0xffd23f));
     m.add(label(this, 176, 134, wrap(s, 288), '#f4eee0', 12, false).setLineSpacing(5));
@@ -585,17 +588,21 @@ export class DongfuScene extends Phaser.Scene {
   }
 
   private onDown(p: Phaser.Input.Pointer, over: unknown[]) {
-    if (this.modal || this.tab !== 'star' || over.length || !this.inView(p.x, p.y)) return;
-    this.drag = { x: p.x, y: p.y, moved: false };
+    const point = viewPoint(p);
+    if (this.modal || this.tab !== 'star' || over.length || !this.inView(point.x, point.y)) return;
+    this.drag = { x: point.x, y: point.y, moved: false };
   }
 
   private onMove(p: Phaser.Input.Pointer) {
+    const point = viewPoint(p);
     if (!this.map) return;
     const p1 = this.input.pointer1;
+    const a = viewPoint(p1);
     const p2 = this.input.pointer2;
+    const b = viewPoint(p2);
     if (p1.isDown && p2.isDown) {
-      const d = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
-      if (this.pinch > 0) this.zoomAt((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, d / this.pinch);
+      const d = Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
+      if (this.pinch > 0) this.zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, d / this.pinch);
       this.pinch = d;
       if (this.drag) this.drag.moved = true;
       return;
@@ -603,24 +610,25 @@ export class DongfuScene extends Phaser.Scene {
     this.pinch = 0;
     const dr = this.drag;
     if (!dr || !p.isDown) return;
-    const dx = p.x - dr.x;
-    const dy = p.y - dr.y;
+    const dx = point.x - dr.x;
+    const dy = point.y - dr.y;
     if (!dr.moved && Math.hypot(dx, dy) < 5) return;
     dr.moved = true;
     this.camX -= dx / this.zoom;
     this.camY -= dy / this.zoom;
-    dr.x = p.x;
-    dr.y = p.y;
+    dr.x = point.x;
+    dr.y = point.y;
     this.clampCam();
     this.drawMap();
   }
 
   private onUp(p: Phaser.Input.Pointer) {
+    const point = viewPoint(p);
     const dr = this.drag;
     this.drag = null;
     this.pinch = 0;
     if (!dr || dr.moved || !this.map) return;
-    const id = this.hitNode(p.x, p.y);
+    const id = this.hitNode(point.x, point.y);
     if (!id) return;
     if (id === this.node && !this.lit().has(id)) this.light();
     else this.selectNode(id);

@@ -31,3 +31,10 @@
 - 概念图 `output/enemy-concepts-2026-10-22/level1/level-1-source.png`（3 列 2 行，身份参考板 `reference-identity.png` 取旧试稿和后几关皮肤），动作原画 `motion-v2/source-7.png`（6 行 × 4 帧）、`motion-v2/source-puppet-atk.png`（傀儡拍地 4 帧，按站姿身高和走路那张对齐），提示词 `motion-v2/prompt-7.txt`、`prompt-puppet-atk.txt`。都由 `codex exec` 调内置 imagegen 生成。
 - 藤怪、水鬼和铁甲兵一样在第 1 关地面上偏暗，构建脚本 `LIFT` 单独提亮中间调后才过可读性门槛（第 1 关明度差：石俑 0.23、藤怪 0.245、水鬼 0.222、火鸦 0.166、铁甲兵 0.249、狼妖 0.38）。
 
+## 狼妖与毕方精修（2026-10-28）
+
+- 狼妖用内置 imagegen 重画四姿势，原稿与完整提示词在 `../boss-refine-2026-10-28/`。保留银鬃、红结、低伏巨爪，合并碎毛和明暗；正式帧从 56×48 改为 64×48，限制在共享色板的 16 色子集内（实际 15 色）。旧图留在该目录的 `before/`。
+- 毕方沿用 `motion-v2/source-3.png` 第二行，画布从 56×48 改为 72×64。四帧按浅色颈胸重心对齐，并一起计算缩放比例，完整保留翅尖与 1px 描边的透明留白。飞鸟不再随脚尖位置改变身体高度。
+- 这两只由 `refined_boss_frames` 从原稿一次缩到最终尺寸，绕过 96px 中间图；其他怪物继续使用原有导出。正式 key、四帧顺序、播放速度、数值、碰撞半径均沿用。
+- `tests/readability.test.mjs` 新增毕方边界与身体稳定检查；旧图会因翅尖触边失败。前后对照与六位主角的当前代码导出见 `output/reviews/boss-refine-2026-10-28/`。
+

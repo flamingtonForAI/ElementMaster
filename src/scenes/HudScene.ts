@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { coverView, configureView, viewPoint } from '../config/view';
 import { EL_INFO, GEN_ORDER, counters, counteredBy, type El, type Terrain } from '../config/elements';
 import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS } from '../config/skills';
 import { LEVELS, phaseTerrain } from '../config/levels';
@@ -125,6 +126,7 @@ export class HudScene extends Phaser.Scene {
   }
 
   create() {
+    configureView(this);
     this.g = this.scene.get('game') as GameScene;
     this.mode = 'play';
     this.modal = null;
@@ -176,21 +178,22 @@ export class HudScene extends Phaser.Scene {
     this.input.on('pointerdown', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
       if (this.mode !== 'play' || over.length || this.stickId !== -1) return;
       this.stickId = p.id;
-      this.stickBase = { x: p.x, y: p.y };
+      this.stickBase = viewPoint(p);
       stick.active = true;
       stick.x = stick.y = 0;
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (p.id !== this.stickId) return;
-      let dx = p.x - this.stickBase.x;
-      let dy = p.y - this.stickBase.y;
+      const point = viewPoint(p);
+      let dx = point.x - this.stickBase.x;
+      let dy = point.y - this.stickBase.y;
       const d = Math.hypot(dx, dy);
       // 手指拖出范围时底座跟着走
       if (d > STICK_R) {
-        this.stickBase.x = p.x - (dx / d) * STICK_R;
-        this.stickBase.y = p.y - (dy / d) * STICK_R;
-        dx = p.x - this.stickBase.x;
-        dy = p.y - this.stickBase.y;
+        this.stickBase.x = point.x - (dx / d) * STICK_R;
+        this.stickBase.y = point.y - (dy / d) * STICK_R;
+        dx = point.x - this.stickBase.x;
+        dy = point.y - this.stickBase.y;
       }
       const dd = Math.hypot(dx, dy);
       const mag = dd < 4 ? 0 : Math.min(1, (dd - 4) / (STICK_R * 0.6));
@@ -203,7 +206,12 @@ export class HudScene extends Phaser.Scene {
     this.input.on('pointerup', up);
     this.input.on('pointerupoutside', up);
     this.input.on('gameout', () => this.releaseStick());
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.releaseStick());
+    const releaseOnResize = () => this.releaseStick();
+    this.scale.on('resize', releaseOnResize);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.releaseStick();
+      this.scale.off('resize', releaseOnResize);
+    });
 
     this.input.keyboard!.on('keydown', (e: KeyboardEvent) => this.onKey(e));
     // 电脑上按住 Tab 看大地图，游戏不暂停
@@ -489,7 +497,7 @@ export class HudScene extends Phaser.Scene {
     if (!keepSel) this.inputLockUntil = this.time.now + 350;
     const c = this.add.container(0, 0).setDepth(100);
     this.modal = c;
-    c.add(this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.72).setOrigin(0));
+    c.add(coverView(this, this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.72).setOrigin(0)));
     c.add(label(this, 320, 58, this.levelTitle, '#ffd23f').setOrigin(0.5, 0));
     c.add(label(this, 602, 150, '灵根', '#8a8494').setOrigin(0.5, 0));
     this.benPreview = label(this, 602, 240, '').setOrigin(0.5, 0).setAlign('center').setLineSpacing(3);
@@ -654,7 +662,7 @@ export class HudScene extends Phaser.Scene {
     this.inputLockUntil = this.time.now + 300;
     const c = this.add.container(0, 0).setDepth(100);
     this.modal = c;
-    c.add(this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.75).setOrigin(0));
+    c.add(coverView(this, this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.75).setOrigin(0)));
     const h = 70 + lines.length * 16 + items.length * 26;
     const top = 180 - h / 2;
     c.add(this.add.rectangle(320, top, 240, h, PANEL, 0.96).setOrigin(0.5, 0).setStrokeStyle(1, LINE, 1));

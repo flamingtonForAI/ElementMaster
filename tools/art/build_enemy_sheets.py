@@ -34,6 +34,8 @@ MOTION_OVERRIDES = {'boss_jiuying': ('source-jiuying.png', 0, 4, 2), 'boss_jiuyi
 PUPPETS = [('pp_golem', '石傀儡', 28, 38), ('pp_giant', '巨傀', 52, 68)]
 PUPPET_OUTPUT = ROOT / 'public/assets/puppets'
 MOTION = STUDY / 'motion-v2'
+REFINED = ROOT / 'tools/art/enemies/boss-refine-2026-10-28'
+REFINED_BOSSES = {'boss_langyao', 'boss_bifang'}
 # key, Chinese name, approved sheet/slot, frame size, special-state profile.
 SPECS = [
     ('en_zhushe', '竹叶青', 2, 0, 32, 32, 'sway'),
@@ -49,7 +51,7 @@ SPECS = [
     ('en_chihu', '赤狐', 4, 1, 32, 32, 'step'),
     ('en_huojing', '火精', 4, 2, 32, 32, 'hover'),
     ('en_shiyong_lava', '熔壳石俑', 4, 3, 32, 32, 'step'),
-    ('boss_bifang', '毕方', 4, 4, 56, 48, 'hover'),
+    ('boss_bifang', '毕方', 4, 4, 72, 64, 'hover'),
     ('en_canbing', '残兵', 5, 0, 32, 32, 'corpse'),
     # 铁甲兵横端长枪、比常人宽，放宽画布让身高和残兵、石俑一致；第 1 关起全游戏共用这一版
     ('en_tiejia', '铁甲兵', 5, 1, 40, 34, 'step'),
@@ -77,7 +79,7 @@ SPECS = [
     ('en_tengguai', '藤怪', 'l1', 1, 32, 32, 'sway'),
     ('en_shuigui', '水鬼', 'l1', 2, 32, 32, 'hover'),
     ('en_huoya', '火鸦', 'l1', 3, 32, 32, 'hover'),
-    ('boss_langyao', '狼妖', 'l1', 4, 56, 48, 'heavy'),
+    ('boss_langyao', '狼妖', 'l1', 4, 64, 48, 'heavy'),
 ]
 # 第 7–10 关 Boss 逐关加大（72 → 88），和前几关拉开；帝江五相：金、水、木、火从土相（黄囊）的四帧换色得到，动作和土相完全一致
 DIJIANG_HUES = {'boss_dijiang_metal': None, 'boss_dijiang_water': .58, 'boss_dijiang_wood': .33, 'boss_dijiang_fire': .01}
@@ -85,6 +87,11 @@ DIJIANG_HUES = {'boss_dijiang_metal': None, 'boss_dijiang_water': .58, 'boss_dij
 COLORS = PALETTE_HEX + ['28694a', '438c54', '73b964', 'aad984',
                         'f8c640', 'fff1b0', '427ca9', '74acdb', 'd7eff5']
 PALETTE = [tuple(bytes.fromhex(h)) for h in COLORS]
+# 狼妖只保留银鬃、冷影、赤结、爪子的必要色阶，避免缩图后重新长出碎色。
+WOLF_PALETTE = [tuple(bytes.fromhex(h)) for h in [
+    '1c1424', '2c2238', '313848', '525c71', '78839a', 'a6afbb', 'd8d9cf', 'f5ead8',
+    '412338', '73313e', 'b74436', 'e76a32', 'ffe0a3', '543846', '805440', 'aa754a',
+]]
 # 个别怪的中间调额外提亮（默认 0.8）：铁甲兵钢甲、藤怪暗绿藤、水鬼深蓝发偏暗，第 1 关地面上明度拉不开
 LIFT = {'en_tiejia': .55, 'en_tengguai': .7, 'en_shuigui': .6}
 
@@ -116,6 +123,8 @@ def prepare_motion_sources():
         return cache[name]
 
     for index, (key, _, _, _, w, h, _) in enumerate(SPECS):
+        if key in REFINED_BOSSES:
+            continue  # 这两只从原稿一次缩到最终尺寸，不经过 96px 中间图。
         name, row, cols, rows = MOTION_OVERRIDES.get(key, (f'source-{index // 6 + 1}.png', index % 6, 4, 6))
         poses = [subjects(name, cols, rows)[row * cols + i][0] for i in range(4)]
         hop = [0, 1, 3, 0] if key == 'en_zhangchan' else [0] * 4
@@ -178,7 +187,7 @@ def body(source, size):
     return palette_snap(frame)
 
 
-def palette_snap(frame, lift=.8):
+def palette_snap(frame, lift=.8, palette=PALETTE):
     px = frame.load()
     for y in range(frame.height):
         for x in range(frame.width):
@@ -186,11 +195,52 @@ def palette_snap(frame, lift=.8):
             # Keep ink dark; gently lift painted midtones for the dark floors.
             if max(r, g, b) > 64:
                 r, g, b = (round(255 * (c / 255) ** lift) for c in (r, g, b))
-            px[x, y] = (*nearest_palette_color(r, g, b, PALETTE), 255) if a >= 110 else (0, 0, 0, 0)
+            px[x, y] = (*nearest_palette_color(r, g, b, palette), 255) if a >= 110 else (0, 0, 0, 0)
     return frame
 
 
+def refined_boss_frames(key, size):
+    """一次采样；飞鸟锁定颈胸，走兽保持落脚基准。只改变这两只的导出。"""
+    w, h = size
+    if key == 'boss_langyao':
+        subjects = extract_subjects(Image.open(REFINED / 'wolf-source.png').convert('RGBA'), 2, 2)
+        poses = [p for p, _ in subjects]
+        # 每帧共用比例；尾巴和爪子完整保留，两侧留描边安全距离。
+        ratio = min((w - 6) / max(p.width for p in poses), (h * .9 - 4) / max(p.height for p in poses))
+        anchors = [(p.width / 2, p.height) for p in poses]
+        target = (w / 2, round(h * .9) - 1)
+        palette, lift = WOLF_PALETTE, 1
+    else:
+        subjects = extract_subjects(Image.open(MOTION / 'source-3.png').convert('RGBA'), 4, 6)[4:8]
+        poses = [p for p, _ in subjects]
+        anchors = []
+        for pose in poses:
+            # 毕方不动的奶白颈胸与红翅、青羽分离，使用其重心校准拍翼。
+            points = [(x, y) for y in range(pose.height) for x in range(pose.width)
+                      if (lambda c: c[3] >= 128 and min(c[:3]) > 110 and c[0] > 140
+                          and c[1] > 140 and abs(c[0] - c[1]) < 45 and c[0] >= c[2])(pose.getpixel((x, y)))]
+            if not points:
+                raise ValueError('毕方原稿缺少浅色颈胸，需重新校准锚点')
+            anchors.append(tuple(sum(p[i] for p in points) / len(points) for i in (0, 1)))
+        target = (round(w * .6), round(h * .375))
+        # 所有帧一起计算可用空间，预留透明边和 1px 描边；脚落在既有 0.9 原点附近。
+        ratio = min(min((target[0] - 3) / ax, (w - 3 - target[0]) / (p.width - ax),
+                        (target[1] - 3) / ay, (round(h * .9) - 2 - target[1]) / (p.height - ay))
+                    for p, (ax, ay) in zip(poses, anchors))
+        palette, lift = PALETTE, .8
+    frames = []
+    for pose, (ax, ay) in zip(poses, anchors):
+        dims = (round(pose.width * ratio), round(pose.height * ratio))
+        small = pose.convert('RGBa').resize(dims, Image.Resampling.BOX).convert('RGBA')
+        frame = Image.new('RGBA', size)
+        frame.paste(small, (round(target[0] - ax * ratio), round(target[1] - ay * ratio)))
+        frames.append(selective_outline(palette_snap(frame, lift, palette)))
+    return frames
+
+
 def pose_frames(key, size):
+    if key in REFINED_BOSSES:
+        return refined_boss_frames(key, size)
     poses = Image.open(MOTION / 'source96' / f'{key}.png').convert('RGBA')
     return [selective_outline(palette_snap(poses.crop((i * 96, 0, (i + 1) * 96, 96)).convert('RGBa').resize(size, Image.Resampling.BOX).convert('RGBA'), LIFT.get(key, .8))) for i in range(poses.width // 96)]
 

@@ -4,7 +4,7 @@ import { getTodPreset } from '../art/vistaArt';
 import type { LevelDef } from '../config/levels';
 import type { El } from '../config/elements';
 import { POI_CLEAR_R } from '../config/map';
-import { VIEW_W, VIEW_H } from '../config/view';
+import { VIEW_W, VIEW_H, cameraView } from '../config/view';
 import { woodland, isRidge, spotAt, type SpotDef } from './terrain';
 import { NavGrid } from './nav';
 
@@ -337,17 +337,27 @@ export class World {
 
   update(dt: number) {
     const cam = this.scene.cameras.main;
-    this.ground.tilePositionX = cam.scrollX;
-    this.ground.tilePositionY = cam.scrollY;
+    const left = cam.worldView.x;
+    const top = cam.worldView.y;
+    const { width, height } = cameraView(cam);
+    // 固定屏幕层绕相机中心缩放，补偿中心偏移，移动时仍完整盖住视口。
+    // TileSprite 的内部 canvas 只能取整数，向上取整避免末尾一列透明。
+    const gw = Math.ceil(width), gh = Math.ceil(height);
+    if (this.ground.width !== gw || this.ground.height !== gh) this.ground.setSize(gw, gh);
+    this.ground.setPosition((cam.width - width) / 2, (cam.height - height) / 2);
+    this.ground.tilePositionX = left;
+    this.ground.tilePositionY = top;
     this.acc += dt;
     if (this.acc < 0.25) return;
     this.acc = 0;
-    const cx = Math.floor((cam.scrollX + VIEW_W / 2) / CHUNK);
-    const cy = Math.floor((cam.scrollY + VIEW_H / 2) / CHUNK);
-    for (let y = cy - 2; y <= cy + 2; y++) for (let x = cx - 2; x <= cx + 2; x++) this.ensure(x, y);
+    const cx = Math.floor((left + width / 2) / CHUNK);
+    const cy = Math.floor((top + height / 2) / CHUNK);
+    const rx = Math.max(2, Math.ceil(width / (2 * CHUNK)));
+    const ry = Math.max(2, Math.ceil(height / (2 * CHUNK)));
+    for (let y = cy - ry; y <= cy + ry; y++) for (let x = cx - rx; x <= cx + rx; x++) this.ensure(x, y);
     for (const [k, list] of this.chunks) {
       const [x, y] = k.split(',').map(Number);
-      if (Math.abs(x - cx) > 3 || Math.abs(y - cy) > 3) {
+      if (Math.abs(x - cx) > rx + 1 || Math.abs(y - cy) > ry + 1) {
         for (const s of list) s.destroy();
         this.chunks.delete(k);
         this.solids.delete(k);

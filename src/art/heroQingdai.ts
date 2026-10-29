@@ -5,7 +5,7 @@ import { HERO_DIRS, HERO_FRAMES_PER_DIR, type HeroDir } from './heroXiao';
 // 药师·青黛。剪影和另三人拉开：宽檐斗笠压住头顶，帽檐一圈薄纱垂到下巴，整体是个钟形的头；
 // 青绿交领长衫过膝，米白腰带，腰间挂葫芦；背上竹编药篓，篓口斜出几枝草药，高过帽檐。
 
-const SK = 0xf5cba4, SKS = 0xd4957a, BL = 0xf08c84;
+const SK = 0xf5cba4, SKS = 0xd4957a, SKH = 0xffdfba, BL = 0xf08c84;
 const HR = 0x1c2b28;
 const GR = 0x3da370, GRS = 0x267350, GRH = 0x7be098, GRD = 0x184738;
 const BELT = 0xf5ecd2, BELTS = 0xc7bba0;
@@ -84,6 +84,10 @@ function drawRobe(p: PC, d: HeroDir, pose: Pose) {
       p.set(x0, y, GRH);
       p.set(x1, y, GRD);
       if (hw > 3) p.set(x1 - 1, y, GRS);
+      if (i >= 6) {
+        p.set(cx - 3 + sh, y, GRH);
+        p.set(cx + 2 + sh, y, GRS);
+      }
     }
   }
   const bw = d === 'e' ? 4 : 5;
@@ -107,8 +111,15 @@ function drawRobe(p: PC, d: HeroDir, pose: Pose) {
 function drawArms(p: PC, d: HeroDir, pose: Pose, skipFront: boolean) {
   const sw = Math.round(pose.swing);
   const arm = (x: number, dy: number) => {
-    for (let i = 0; i < 6; i++) p.span(BODY_Y + 1 + i + dy, x, x + 1, i === 5 ? INH : i === 0 ? GRS : GR);
+    for (let i = 0; i < 6; i++) {
+      const y = BODY_Y + 1 + i + dy;
+      p.span(y, x, x + 1, i === 5 ? INH : GR);
+      if (i < 5) p.set(x + 1, y, GRS);
+      if (i === 1 || i === 2) p.set(x, y, GRH);
+      if (i === 5) p.set(x + 1, y, BELTS);
+    }
     p.span(BODY_Y + 7 + dy, x, x + 1, SK);
+    p.set(x + 1, BODY_Y + 7 + dy, SKS);
   };
   if (d === 's' || d === 'n') {
     arm(9, sw);
@@ -118,9 +129,7 @@ function drawArms(p: PC, d: HeroDir, pose: Pose, skipFront: boolean) {
     if (!skipFront) arm(20, -sw);
   } else if (!skipFront) {
     const ax = 14 + Math.round(-1.2 * pose.swing);
-    for (let i = 0; i < 6; i++) p.span(BODY_Y + 1 + i, ax, ax + 1, i === 5 ? INH : GR);
-    p.set(ax + 1, BODY_Y + 1, GRS);
-    p.span(BODY_Y + 7, ax, ax + 1, SK);
+    arm(ax, 0);
   }
 }
 
@@ -152,10 +161,15 @@ function herbs(p: PC, x: number, y: number, lean: number, wavePhase: number) {
 
 function basket(p: PC, x0: number, y0: number, x1: number, y1: number) {
   for (let y = y0; y <= y1; y++) {
-    p.span(y, x0, x1, (y - y0) % 2 ? BAMS : BAM);
-    for (let x = x0 + ((y - y0) % 2); x <= x1; x += 3) p.set(x, y, (y - y0) % 2 ? BAM : BAMS);
+    p.span(y, x0, x1, BAM);
+    if ((y - y0) % 3 === 2) p.span(y, x0 + 1, x1 - 1, BAMS);
+    p.set(x0, y, HATH);
+    p.set(x1, y, STRAP);
+    for (let x = x0 + 3; x < x1; x += 3) p.set(x, y, (y - y0) % 3 === 2 ? BAM : BAMS);
   }
   p.span(y0, x0 - 1, x1 + 1, BAMS);
+  p.span(y0, x0, x1 - 1, HAT);
+  p.span(y1, x0 + 1, x1, BAMS);
 }
 
 function drawBasketBehind(p: PC, d: HeroDir, wavePhase: number) {
@@ -234,7 +248,10 @@ function drawHead(p: PC, d: HeroDir, blink: boolean) {
       p.rect(20, Y + 1, 1, 2, EYE);
       p.set(19, Y + 1, INH);
     }
-    p.set(22, Y + 2, SK);
+    p.set(22, Y + 1, SKH);
+    p.set(22, Y + 2, SKH);
+    p.set(22, Y + 3, SKS);
+    p.set(21, Y + 4, SKS);
     p.set(20, Y + 3, BL);
   } else if (d === 'ne') {
     p.rect(20, Y, 2, 3, SK);
@@ -250,7 +267,13 @@ function drawVeil(p: PC, d: HeroDir, wavePhase: number) {
   const strip = (x0: number, x1: number) => {
     for (let y = 8; y <= bottom; y++) {
       const shift = y >= 13 ? sw : 0;
-      p.span(y, x0 + shift, x1 + shift, (y + x0) % 3 === 0 ? VEILS : VEIL);
+      p.span(y, x0 + shift, x1 + shift, VEIL);
+      p.set(x1 + shift, y, VEILS);
+      if (y <= 9) p.span(y, x0 + shift, x1 + shift, VEILS);
+      // 垂纱的竖向折面，和帽檐投影分开。
+      for (let x = x0 + 3; x < x1; x += 5) {
+        if (y >= 11) p.set(x + shift, y, VEILS);
+      }
     }
     for (let x = x0; x <= x1; x += 2) p.set(x + sw, bottom + 1, VEILS);
   };
@@ -280,13 +303,15 @@ function drawHat(p: PC, d: HeroDir) {
   for (const [y, hw] of cone) {
     p.span(y, 16 - hw, 15 + hw, HAT);
     p.set(16 - hw, y, HATH);
-    p.set(15 + hw, y, HATS);
+    p.span(y, 15 + Math.ceil(hw * 0.6), 15 + hw, HATS);
+    if (y >= 3 && y <= 5) p.set(15 - Math.floor(hw * 0.5), y, HATH);
   }
   p.span(6, 7, 24, BAND);
-  p.set(13, 4, HATS);
-  p.set(18, 4, HATS);
+  p.span(7, 9, 17, HATH);
+  p.set(23, 7, HATS);
+  p.set(14, 4, HATS);
+  p.set(17, 5, HATS);
   p.set(11, 5, HATS);
-  p.set(20, 5, HATS);
 }
 
 function pouch(p: PC, x: number, y: number, glow = false) {

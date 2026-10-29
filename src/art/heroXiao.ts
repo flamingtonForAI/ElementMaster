@@ -88,6 +88,12 @@ function drawTorso(p: PC, d: HeroDir, pose: Pose) {
     p.set(x0, y, RBH);
     p.set(x1, y, RBD);
     if (hw > 3) p.set(x1 - 1, y, RBS);
+    // 腰下两片衣襟随同一衣摆偏移，折面保持成簇。
+    if (i >= 7 && i < half.length - 1) {
+      p.set(cx - 3, y, RBH);
+      p.set(cx + 2, y, RBS);
+      if (i === 9) p.set(cx + 3, y, RBD);
+    }
     if (i === half.length - 1) {
       p.span(y, x0, x1, SA);
       p.set(cx, y, RBD);
@@ -117,10 +123,12 @@ function drawTorso(p: PC, d: HeroDir, pose: Pose) {
   }
   // 肩甲（随步伐微幅扭转起伏）
   const pad = (x: number, w: number, dy = 0) => {
-    p.span(14 + dy, x, x + w - 1, ARH);
+    p.span(14 + dy, x + 1, x + w - 1, ARH);
     p.span(15 + dy, x, x + w - 1, AR);
     p.span(16 + dy, x, x + w - 1, ARS);
     p.set(x + 1, 14 + dy, BLH);
+    p.set(x, 15 + dy, ARH);
+    p.set(x + w - 1, 16 + dy, SAD);
   };
   if (d === 's' || d === 'n') {
     pad(9, 4, twist > 0 ? 1 : 0);
@@ -137,8 +145,11 @@ function drawArms(p: PC, d: HeroDir, pose: Pose, skipSwordArm: boolean) {
   const sw = Math.round(pose.swing);
   const arm = (x: number, dy: number) => {
     p.rect(x, 16 + dy, 2, 4, RB);
+    p.set(x, 17 + dy, RBH);
     p.set(x + 1, 17 + dy, RBS);
+    p.set(x + 1, 19 + dy, RBD);
     p.span(20 + dy, x, x + 1, AR);
+    p.set(x, 20 + dy, ARH);
     p.span(21 + dy, x, x + 1, ARS);
     p.set(x, 22 + dy, SK);
     p.set(x + 1, 22 + dy, SKS);
@@ -262,15 +273,25 @@ function drawHead(p: PC, d: HeroDir, blink: boolean) {
       p.rect(20, 10, 1, 2, EYE);
       p.set(19, 10, BLH);
     }
-    p.set(23, 11, SKH);
+    // 沿用海贼的肤色高光，在现有轮廓内表现鼻梁与鼻底。
+    p.set(22, 10, SKH);
+    p.set(22, 11, SKH);
     p.set(17, 10, SKS);
     p.set(17, 11, SKS);
     p.span(14, 17, 21, SKS);
-    p.set(21, 12, BL);
+    p.set(21, 12, SKS);
   } else if (d === 'ne') {
     p.rect(20, 9, 2, 4, SK);
     p.set(20, 12, SKS);
     p.set(21, 12, SKS);
+  }
+  // 分开的短发束高光，避免侧面与后脑成为整块纯黑。
+  if (d === 'e' || d === 'se') {
+    p.line(12, 7, 11, 10, HRH);
+    p.set(11, 12, HRD);
+  } else if (d === 'n' || d === 'ne') {
+    p.line(12, 7, 11, 10, HRH);
+    p.line(19, 10, 18, 13, HRD);
   }
   // 头发天使环高光
   if (d === 'n') {

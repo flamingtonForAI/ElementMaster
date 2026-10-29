@@ -302,6 +302,9 @@ test('默认选关取最高已解锁且开放的关卡，不再写死第二关',
   save.unlocked = last + 1;
   writeSave(save);
   const scene = new MenuScene();
+  scene.cameras = { main: { width: 1920, height: 1080, setZoom() { return this; }, setScroll() { return this; }, on() {} } };
+  scene.scale = { on() {}, off() {} };
+  scene.events = { once() {} };
   const chain = new Proxy({}, { get: () => () => chain });
   scene.add = { tileSprite: () => chain, rectangle: () => chain, text: () => chain, container: () => chain };
   scene.input = { keyboard: { on() {} } };

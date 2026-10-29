@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { coverView, configureView } from '../config/view';
 import { HERO_DIRS } from '../art/heroXiao';
 import { label } from '../ui/text';
 import { LEVELS, enemyTex } from '../config/levels';
@@ -11,12 +12,13 @@ export class ArtScene extends Phaser.Scene {
   }
 
   create() {
+    configureView(this);
     const params = new URLSearchParams(location.search);
     if (params.get('art') === 'enemies') {
       this.showEnemies(Number(params.get('level')) || 2);
       return;
     }
-    this.add.tileSprite(0, 0, 640, 360, 'ground_1').setOrigin(0);
+    coverView(this, this.add.tileSprite(0, 0, 640, 360, 'ground_1').setOrigin(0));
     const poses = ['idle', 'run', 'atk', 'atkrun'];
     // ?art=zhu 预览符师，?art=ruan 海贼，?art=qingdai 药师，?art=moheng 傀儡师，?art=xuanyi 散人
     const id = new URLSearchParams(location.search).get('art') || 'xiao';
@@ -26,7 +28,7 @@ export class ArtScene extends Phaser.Scene {
     poses.forEach((pose, r) => {
       label(this, 8, 34 + r * 44, pose, '#b8aec8');
       dirs.forEach(([d, flip], c) => {
-        const s = this.add.sprite(80 + c * 44, 50 + r * 44, `hero_${id}`, 0).setFlipX(flip);
+        const s = this.add.sprite(80 + c * 44, 50 + r * 44, `hero_${id}`, 0).setDisplaySize(32, 32).setFlipX(flip);
         const key = `${id}_${d}_${pose}`;
         if (pose.startsWith('atk')) {
           s.play(key);
@@ -77,7 +79,7 @@ export class ArtScene extends Phaser.Scene {
   private showEnemies(levelId: number) {
     const level = LEVELS.find((l) => l.id === levelId && l.available) ?? LEVELS[1];
     this.children.removeAll(true);
-    this.add.tileSprite(0, 0, 640, 360, level.ground).setOrigin(0);
+    coverView(this, this.add.tileSprite(0, 0, 640, 360, level.ground).setOrigin(0));
     this.add.rectangle(0, 0, 640, 64, 0x15121c, .92).setOrigin(0);
     label(this, 16, 10, `怪物像素预览 · 第 ${level.id} 关 ${level.name}`, '#f4eee0', 24);
     label(this, 16, 42, '← → 切换关卡　上排 2×　下排原尺寸：原 / 凶 / 煞', '#d2c6b6');

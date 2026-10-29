@@ -81,12 +81,19 @@ function drawTorso(p: PC, d: HeroDir, pose: Pose) {
     p.set(x0, y, JKH);
     p.set(x1, y, JKD);
     if (hw > 4) p.set(x1 - 1, y, JKS);
+    if (i >= 3 && i <= 5) {
+      p.set(cx - 3, y, JKH);
+      p.set(cx + 2, y, JKS);
+    }
+    if (i === 8) p.span(y, x0 + 1, x1 - 1, JKD);
   }
   // 草绳腰带，结在一侧随风摆动
   const bw = d === 'e' ? 4 : 6;
   p.span(21, cx - bw, cx + bw - 1, RP);
   p.span(22, cx - bw, cx + bw - 1, RPS);
   p.span(21, cx - bw, cx - bw + 2, RPH);
+  p.set(cx - 1, 21, RPH);
+  p.set(cx + 2, 22, RP);
   if (d === 's' || d === 'se') {
     const o = d === 's' ? 0 : 1;
     for (let y = 15; y <= 19; y++) {
@@ -95,6 +102,7 @@ function drawTorso(p: PC, d: HeroDir, pose: Pose) {
     }
     p.line(14 + o - 1, 15, 16 + o, 20, JKS);
     p.line(17 + o + 1, 15, 16 + o, 20, JKS);
+    p.line(13 + o, 16, 14 + o, 18, JKH);
     p.set(15 + o, 16, SKH);
     p.set(16 + o, 17, SKS);
     const kx = d === 's' ? 20 : 19;
@@ -117,6 +125,7 @@ function drawArms(p: PC, d: HeroDir, pose: Pose, skipFront: boolean) {
       p.set(x + 1, y, JKS);
     }
     p.span(19 + dy, x, x + 1, JKH);
+    p.set(x + 1, 19 + dy, JKD);
     for (let y = 20 + dy; y <= 22 + dy; y++) {
       p.set(x, y, y === 20 + dy ? SKH : SK);
       p.set(x + 1, y, SKS);
@@ -131,10 +140,14 @@ function drawArms(p: PC, d: HeroDir, pose: Pose, skipFront: boolean) {
   } else if (!skipFront) {
     const ax = 14 + Math.round(-1.5 * pose.swing);
     for (let y = 16; y <= 18; y++) p.span(y, ax, ax + 2, JK);
+    p.line(ax + 2, 17, ax + 2, 18, JKS);
+    p.set(ax, 17, JKH);
     p.span(19, ax, ax + 2, JKH);
+    p.set(ax + 2, 19, JKD);
     for (let y = 20; y <= 22; y++) p.span(y, ax, ax + 2, SK);
     p.set(ax, 20, SKH);
     p.set(ax + 2, 21, SKS);
+    p.span(22, ax + 1, ax + 2, SKS);
   }
 }
 
@@ -252,7 +265,11 @@ function drawHead(p: PC, d: HeroDir, blink: boolean) {
       p.rect(20, 10, 1, 2, EYE);
       p.set(19, 10, BDH);
     }
-    p.set(23, 11, SKH);
+    p.set(22, 10, SKH);
+    p.set(22, 11, SKH);
+    p.set(21, 12, SKS);
+    p.set(17, 10, SKS);
+    p.set(17, 11, SKH);
     p.span(14, 18, 21, SKS);
     p.rect(14, 8, 2, 4, HR);
   } else if (d === 'ne') {
@@ -260,7 +277,11 @@ function drawHead(p: PC, d: HeroDir, blink: boolean) {
     p.set(20, 12, SKS);
   }
   const top = (y0: number, y1: number, x0: number, x1: number) => {
-    for (let y = y0; y <= y1; y++) p.span(y, x0, x1, BD);
+    for (let y = y0; y <= y1; y++) {
+      const inset = y === y0 ? 1 : 0;
+      p.span(y, x0 + inset, x1 - inset, BD);
+      if (y > y0 + 1) p.set(x1, y, BDS);
+    }
   };
   if (d === 'e') {
     top(3, 7, 12, 21);

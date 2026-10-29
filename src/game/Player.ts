@@ -37,7 +37,7 @@ export class Player {
 
   constructor(private g: GameScene) {
     this.hp = g.pstats.maxHp;
-    this.sprite = g.add.sprite(0, 0, `hero_${g.char.id}`, 0).setOrigin(0.5, 0.92);
+    this.sprite = g.add.sprite(0, 0, `hero_${g.char.id}`, 0).setOrigin(0.5, 0.92).setDisplaySize(32, 32);
     this.hpBg = g.add.rectangle(0, 0, 20, 3, 0x1c1424).setOrigin(0.5, 0);
     this.hpFill = g.add.rectangle(0, 0, 18, 1, 0xe8503f).setOrigin(0, 0);
     this.pips = Object.fromEntries(

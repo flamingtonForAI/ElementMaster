@@ -6,17 +6,19 @@ import { GameScene } from './scenes/GameScene';
 import { HudScene } from './scenes/HudScene';
 import { ArtScene } from './scenes/ArtScene';
 import { DongfuScene } from './scenes/DongfuScene';
-import { VIEW_W, VIEW_H } from './config/view';
+import { fitView, setViewLayout } from './config/view';
 import { isTouch } from './ui/touch';
 
 
 const viewSize = () => ({ w: window.visualViewport?.width ?? innerWidth, h: window.visualViewport?.height ?? innerHeight });
 
-/** 大屏按整数倍放大保持像素清晰；手机等小屏按比例铺满 */
-const zoomFor = () => {
+const layoutFor = () => {
   const { w, h } = viewSize();
-  const r = Math.min(w / VIEW_W, h / VIEW_H);
-  return r >= 2 ? Math.floor(r) : Math.max(0.3, r);
+  const css = getComputedStyle(document.getElementById('safe-area')!);
+  return fitView(w, h, isTouch(), {
+    left: parseFloat(css.paddingLeft) || 0, right: parseFloat(css.paddingRight) || 0,
+    top: parseFloat(css.paddingTop) || 0, bottom: parseFloat(css.paddingBottom) || 0,
+  });
 };
 
 let allowPortrait = false;
@@ -31,19 +33,25 @@ async function start() {
   } catch {
     // 字体加载失败时退回系统字体
   }
+  const initial = layoutFor();
+  setViewLayout(initial);
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
-    width: VIEW_W,
-    height: VIEW_H,
+    width: initial.width,
+    height: initial.height,
     backgroundColor: '#0b0910',
     pixelArt: true,
     roundPixels: true,
-    scale: { mode: Phaser.Scale.NONE, zoom: zoomFor(), autoCenter: Phaser.Scale.CENTER_BOTH },
+    // CSS 保留小数居中；Phaser 的整数 margin 会在手机右 / 下边缘留下 1px 黑线。
+    scale: { mode: Phaser.Scale.NONE, zoom: initial.zoom, autoCenter: Phaser.Scale.NO_CENTER },
     scene: [BootScene, TitleScene, MenuScene, GameScene, HudScene, ArtScene, DongfuScene],
   });
   const onResize = () => {
-    game.scale.setZoom(zoomFor());
+    const next = layoutFor();
+    setViewLayout(next);
+    game.scale.setZoom(next.zoom);
+    game.scale.resize(next.width, next.height);
     // 竖屏时自动暂停，横过来后从暂停菜单继续
     if (portraitTouch()) {
       const gs = game.scene.getScene('game') as GameScene;

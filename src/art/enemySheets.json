@@ -169,8 +169,8 @@
     "grounded": true
   },
   "boss_bifang": {
-    "width": 56,
-    "height": 48,
+    "width": 72,
+    "height": 64,
     "frames": 4,
     "move": [
       0,
@@ -572,7 +572,7 @@
     "grounded": false
   },
   "boss_langyao": {
-    "width": 56,
+    "width": 64,
     "height": 48,
     "frames": 4,
     "move": [

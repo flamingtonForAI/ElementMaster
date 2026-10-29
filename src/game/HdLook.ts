@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { GameScene } from '../scenes/GameScene';
-import { VIEW_W, VIEW_H } from '../config/view';
+import { VIEW_W, VIEW_H, RENDER_SCALE, cameraView } from '../config/view';
 import { EL_INFO, type El } from '../config/elements';
 
 /**
@@ -156,7 +156,7 @@ function tiltPipeline() {
     center = 0.5;
 
     onPreRender() {
-      this.set2f('uRes', this.renderer.width, this.renderer.height);
+      this.set2f('uRes', this.renderer.width / RENDER_SCALE, this.renderer.height / RENDER_SCALE);
       this.set1f('uCenter', this.center);
     }
   };
@@ -413,17 +413,27 @@ export class HdLook {
     if (!this.on) return;
     this.t += dt;
     const cam = this.g.cameras.main;
-    const ox = Math.floor(cam.scrollX) - M;
-    const oy = Math.floor(cam.scrollY) - M;
-    const W = VIEW_W + M * 2;
-    const H = VIEW_H + M * 2;
-    this.embers.setPosition(cam.scrollX, cam.scrollY);
+    const ox = cam.worldView.x - M;
+    const oy = cam.worldView.y - M;
+    const { width, height } = cameraView(cam);
+    const W = Math.ceil((width + M * 2) / 2) * 2;
+    const H = Math.ceil((height + M * 2) / 2) * 2;
+    if (this.lightmap.width !== W || this.lightmap.height !== H) {
+      for (const layer of [this.lightmap, this.glow, this.shadows]) layer.resize(W, H);
+      const mo = this.preset.motes;
+      this.embers.updateConfig({
+        x: { min: -40, max: width + 40 },
+        y: mo.speedY[1] < 0 ? { min: height * 0.2, max: height + 30 }
+          : mo.speedY[0] > 0 ? { min: -30, max: height * 0.8 } : { min: 0, max: height },
+      });
+    }
+    this.embers.setPosition(cam.worldView.x, cam.worldView.y);
     this.updateMist();
     if (this.tilt) {
       const r = cam.getPostPipeline('HdTilt') as unknown;
       const pp = (Array.isArray(r) ? r[0] : r) as { center: number } | undefined;
       // 地图边上镜头停住时人物不在正中，焦点跟着人物走
-      if (pp) pp.center = Phaser.Math.Clamp(1 - (this.g.player.y - cam.worldView.y) / VIEW_H, 0, 1);
+      if (pp) pp.center = Phaser.Math.Clamp(1 - (this.g.player.y - cam.worldView.y) / height, 0, 1);
     }
 
     const lm = this.lightmap.setPosition(ox, oy);
@@ -432,7 +442,7 @@ export class HdLook {
     const p = this.preset;
     lm.fill(this.edge, 1);
     // 底图单独画（放进批量里画不出来）
-    lm.stamp(this.baseKey, undefined, M, M, { originX: 0, originY: 0, scaleX: VIEW_W / 64, scaleY: VIEW_H / 36, tint: p.ambient });
+    lm.stamp(this.baseKey, undefined, M, M, { originX: 0, originY: 0, scaleX: width / 64, scaleY: height / 36, tint: p.ambient });
     lm.beginDraw();
     gl.clear();
     gl.beginDraw();

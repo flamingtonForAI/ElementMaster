@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { coverView, viewBounds, configureView } from '../config/view';
 import { CHARACTERS } from '../config/characters';
 import { EL_INFO, SAY_ORDER } from '../config/elements';
 import { ENEMIES, type Behavior, type EnemyDef, type Trick } from '../config/enemies';
@@ -119,6 +120,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create() {
+    configureView(this);
     this.view = 'main';
     this.armed = '';
     this.full = false;
@@ -127,7 +129,7 @@ export class TitleScene extends Phaser.Scene {
     this.sel = 0;
     this.under = this.vista(getTod(), 0);
     this.cur = this.vista(getTod(), 1);
-    this.veil = this.add.rectangle(0, 0, 640, 360, 0x07050b, getTodPreset().veilAlpha).setOrigin(0).setDepth(2);
+    this.veil = coverView(this, this.add.rectangle(0, 0, 640, 360, 0x07050b, getTodPreset().veilAlpha).setOrigin(0)).setDepth(2);
     this.nextTodAt = this.time.now + HOLD;
     this.layer = this.add.container(0, 0).setDepth(3);
     audio.music('menu');
@@ -139,7 +141,7 @@ export class TitleScene extends Phaser.Scene {
     // 远景云层极慢速横移，前景松竹随风微摆
     for (const v of [this.cur, this.under]) {
       v.clouds.tilePositionX += dms * 0.004;
-      v.fg.x = Math.round(Math.sin(t * 0.0012) * 1.5);
+      v.fg.x = viewBounds().x - 2 + Math.round(Math.sin(t * 0.0012) * 1.5);
     }
     if (t >= this.nextTodAt) {
       this.nextTodAt = t + HOLD + FADE;
@@ -149,9 +151,9 @@ export class TitleScene extends Phaser.Scene {
 
   private vista(id: TodId, depth: number): Vista {
     const v = {
-      bg: this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey(id)).setOrigin(0),
-      clouds: this.add.tileSprite(0, 0, 640, 360, getVistaCloudKey(id)).setOrigin(0),
-      fg: this.add.tileSprite(0, 0, 640, 360, getVistaFgKey(id)).setOrigin(0),
+      bg: coverView(this, this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey(id)).setOrigin(0), true),
+      clouds: coverView(this, this.add.tileSprite(0, 0, 640, 360, getVistaCloudKey(id)).setOrigin(0), true),
+      fg: coverView(this, this.add.tileSprite(0, 0, 640, 360, getVistaFgKey(id)).setOrigin(0), true),
     };
     this.setVista(v, id, 1);
     for (const o of [v.bg, v.clouds, v.fg]) o.setDepth(depth);
@@ -286,7 +288,7 @@ export class TitleScene extends Phaser.Scene {
     const c = CHARACTERS.find((o) => o.id === s.lastChar && o.available);
     const tx = c ? x + 88 : x + 12;
     if (c) {
-      const sp = this.add.sprite(x + 44, y + 72, `hero_${c.id}`, 0).setScale(2);
+      const sp = this.add.sprite(x + 44, y + 72, `hero_${c.id}`, 0).setDisplaySize(64, 64);
       sp.play(`${c.id}_s_idle`);
       L.add(sp);
       L.add(label(this, x + 44, y + 108, c.name, hex(c.balanced ? 0xd8d0e4 : EL_INFO[c.el].color)).setOrigin(0.5, 0));
@@ -597,7 +599,7 @@ export class TitleScene extends Phaser.Scene {
 
   private showTip(text: string) {
     const c = this.add.container(0, 0).setDepth(100);
-    const bg = this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.8).setOrigin(0).setInteractive();
+    const bg = coverView(this, this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.8).setOrigin(0)).setInteractive();
     c.add(bg);
     c.add(this.add.rectangle(320, 130, 400, 100, PANEL, 1).setOrigin(0.5, 0).setStrokeStyle(1, LINE));
     c.add(label(this, 140, 146, wrap(text, 360), '#f4eee0', 12, false).setLineSpacing(6));

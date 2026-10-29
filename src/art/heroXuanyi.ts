@@ -8,7 +8,7 @@ import { EL_INFO } from '../config/elements';
 
 // 色阶采用冷暖色相偏移：道袍高光偏暖银白、暗部偏蓝紫灰，白须白发暗部偏冷青灰。
 // 道袍比须发暗一档，胸前露黑色中衣，白须压在黑底上才不和袍子连成一片
-const SK = 0xf4cfb0, SKS = 0xd49678, BL = 0xe89a8c;
+const SK = 0xf4cfb0, SKS = 0xd49678, SKH = 0xffe0bd, BL = 0xe89a8c;
 const HR = 0xf5f1ea, HRS = 0xbfc4ce;
 const RB = 0x8e91a6, RBS = 0x686a80, RBD = 0x4a4c60, RBH = 0xc2c6d6;
 const TRIM = 0x221d2c;
@@ -75,6 +75,10 @@ function drawRobe(p: PC, d: HeroDir, pose: Pose) {
     p.set(x0, y, RBH);
     p.set(x1, y, RBD);
     if (hw > 4) p.set(x1 - 1, y, RBS);
+    if (i >= 6 && i < half.length - 1) {
+      p.set(cx - 3 + sh, y, RBH);
+      p.set(cx + 3 + sh, y, RBS);
+    }
     if (i === half.length - 1) p.span(y, x0, x1, TRIM);
   }
   const bw = d === 'e' ? 4 : 5;
@@ -123,8 +127,12 @@ function sleeve(p: PC, x: number, dy: number, mirror: boolean, wave1: number) {
     const cuff = i === rows.length - 1;
     p.span(y, a, b, cuff ? TRIM : RB);
     if (!cuff) {
-      p.set(mirror ? a : b, y, RBH);
-      p.set(mirror ? b : a, y, RBS);
+      p.set(a, y, RBH);
+      p.set(b, y, RBS);
+      if (i >= 4) p.set(b - 1, y, RBD);
+      if (i === 4) p.set(a + 1, y, RB);
+    } else {
+      p.set(a, y, RBS);
     }
   });
 }
@@ -154,13 +162,15 @@ function drawHairBack(p: PC, d: HeroDir, wavePhase: number) {
     p.rect(10, 12, 3, 6, HRS);
   } else if (d === 'e') {
     p.strand([[12, 9], [11 + w1 * 0.4, 14], [11 + w1, 18]], HRS, 3);
+    p.strand([[11, 10], [10 + w1 * 0.4, 14], [11 + w1, 17]], HR, 1);
   }
 }
 
 function drawHead(p: PC, d: HeroDir, pose: Pose) {
   const Y = HEAD_Y;
   const hx = d === 'e' ? 16.5 : 16;
-  p.ellipse(hx, Y, 6, 6, HR);
+  p.ellipse(hx, Y, 6, 6, HRS);
+  p.ellipse(hx - 0.8, Y - 0.7, 5.2, 5.3, HR);
   p.span(Y - 5, 14, 17, WHITE);
   if (d === 's') {
     p.ellipse(16, Y + 1.6, 5, 4.4, SK);
@@ -174,6 +184,9 @@ function drawHead(p: PC, d: HeroDir, pose: Pose) {
     p.span(Y + 1, 17, 18, EYE);
     p.set(12, Y + 2, BL);
     p.set(19, Y + 2, BL);
+    p.set(16, Y + 2, SKS);
+    p.line(11, Y - 2, 11, Y + 3, HRS);
+    p.set(20, Y - 1, HRS);
   } else if (d === 'se') {
     p.ellipse(17.6, Y + 1.6, 4.4, 4.4, SK);
     p.span(Y - 2, 13, 21, HR);
@@ -186,28 +199,48 @@ function drawHead(p: PC, d: HeroDir, pose: Pose) {
     p.set(20, Y + 1, EYE);
     p.set(21, Y + 1, EYE);
     p.set(21, Y + 2, BL);
+    p.set(18, Y + 2, SKS);
+    p.line(11, Y - 1, 11, Y + 3, HRS);
+    p.set(12, Y + 4, HR);
+    p.set(13, Y + 2, HRS);
   } else if (d === 'e') {
     p.ellipse(19.2, Y + 1.6, 3.6, 4.4, SK);
     p.span(Y - 2, 16, 22, HR);
     p.span(Y - 1, 18, 22, HR);
     p.span(Y, 19, 22, WHITE);
     p.span(Y + 1, 20, 21, EYE);
-    p.set(23, Y + 2, SKS);
+    p.set(22, Y + 1, SKH);
+    p.set(22, Y + 2, SKH);
     p.set(21, Y + 2, BL);
+    p.set(17, Y + 1, SKS);
+    p.set(17, Y + 2, SK);
+    p.strand([[13, Y - 3], [12, Y], [13, Y + 3]], HRS, 1);
+    p.line(15, Y + 2, 15, Y + 5, HRS);
+    p.set(14, Y + 5, HR);
   } else if (d === 'ne') {
     p.span(BODY_Y, 11, 20, TRIM);
     p.rect(20, Y, 2, 3, SK);
     p.set(21, Y, HR);
-    for (const x of [12, 15, 17]) p.line(x, Y - 3, x, Y + 5, HRS);
-    p.span(Y + 5, 11, 18, HRS);
+    p.strand([[14, Y - 4], [12, Y - 1], [12, Y + 2]], HRS, 1);
+    p.strand([[17, Y - 3], [18, Y], [17, Y + 4]], HRS, 1);
+    p.line(14, Y + 2, 14, Y + 5, HRS);
+    p.span(Y + 5, 11, 17, HRS);
+    p.set(12, Y + 5, HR);
+    p.set(15, Y + 5, HR);
   } else {
     p.span(BODY_Y, 10, 21, TRIM);
     p.rect(11, Y + 2, 10, 5, HR);
-    p.span(Y + 7, 12, 19, HRS);
-    for (const x of [13, 16, 18]) p.line(x, Y - 3, x, Y + 6, HRS);
-    p.set(12, Y + 7, TRIM);
-    p.set(15, Y + 7, TRIM);
-    p.set(19, Y + 7, TRIM);
+    // 发束从髻下向两侧散开，短折线保留大块白色受光面。
+    p.strand([[14, Y - 4], [12, Y - 1], [12, Y + 2]], HRS, 1);
+    p.strand([[18, Y - 3], [19, Y], [19, Y + 3]], HRS, 1);
+    p.line(15, Y + 2, 14, Y + 5, HRS);
+    p.line(17, Y + 4, 17, Y + 6, HRS);
+    p.span(Y + 6, 11, 20, HRS);
+    p.span(Y + 7, 13, 18, HRS);
+    p.set(12, Y + 6, HR);
+    p.set(15, Y + 6, HR);
+    p.set(18, Y + 6, HR);
+    p.set(16, Y + 7, HR);
   }
   drawBeard(p, d, pose.wavePhase);
   drawTopknot(p, d);
@@ -220,16 +253,24 @@ function drawBeard(p: PC, d: HeroDir, wavePhase: number) {
   if (d === 's' || d === 'se') {
     const cx = d === 's' ? 16 : 18;
     p.span(Y + 3, cx - 3, cx + 2, WHITE);
+    p.set(cx, Y + 3, SKS);
     const w = [3, 3, 3, 2, 2, 2, 1, 1, 0.5];
     w.forEach((hw, i) => {
       const y = Y + 4 + i;
       const sh = i >= 5 ? Math.round(bsw) : 0;
       p.span(y, Math.round(cx - hw) + sh, Math.round(cx + hw) - 1 + sh, i === w.length - 1 ? HRS : HR);
       if (hw >= 2) p.set(Math.round(cx + hw) - 1 + sh, y, HRS);
+      if (i === 0) p.span(y, cx - 2, cx + 1, HRS);
+      if (i >= 1 && i <= 3) p.set(cx - 2 + sh, y, WHITE);
+      if (i >= 3 && i <= 5) p.set(cx + sh, y, HRS);
     });
   } else if (d === 'e') {
     p.span(Y + 3, 19, 22, WHITE);
+    p.set(22, Y + 3, SKS);
     p.strand([[21, Y + 4], [21, Y + 8], [20 + bsw, Y + 11]], HR, 2);
+    p.line(22, Y + 4, 22, Y + 6, HRS);
+    p.line(20, Y + 5, 20, Y + 7, WHITE);
+    p.set(21, Y + 9, HRS);
     p.set(20 + Math.round(bsw), Y + 12, HRS);
   } else if (d === 'ne') {
     p.rect(21, Y + 3, 1, 4, HR);

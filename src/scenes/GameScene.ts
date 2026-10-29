@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { configureView } from '../config/view';
 import { armoredDamage } from '../game/damage';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
 import { phaseTerrain, LEVELS, DIFF, enemyPool, rollTier, type LevelDef } from '../config/levels';
@@ -173,6 +174,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    configureView(this, true);
     const L = this.levelDef;
     const save = loadSave();
     const meta = save.meta;
@@ -204,6 +206,18 @@ export class GameScene extends Phaser.Scene {
     const h = this.world.half + 56;
     this.cameras.main.setBounds(-h, -h, h * 2, h * 2);
     this.hdLook = hdLookAvailable(L.id) ? new HdLook(this) : null;
+    // 暂停时也会旋转手机；等相机算好新 worldView 后补绘环境，不推进战斗。
+    const redrawView = () => {
+      this.world.update(0.25);
+      this.hdLook?.update(0);
+      this.hazards.refreshView();
+    };
+    const resizeView = () => {
+      this.events.off(Phaser.Scenes.Events.RENDER, redrawView);
+      this.events.once(Phaser.Scenes.Events.RENDER, redrawView);
+    };
+    this.scale.on('resize', resizeView);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off('resize', resizeView));
 
     const d = L.duration;
     this.nextEliteAt = L.elites.first;

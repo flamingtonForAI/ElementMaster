@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { GameScene } from '../scenes/GameScene';
 import { TEMP_TERRAIN, type StormLook } from '../config/levels';
 import type { El } from '../config/elements';
-import { VIEW_W, VIEW_H } from '../config/view';
+import { VIEW_W, VIEW_H, cameraView } from '../config/view';
 import type { Enemy } from './Enemies';
 import { PLAYER_RADIUS } from './Player';
 import { audio } from '../audio/Audio';
@@ -699,17 +699,26 @@ export class Hazards {
     });
   }
 
+  /** 暂停期间旋转屏幕也要补齐风暴遮罩。 */
+  refreshView() { this.drawStorm(); }
+
   /** 视野遮罩跟着玩家，雪片（沙粒）在屏幕上顺着风斜飞；不刮的时候都藏起来 */
   private drawStorm() {
     const g = this.g;
     if (!g.levelDef.storm && !this.stormUntil) return;
     const k = this.storming();
+    if (!this.veil && (k <= 0 || !g.textures?.exists(`fx_storm_${this.look}`))) return;
+    const cam = g.cameras.main;
+    const { width, height } = cameraView(cam);
+    const ox = (cam.width - width) / 2;
+    const oy = (cam.height - height) / 2;
+    const storm = g.levelDef.storm;
+    if (k > 0 && storm && stormTexture(g, storm.look, storm.vision, width, height)) this.veil?.setTexture(`fx_storm_${storm.look}`);
     if (!this.veil) {
       const look = this.look;
-      if (k <= 0 || !g.textures?.exists(`fx_storm_${look}`)) return;
       this.veil = g.add.image(0, 0, `fx_storm_${look}`).setDepth(VEIL_DEPTH).setAlpha(0);
       for (let i = 0; i < FLAKES; i++)
-        this.flakes.push(g.add.image(Math.random() * VIEW_W, Math.random() * VIEW_H, look === 'snow' ? 'fx_snowflake' : 'fx_sandgrain').setScrollFactor(0).setDepth(VEIL_DEPTH + 1).setAlpha(0));
+        this.flakes.push(g.add.image(ox + Math.random() * width, oy + Math.random() * height, look === 'snow' ? 'fx_snowflake' : 'fx_sandgrain').setScrollFactor(0).setDepth(VEIL_DEPTH + 1).setAlpha(0));
     }
     const p = g.player;
     this.veil.setVisible(k > 0).setPosition(p.x, p.y - 6).setAlpha(k);
@@ -724,9 +733,8 @@ export class Hazards {
       const sp = 0.6 + (i % 5) * 0.12;
       let x = f.x + vx * sp * dt;
       let y = f.y + vy * sp * dt;
-      if (x < -8) x += VIEW_W + 16;
-      else if (x > VIEW_W + 8) x -= VIEW_W + 16;
-      if (y > VIEW_H + 8) y -= VIEW_H + 16;
+      x = ox - 8 + Phaser.Math.Wrap(x - ox + 8, 0, width + 16);
+      y = oy - 8 + Phaser.Math.Wrap(y - oy + 8, 0, height + 16);
       f.setPosition(x, y).setRotation(Math.atan2(vy, vx)).setAlpha(k * (0.45 + (i % 3) * 0.2));
     });
   }
@@ -736,16 +744,19 @@ export class Hazards {
 const VEIL_RGB: Record<StormLook, [string, string]> = { snow: ['150,166,184', '160,174,192'], sand: ['150,120,78', '162,130,84'] };
 
 /** 风暴的视野遮罩：中间留一圈看得清的，往外渐渐被风雪（风沙）吞掉（线性过滤，软边） */
-export function stormTexture(scene: Phaser.Scene, look: StormLook, vision: number) {
+export function stormTexture(scene: Phaser.Scene, look: StormLook, vision: number, width = VIEW_W, height = VIEW_H) {
   const tm = scene.textures;
   const key = `fx_storm_${look}`;
-  if (tm.exists(key)) return;
-  const c = document.createElement('canvas');
-  c.width = VEIL_W;
-  c.height = VEIL_H;
+  const old = tm.exists(key) ? tm.get(key) as Phaser.Textures.CanvasTexture : undefined;
+  const w = Math.max(VEIL_W, Math.ceil(width * 2));
+  const h = Math.max(VEIL_H, Math.ceil(height * 2));
+  if (old && old.width >= w && old.height >= h) return false;
+  const c = old?.canvas ?? document.createElement('canvas');
+  if (old) old.setSize(Math.max(w, old.width), Math.max(h, old.height));
+  else { c.width = w; c.height = h; }
   const ctx = c.getContext('2d')!;
-  const cx = VEIL_W / 2;
-  const cy = VEIL_H / 2;
+  const cx = c.width / 2;
+  const cy = c.height / 2;
   const [mid, edge] = VEIL_RGB[look];
   // 纵向压扁一点，和地面透视一致
   ctx.setTransform(1, 0, 0, 0.8, 0, cy * 0.2);
@@ -754,6 +765,8 @@ export function stormTexture(scene: Phaser.Scene, look: StormLook, vision: numbe
   grad.addColorStop(0.45, `rgba(${mid},0.55)`);
   grad.addColorStop(1, `rgba(${edge},0.93)`);
   ctx.fillStyle = grad;
-  ctx.fillRect(0, -VEIL_H, VEIL_W, VEIL_H * 3);
-  tm.addCanvas(key, c)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
+  ctx.fillRect(0, -c.height, c.width, c.height * 3);
+  if (old) old.refresh();
+  else tm.addCanvas(key, c)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
+  return true;
 }

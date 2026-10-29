@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { coverView, viewBounds, configureView } from '../config/view';
 import { CHARACTERS } from '../config/characters';
 import { LEVELS } from '../config/levels';
 import { EL_INFO, GEN_ORDER, SAY_ORDER } from '../config/elements';
@@ -33,12 +34,13 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    configureView(this);
     const save = loadSave();
     this.levelSel = LEVELS.reduce((selected, lv, i) => lv.available && lv.id <= save.unlocked ? i : selected, 0);
-    this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey()).setOrigin(0);
-    this.clouds = this.add.tileSprite(0, 0, 640, 360, getVistaCloudKey()).setOrigin(0).setAlpha(0.28);
-    this.fg = this.add.tileSprite(0, 0, 640, 360, getVistaFgKey()).setOrigin(0).setAlpha(0.65);
-    this.add.rectangle(0, 0, 640, 360, 0x07050b, getTodPreset().veilAlpha + 0.16).setOrigin(0);
+    coverView(this, this.add.tileSprite(0, 0, 640, 360, getVistaTextureKey()).setOrigin(0), true);
+    this.clouds = coverView(this, this.add.tileSprite(0, 0, 640, 360, getVistaCloudKey()).setOrigin(0), true).setAlpha(0.28);
+    this.fg = coverView(this, this.add.tileSprite(0, 0, 640, 360, getVistaFgKey()).setOrigin(0), true).setAlpha(0.65);
+    coverView(this, this.add.rectangle(0, 0, 640, 360, 0x07050b, getTodPreset().veilAlpha + 0.16).setOrigin(0));
 
     // 标题：五个元素字环绕
     label(this, 320, 18, '五行师', '#f4eee0', 48).setOrigin(0.5, 0);
@@ -59,7 +61,7 @@ export class MenuScene extends Phaser.Scene {
 
   update(t: number, dms: number) {
     this.clouds.tilePositionX += dms * 0.004;
-    this.fg.x = Math.round(Math.sin(t * 0.0012) * 1.5);
+    this.fg.x = viewBounds().x - 2 + Math.round(Math.sin(t * 0.0012) * 1.5);
   }
 
   private render() {
@@ -93,7 +95,7 @@ export class MenuScene extends Phaser.Scene {
       });
       L.add(bg);
       if (c.available) {
-        const sp = this.add.sprite(x + TW / 2, 110 + TW / 2, `hero_${c.id}`, 0).setScale(2);
+        const sp = this.add.sprite(x + TW / 2, 110 + TW / 2, `hero_${c.id}`, 0).setDisplaySize(64, 64);
         sp.play(`${c.id}_s_idle`);
         L.add(sp);
       } else {

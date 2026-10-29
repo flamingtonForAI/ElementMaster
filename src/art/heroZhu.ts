@@ -5,7 +5,7 @@ import { HERO_DIRS, HERO_FRAMES_PER_DIR, type HeroDir } from './heroXiao';
 // 符师·朱砂。剪影和剑客拉开：剑客是宽肩直身 + 斜背长剑；符师是高道冠 + 长簪流苏、
 // 窄肩 A 字道袍拖到脚面、两侧下垂的大袖，身边三张黄符绕身旋转。头比剑客低 2 像素，留出高冠。
 
-const SK = 0xf5cba4, SKS = 0xd4957a, BL = 0xf08c84;
+const SK = 0xf5cba4, SKS = 0xd4957a, SKH = 0xffdfba, BL = 0xf08c84;
 const HR = 0x20192b, HRH = 0x564873;
 const RB = 0xd1382e, RBS = 0x99202c, RBD = 0x661426, RBH = 0xf76d47;
 const TRIM = 0x29121e;
@@ -72,20 +72,30 @@ function drawRobe(p: PC, d: HeroDir, pose: Pose) {
     if (hw > 4) p.set(x0 + 1, y, RBH);
     p.set(x1, y, RBD);
     if (hw > 4) p.set(x1 - 1, y, RBS);
+    if (i >= 6 && i < half.length - 2) {
+      p.set(cx - 3 + sh, y, RBH);
+      p.span(y, cx + 2 + sh, cx + 3 + sh, RBS);
+      if (i >= 8) p.set(cx + 4 + sh, y, RBD);
+    }
     if (i === half.length - 2) {
-      p.span(y, x0, x1, GDH);
-      p.set(x1, y, GDS);
+      p.span(y, x0, x1, GD);
+      p.span(y, x0 + 1, cx - 2 + sh, GDH);
+      p.span(y, cx + 2 + sh, cx + 3 + sh, GDS);
+      p.span(y, x1 - 1, x1, GDS);
     }
     if (i === half.length - 1) p.span(y, x0, x1, TRIM);
   }
   // 腰封与玉佩
   const bw = d === 'e' ? 3 : 4;
   p.span(21, cx - bw, cx + bw - 1, TRIM);
-  p.span(22, cx - bw, cx + bw - 1, GDH);
+  p.span(22, cx - bw, cx + bw - 1, GD);
+  p.span(22, cx - bw, cx - 2, GDH);
+  p.set(cx + bw - 1, 22, GDS);
   if (d === 's' || d === 'se') {
     const o = d === 's' ? 0 : 1;
     p.line(14 + o, BODY_Y, 16 + o, BODY_Y + 2, INH);
     p.line(18 + o, BODY_Y, 16 + o, BODY_Y + 2, IN);
+    p.line(17 + o, BODY_Y + 2, 18 + o, BODY_Y + 3, RBD);
     p.set(16 + o, BODY_Y, SK);
     p.rect(15 + o, 21, 2, 2, GDH);
     p.set(16 + o, 23, 0x50fa7b);
@@ -111,7 +121,13 @@ function sleeve(p: PC, x: number, dy: number, mirror: boolean, wave1: number) {
     const b = (mirror ? x + w - 1 : x) + swx;
     const cuff = i === rows.length - 1;
     p.span(y, a, b, cuff ? INH : i === 5 ? GD : RB);
-    p.set(mirror ? b : a, y, cuff ? INS : RBS);
+    p.set(b, y, cuff ? INS : i === 5 ? GDS : RBD);
+    if (i > 0 && i < 5) {
+      p.set(a, y, RBH);
+      if (w >= 5) p.set(b - 1, y, RBS);
+      if (i === 4) p.set(a + 1, y, RBS);
+    }
+    if (i === 5) p.set(a, y, GDH);
   });
   const hy = BODY_Y + 1 + rows.length + dy;
   p.set((mirror ? x + 1 : x - 1) + Math.round(wave1 * 0.5), hy, SK);
@@ -157,7 +173,8 @@ function drawHairFront(p: PC, d: HeroDir, wavePhase: number) {
     p.rect(22, 11, 1, 6, HR);
     p.set(12, 19, HRH);
   } else if (d === 'e') {
-    p.rect(21, 11, 1, 5, HR);
+    // 侧鬓落在耳前，留出眼睛到鼻尖之间的完整颊面。
+    p.rect(16, 11, 1, 5, HR);
   } else if (d === 'n') {
     for (let y = 11; y <= 25; y++) {
       const hw = y < 20 ? 5 : 5 - Math.floor((y - 19) / 2);
@@ -223,8 +240,9 @@ function drawHead(p: PC, d: HeroDir, pose: Pose) {
       p.rect(20, Y + 1, 1, 2, EYE);
       p.set(19, Y + 1, INH);
     }
-    p.set(23, Y + 2, SK);
-    p.set(21, Y + 3, BL);
+    p.set(22, Y + 1, SKH);
+    p.set(22, Y + 2, SKH);
+    p.set(21, Y + 3, SKS);
   } else if (d === 'ne') {
     p.rect(20, Y, 2, 4, SK);
     p.set(20, Y + 3, SKS);

@@ -78,3 +78,20 @@ print(','.join(m))
 `], { encoding: 'utf8' });
   assert.equal(out.trim(), 'pp_golem,pp_giant');
 });
+
+test('毕方拍翼留出完整轮廓，颈胸位置不随脚尖上下漂移', () => {
+  const frames = captureTextures().get('boss_bifang').frames;
+  const centers = frames.map(({ w, h, data }) => {
+    let sy = 0, n = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (!data[i + 3]) continue;
+      assert.ok(x > 0 && x < w - 1 && y > 0 && y < h - 1, '翅尖 / 描边不能碰到画布边界');
+      const [r, g, b] = data.slice(i, i + 3);
+      if (Math.min(r, g, b) > 150 && Math.abs(r - g) < 45 && r >= b) { sy += y; n++; }
+    }
+    assert.ok(n > 0, '应保留浅色颈胸');
+    return sy / n;
+  });
+  assert.ok(Math.max(...centers) - Math.min(...centers) < 2, '身体应固定，拍翼由翅膀和腿的姿势表现');
+});

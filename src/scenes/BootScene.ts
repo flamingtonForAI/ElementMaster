@@ -1,10 +1,5 @@
 import Phaser from 'phaser';
-import { buildHeroXiao } from '../art/heroXiao';
-import { buildHeroZhu } from '../art/heroZhu';
-import { buildHeroRuan } from '../art/heroRuan';
-import { buildHeroQingdai } from '../art/heroQingdai';
-import { buildHeroMoheng } from '../art/heroMoheng';
-import { buildHeroXuanyi } from '../art/heroXuanyi';
+import { preloadHeroes, buildHeroes } from '../art/heroes';
 import { buildPuppetArt } from '../art/puppetArt';
 import { buildEnemies } from '../art/enemyArt';
 import { preloadEnemySheets } from '../art/enemySheets';
@@ -19,6 +14,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
+    preloadHeroes(this);
     preloadEnemySheets(this);
     for (const id of Object.keys(PORTRAITS)) {
       this.load.image(`portrait_${id}`, `assets/portraits/${id}.png`);
@@ -33,12 +29,7 @@ export class BootScene extends Phaser.Scene {
     audio.init(this.game);
     buildFx(this);
     buildVista(this);
-    buildHeroXiao(this);
-    buildHeroZhu(this);
-    buildHeroRuan(this);
-    buildHeroQingdai(this);
-    buildHeroMoheng(this);
-    buildHeroXuanyi(this);
+    buildHeroes(this);
     buildPuppetArt(this);
     buildEnemies(this);
     buildPortraits(this);

@@ -7,7 +7,7 @@ import { HERO_DIRS, HERO_FRAMES_PER_DIR, type HeroDir } from './heroXiao';
 // 裤腿打绑腿、草鞋；腰挂墨斗，背上一把木矩尺；右手提一副十字木操纵架，灵丝吊着一具小木偶——这是剪影标志。
 
 // 土系褐色：比旧版更暗、更朴素；高光偏暖麦黄，暗部偏深茶褐
-const SK = 0xf4cfb0, SKS = 0xd29278, BL = 0xe89a8c;
+const SK = 0xf4cfb0, SKS = 0xd29278, SKH = 0xffe0bd, BL = 0xe89a8c;
 const HR = 0x261f30;
 const CAP = 0x2a2432, CAPH = 0x50485e;
 const RB = 0xa8763c, RBS = 0x7a5228, RBH = 0xcc9a56, RBD = 0x56381c;
@@ -91,8 +91,12 @@ function drawRobe(p: PC, d: HeroDir, pose: Pose) {
     p.set(x0, y, RBH);
     p.set(x1, y, RBD);
     if (hw > 3) p.set(x1 - 1, y, RBS);
-    if (i >= 5 && i < half.length - 2 && hw > 4) p.set(x0 + 2, y, RBS);
-    if (i === half.length - 2) p.span(y, x0 + 1, x1 - 1, RBS);
+    if (i >= 4 && i < half.length - 1) {
+      p.set(cx - 3 + sh, y, RBH);
+      p.set(cx + 2 + sh, y, RBS);
+      if (i >= 6) p.set(cx + 3 + sh, y, RBD);
+    }
+    if (i === half.length - 2) p.span(y, x1 - 2, x1 - 1, RBS);
     if (i === half.length - 1) p.span(y, x0, x1, RBD);
   }
   // 交领：右衽，领口露米白中衣
@@ -102,6 +106,7 @@ function drawRobe(p: PC, d: HeroDir, pose: Pose) {
     p.set(16 + o, BODY_Y, IN);
     p.set(16 + o, BODY_Y + 1, IN);
     p.line(14 + o, BODY_Y, 17 + o, BODY_Y + 3, RBD);
+    p.set(14 + o, BODY_Y + 1, RBH);
   } else if (d === 'e') {
     p.set(18, BODY_Y, IN);
     p.line(18, BODY_Y + 1, 17, BODY_Y + 3, RBD);
@@ -156,8 +161,12 @@ function drawSquare(p: PC, d: HeroDir, over: boolean) {
 function drawArms(p: PC, d: HeroDir, pose: Pose) {
   const sw = Math.round(pose.swing);
   if (d === 'e') {
-    p.rect(14 - sw, BODY_Y + 1, 3, 4, RBS);
-    p.rect(13 - sw, BODY_Y + 4, 4, 2, RBS);
+    p.rect(14 - sw, BODY_Y + 1, 3, 4, RB);
+    p.line(14 - sw, BODY_Y + 2, 14 - sw, BODY_Y + 3, RBH);
+    p.line(16 - sw, BODY_Y + 2, 16 - sw, BODY_Y + 4, RBS);
+    p.span(BODY_Y + 4, 13 - sw, 16 - sw, RB);
+    p.span(BODY_Y + 5, 13 - sw, 16 - sw, RBD);
+    p.set(13 - sw, BODY_Y + 4, RBH);
     p.set(14 - sw, BODY_Y + 6, SK);
     return;
   }
@@ -166,10 +175,13 @@ function drawArms(p: PC, d: HeroDir, pose: Pose) {
   const y0 = BODY_Y + 1 + sw;
   p.rect(lx, y0, 3, 3, RB);
   p.set(lx + 2, y0, RBS);
+  p.line(lx, y0 + 1, lx, y0 + 2, RBH);
+  p.set(lx + 2, y0 + 2, RBD);
   p.rect(lx - 1, y0 + 3, 4, 2, RB);
   p.span(y0 + 4, lx - 1, lx + 2, RBS);
   p.set(lx - 1, y0 + 3, RBH);
   p.set(lx + 1, y0 + 5, SK);
+  p.set(lx + 2, y0 + 5, SKS);
 }
 
 function drawHead(p: PC, d: HeroDir, pose: Pose) {
@@ -231,7 +243,9 @@ function drawHead(p: PC, d: HeroDir, pose: Pose) {
     }
     p.set(19, Y, BROW);
     p.set(20, Y - 1, BROW);
-    p.set(21, Y + 2, SK);
+    p.set(21, Y + 1, SKH);
+    p.set(21, Y + 2, SKH);
+    p.set(21, Y + 3, SKS);
     p.set(20, Y + 3, MUS);
     p.set(20, Y + 5, HR);
   } else if (d === 'ne') {
@@ -282,33 +296,40 @@ function cross(p: PC, x: number, y: number, tilt: number) {
   p.line(x - 3, y - tilt, x + 3, y + tilt, WD);
   p.line(x - 3, y + 1 - tilt, x + 3, y + 1 + tilt, WDS);
   p.set(x - 3, y - tilt, WDH);
+  p.set(x - 2, y - tilt, WDH);
   p.line(x, y - 2, x, y + 2, WD);
   p.set(x, y - 2, WDH);
   p.set(x, y + 2, WDS);
+  p.set(x, y, ROPE);
 }
 
 /** 吊在灵丝下的小木偶：圆头、方身、两点手脚；(cx, cy) 是头顶 */
 function doll(p: PC, cx: number, cy: number) {
   cx = Math.round(cx);
   cy = Math.round(cy);
-  // 偶身用比褐衣浅一档的白木，头顶受光
-  p.rect(cx - 1, cy, 2, 2, DOLL);
+  // 白木头与深色关节分成独立色簇，双脚之间留一像素空隙。
+  p.rect(cx - 1, cy, 3, 2, DOLL);
   p.set(cx - 1, cy, DOLLH);
-  p.rect(cx - 1, cy + 2, 2, 2, WDH);
-  p.set(cx, cy + 3, WD);
+  p.set(cx + 1, cy + 1, WDS);
+  p.set(cx, cy + 2, WDS);
+  p.span(cy + 3, cx - 1, cx + 1, WDH);
+  p.set(cx, cy + 3, DOLL);
   p.set(cx - 2, cy + 2, DOLL);
-  p.set(cx + 1, cy + 2, DOLL);
+  p.set(cx + 2, cy + 2, DOLL);
   p.set(cx - 1, cy + 4, WD);
-  p.set(cx, cy + 4, WD);
+  p.set(cx + 1, cy + 4, WD);
+  p.set(cx - 1, cy + 5, WDS);
+  p.set(cx + 1, cy + 5, WDS);
 }
 
 /** 灵丝从横杆两端和中间连到木偶的手和头，木偶吊在 len 深处 */
 function strings(p: PC, x: number, y: number, tilt: number, sway: number, col: number, len: number, glow = false) {
   x = Math.round(x);
   y = Math.round(y);
-  const cx = x + 1 + sway;
-  const cy = Math.min(25, y + len - 3);
-  const lines: [number, number, number, number][] = [[x - 3, y - tilt, cx - 2, cy + 2], [x, y + 2, cx, cy], [x + 3, y + tilt, cx + 1, cy + 2]];
+  // 出招时也为木偶和描边留出边距，避免侧向动作把偶身甩出帧。
+  const cx = Math.max(3, Math.min(p.w - 4, x + 1 + sway));
+  const cy = Math.min(p.h - 7 - p.oy, y + len - 3);
+  const lines: [number, number, number, number][] = [[x - 3, y - tilt, cx - 2, cy + 2], [x, y + 2, cx, cy], [x + 3, y + tilt, cx + 2, cy + 2]];
   // 灵丝用半透明画，外描边只套不透明像素，细线不会被描成一排黑白梳齿
   for (const [sx, sy, ex, ey] of lines) {
     if (glow) p.line(sx, sy + 1, ex, ey, GLOW, 2, 95);
@@ -348,15 +369,17 @@ function drawRig(p: PC, d: HeroDir, pose: Pose) {
   const tilt = taut ? (Math.cos(theta) >= 0 ? -1 : 1) : 0;
   const len = [9, 11, 13, 12, 10, 9][k];
   const sway = taut ? Math.round(5 * Math.cos(theta)) : 0;
-  strings(p, hx + 1, hy - 2, tilt, sway, taut ? GLOW : STR, len, taut);
-  cross(p, hx + 1, hy - 2, tilt);
+  const tx = Math.min(p.w - 5, hx + 1);
+  const ty = Math.max(4 - p.oy, hy - 2);
+  strings(p, tx, ty, tilt, sway, taut ? GLOW : STR, len, taut);
+  cross(p, tx, ty, tilt);
   if (k === 2 || k === 3) {
     // 木偶两侧迸出金光
-    const ex = Math.round(hx + 2 + sway);
-    const ey = Math.min(25, Math.round(hy - 2 + len - 3)) + 2;
+    const ex = Math.min(p.w - 4, Math.round(tx + 1 + sway));
+    const ey = Math.min(p.h - 7 - p.oy, Math.round(ty + len - 3)) + 2;
     p.set(ex - 3, ey, GLOW);
     p.set(ex + 3, ey, GLOW);
-    p.set(ex, ey + 4, 0xfff6d0);
+    p.set(ex, ey + 3, 0xfff6d0);
   }
 }
 
