@@ -1,7 +1,8 @@
 import type { El } from './elements';
 
-export type SkillId =
-  | 'slash' | 'talisman' | 'crossbow' | 'duwu' | 'puppet'
+export type UltimateId = 'wanjian' | 'senluo' | 'canghai' | 'tianhuo' | 'kunlun';
+export type SkillId = UltimateId
+  | 'slash' | 'talisman' | 'crossbow' | 'duwu' | 'puppet' | 'fuchen'
   | 'flysword' | 'fireball' | 'leaf' | 'waterdragon' | 'stonespike'
   | 'jinzhen' | 'lihuo' | 'tengfu' | 'hanbing' | 'luoshi';
 export type PassiveId =
@@ -15,12 +16,15 @@ export interface SkillDef {
   id: SkillId;
   name: string;
   glyph: string;
-  el: El;
+  /** null 为无属性，不参与五行生克、灵根及元素加成。 */
+  el: El | null;
   maxLv: number;
   /** 命中时触发本元素异常的基础几率；水龙、寒冰环必定迟缓，地脉刺专注击退，落石必定施加一阶眩晕 */
   proc: number;
   /** 专属术只出现在对应角色的升级池 */
   exclusive?: string;
+  /** 最右大格专用；自带术和十项普通术/心法全部满级后解锁。 */
+  ultimate?: boolean;
   /** desc[0] 是习得时的描述，desc[n] 是升到 n+1 级的变化 */
   desc: string[];
   stats: (lv: number) => Stats;
@@ -41,7 +45,49 @@ export interface PassiveDef {
 
 const at = (arr: number[], lv: number) => arr[Math.min(arr.length, lv) - 1];
 
+/** 连续两次大招至少相隔十秒战斗时间，包含退射等冷却计时加速。 */
+export const ULTIMATE_MIN_CD = 10;
+/** 通用减冷却最多 75%；剑心、退射仍按自身规则乘算，大招另有十秒下限。 */
+export const MIN_CD_MULT = 0.25;
+
 export const SKILLS: Record<SkillId, SkillDef> = {
+  fuchen: {
+    id: 'fuchen', name: '清风拂尘', glyph: '尘', el: null, maxLv: 8, proc: 0, exclusive: 'xuanyi',
+    desc: ['拂尘自动扫向近敌，前方扇形尘丝造成伤害并击退', '伤害提高，扫击距离增加', '扫击扇面扩大，冷却缩短', '伤害提高，击退增强', '扫击扇面扩大，冷却缩短', '伤害提高，距离增加，冷却缩短', '扫击角度与距离扩大', '伤害大幅提高，扇面扩大、击退增强，冷却缩短'],
+    stats: (lv) => ({
+      dmg: at([18, 22, 22, 28, 28, 34, 34, 44], lv),
+      // 自动瞄准、无属性的优势换取较窄扇面；距离略长于剑气，低于全周冰环。
+      range: at([48, 50, 54, 54, 58, 62, 66, 68], lv),
+      arc: at([120, 120, 130, 130, 140, 140, 150, 160], lv),
+      cd: at([1.25, 1.25, 1.2, 1.2, 1.15, 1.1, 1.1, 1.05], lv),
+      kb: at([30, 30, 30, 40, 40, 40, 40, 50], lv),
+    }),
+  },
+  wanjian: {
+    id: 'wanjian', name: '万剑归宗', glyph: '宗', el: 'metal', maxLv: 1, proc: 1, ultimate: true,
+    desc: ['三轮剑阵横扫周围大范围敌人，每轮造成 120 金伤并积累流血；固定 1 级；基础冷却 15 秒，加成后最低 10 秒'],
+    stats: () => ({ dmg: 120, radius: 260, count: 3, interval: 0.45, cd: 15 }),
+  },
+  senluo: {
+    id: 'senluo', name: '森罗万象', glyph: '森', el: 'wood', maxLv: 1, proc: 1, ultimate: true,
+    desc: ['四次森罗脉动，每次造成 60 木伤、施毒并缠身 2 秒；固定 1 级；基础冷却 15 秒，加成后最低 10 秒'],
+    stats: () => ({ dmg: 60, radius: 230, count: 4, interval: 0.8, root: 2, cd: 15 }),
+  },
+  canghai: {
+    id: 'canghai', name: '沧海归墟', glyph: '沧', el: 'water', maxLv: 1, proc: 0, ultimate: true,
+    desc: ['三重寒潮，每重造成 100 水伤、迟缓 3 秒并积累寒意，可进阶冰冻；固定 1 级；基础冷却 15 秒，加成后最低 10 秒'],
+    stats: () => ({ dmg: 100, radius: 280, count: 3, interval: 0.65, slow: 3, cd: 15 }),
+  },
+  tianhuo: {
+    id: 'tianhuo', name: '天火焚世', glyph: '焚', el: 'fire', maxLv: 1, proc: 1, ultimate: true,
+    desc: ['两次天火爆发，每次造成 170 火伤并点燃周围大范围敌人；固定 1 级；基础冷却 15 秒，加成后最低 10 秒'],
+    stats: () => ({ dmg: 170, radius: 260, count: 2, interval: 0.9, cd: 15 }),
+  },
+  kunlun: {
+    id: 'kunlun', name: '昆仑镇岳', glyph: '岳', el: 'earth', maxLv: 1, proc: 0, ultimate: true,
+    desc: ['两次山岳震荡，每次造成 160 土伤并击退、定身 2.5 秒（Boss 改迟缓）；固定 1 级；基础冷却 15 秒，加成后最低 10 秒'],
+    stats: () => ({ dmg: 160, radius: 240, count: 2, interval: 0.8, root: 2.5, kb: 90, cd: 15 }),
+  },
   slash: {
     id: 'slash', name: '剑气斩', glyph: '斩', el: 'metal', maxLv: 8, proc: 0.3, exclusive: 'xiao',
     desc: ['向面朝方向挥出扇形剑气', '伤害提高', '范围扩大，冷却缩短', '伤害提高，冷却缩短', '前后双斩，双向各斩出一道剑气波', '伤害提高，范围扩大，冷却缩短', '范围扩大', '伤害大幅提高，范围扩大，冷却缩短'],
@@ -120,14 +166,14 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     desc: ['慢速高抛火球，砸向敌人最密的地方，大范围爆炸', '伤害提高', '爆炸范围扩大', '火球 +1', '伤害提高', '爆炸范围扩大', '火球 +1', '伤害大幅提高，范围扩大'],
     stats: (lv) => ({
       dmg: at([24, 29, 29, 29, 36, 36, 36, 44], lv),
-      radius: at([32, 32, 37, 37, 37, 42, 42, 46], lv),
+      radius: at([38, 38, 46, 46, 46, 52, 52, 58], lv),
       count: at([1, 1, 1, 2, 2, 2, 3, 3], lv),
       cd: at([2.2, 2.2, 2.2, 2.2, 2.15, 2.1, 2.05, 2.0], lv),
     }),
   },
   leaf: {
     id: 'leaf', name: '飞叶', glyph: '叶', el: 'wood', maxLv: 8, proc: 0.25,
-    desc: ['飞叶在敌人之间弹射', '弹射 +1', '伤害提高', '飞叶 +1', '弹射 +2', '伤害提高', '冷却缩短', '飞叶 +1，伤害提高'],
+    desc: ['飞叶追向近敌，命中后弹向其他敌人，同一片不重复命中', '弹射 +1', '伤害提高', '飞叶 +1', '弹射 +2', '伤害提高', '冷却缩短', '飞叶 +1，伤害提高'],
     stats: (lv) => ({
       dmg: at([8, 8, 11, 11, 11, 14, 14, 17], lv),
       bounces: at([3, 4, 4, 4, 6, 6, 6, 6], lv),
@@ -137,12 +183,13 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   },
   waterdragon: {
     id: 'waterdragon', name: '水龙', glyph: '龙', el: 'water', maxLv: 8, proc: 0,
-    desc: ['水龙贯穿一线敌人并减速', '伤害提高', '水龙变粗', '减速延长', '伤害提高', '水龙 +1', '水龙变粗，伤害提高', '冷却缩短，伤害提高'],
+    desc: ['水龙贯穿一线敌人并减速', '伤害提高', '水龙变粗', '减速延长', '伤害提高', '双龙并行，通路加宽；每条造成单龙 75% 伤害', '水龙变粗，伤害提高', '冷却缩短，伤害提高'],
     stats: (lv) => ({
       dmg: at([16, 21, 21, 21, 27, 27, 33, 38], lv),
       width: at([7, 7, 9, 9, 9, 9, 11, 11], lv),
       slow: at([1.2, 1.2, 1.2, 2.0, 2.0, 2.0, 2.0, 2.0], lv),
       count: at([1, 1, 1, 1, 1, 2, 2, 2], lv),
+      twinDmg: 0.75,
       cd: at([2.4, 2.4, 2.3, 2.2, 2.1, 2.0, 1.9, 1.6], lv),
     }),
   },
@@ -181,20 +228,25 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     stats: (lv) => ({
       dmg: at([12, 12, 15, 15, 18, 20, 20, 24], lv),
       count: at([1, 2, 2, 3, 3, 3, 4, 5], lv),
-      orbit: at([40, 40, 44, 44, 48, 48, 52, 56], lv),
-      /** 转一圈的秒数，吃冷却缩短 */
+      orbit: at([48, 48, 52, 52, 58, 58, 64, 68], lv),
+      /** 纵向稍压扁；火团碰撞半径与轨道同步吃范围加成。 */
+      flat: 0.8,
+      hitRadius: 9,
+      /** 全部火团共享单敌命中间隔，不因火团数或转速重复叠伤。 */
+      hitCd: 0.35,
+      /** 转一圈的秒数，吃冷却缩短，最短不低于单敌命中间隔。 */
       period: at([1.8, 1.8, 1.7, 1.7, 1.6, 1.6, 1.5, 1.4], lv),
       cd: 1,
     }),
   },
   tengfu: {
     id: 'tengfu', name: '藤缚', glyph: '藤', el: 'wood', maxLv: 8, proc: 0.2,
-    desc: ['敌人脚下长出藤蔓，缠住的敌人迟缓并持续受伤', '伤害提高', '藤蔓 +1', '伤害提高，范围扩大', '冷却缩短', '伤害提高，藤蔓 +1', '范围扩大，冷却缩短', '伤害大幅提高，范围扩大；刚长出时把敌人定住'],
+    desc: ['敌人脚下长出藤蔓，持续伤害并迟缓；重叠区域不叠伤', '伤害提高', '藤蔓 +1', '伤害提高，范围扩大', '冷却缩短', '伤害提高，藤蔓 +1', '范围扩大，冷却缩短', '伤害大幅提高，范围扩大；刚长出时把敌人定住'],
     stats: (lv) => ({
       /** 每 0.5 秒一跳 */
       dmg: at([8, 10, 10, 12, 12, 15, 15, 18], lv),
       count: at([1, 1, 2, 2, 2, 3, 3, 3], lv),
-      radius: at([22, 22, 22, 26, 26, 26, 30, 34], lv),
+      radius: at([26, 26, 26, 30, 30, 30, 34, 38], lv),
       dur: 3,
       root: lv >= 8 ? 0.5 : 0,
       cd: at([2.4, 2.4, 2.4, 2.4, 2.2, 2.2, 2.0, 2.0], lv),
@@ -240,5 +292,10 @@ export const PASSIVES: Record<PassiveId, PassiveDef> = {
   juling: { id: 'juling', name: '聚灵诀', glyph: '聚', el: null, maxLv: 5, desc: '拾取范围 +25%，经验 +5%' },
 };
 
-export const SKILL_SLOTS = 6;
-export const PASSIVE_SLOTS = 6;
+/** 总槽位数：独立自带术 + 初始六个普通格；修炼五级再加四普通格及一个大招格。 */
+export const SKILL_SLOTS = 7;
+export const NORMAL_SKILL_SLOTS = 10;
+export const MAX_SKILL_SLOTS = 12;
+export const ULTIMATES: Record<El, UltimateId> = {
+  metal: 'wanjian', wood: 'senluo', water: 'canghai', fire: 'tianhuo', earth: 'kunlun',
+};

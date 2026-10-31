@@ -51,6 +51,20 @@ export const TALISMANS: Record<TalismanId, { name: string; color: number; css: s
   dun: { name: '遁符', color: 0xe0b04a, css: '#ffd23f', w: 1 },
 };
 
+/** 幸运加成为相对增幅；五级 +100%。基础符箓也有足够长的救场窗口。 */
+export function talismanEffects(luck = 0, level = 1) {
+  const bonus = Math.max(0, Math.min(1, luck));
+  const power = 1 + bonus;
+  return {
+    chance: ITEM_SPAWN.talismanChance * power,
+    maxOnMap: ITEM_SPAWN.max.talisman + Math.floor(bonus * 2),
+    duration: 6 * power,
+    damage: (100 + level * 10) * power,
+    eliteDamage: 0.5,
+    speed: 1 + 0.5 * power,
+  };
+}
+
 export function pickWeighted<T extends string>(list: { id: T; w: number }[], R: () => number = Math.random): T {
   const total = list.reduce((s, e) => s + e.w, 0);
   let r = R() * total;

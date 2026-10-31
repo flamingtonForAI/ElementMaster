@@ -588,7 +588,7 @@ function killScene() {
   return { g, mgr, spawned, run: () => tasks.splice(0).forEach((fn) => fn()) };
 }
 const sprite = () => ({ flipX: false, setVisible() { return this; }, setActive() { return this; }, setScale() { return this; }, anims: { stop() {} } });
-const mob = (id, o = {}) => ({ alive: true, def: ENEMIES[id], x: 10, y: 20, hp: 0, maxHp: 100, xp: 2, elite: false, boss: !!ENEMIES[id].boss, lastEl: null, rose: false, sprite: sprite(), glyph: null, ...o });
+const mob = (id, o = {}) => ({ alive: true, attackGrowth: 1, auras: [], def: ENEMIES[id], x: 10, y: 20, hp: 0, maxHp: 100, xp: 2, elite: false, boss: !!ENEMIES[id].boss, lastEl: null, rose: false, sprite: sprite(), glyph: null, ...o });
 
 test('残兵：非火系击杀 5 秒后原地复活且不再掉经验；火系击杀、精英不复活', () => {
   const { mgr, spawned, run } = killScene();
@@ -635,7 +635,7 @@ test('甩开的普通怪留在后方，900 外无奖励回收，精英和 Boss �
   });
   const behind = make(600, 0);
   const below = make(0, 600);
-  const far = make(901, 0, { aura: visual(), glyph: visual() });
+  const far = make(901, 0, { auras: [visual()], glyph: visual() });
   const elite = make(-1000, 0, { elite: true });
   const boss = make(0, -1000, { boss: true });
   mgr.list.push(behind, below, far, elite, boss);
@@ -643,7 +643,7 @@ test('甩开的普通怪留在后方，900 外无奖励回收，精英和 Boss �
   mgr.update(0);
   assert.deepEqual([behind.x, behind.y, below.x, below.y], [600, 0, 0, 600]);
   assert.equal(far.alive, false);
-  assert.equal(far.aura, null);
+  assert.deepEqual(far.auras, []);
   assert.equal(far.glyph, null);
   assert.equal(mgr.count, 4);
   assert.ok(mgr.list.includes(elite) && mgr.list.includes(boss));
@@ -1201,13 +1201,12 @@ test('抛射：火精落地留余火，鱼妖留水洼，落点里的玩家受�
   assert.deepEqual(LEVELS.find((l) => l.id === 2).tricks?.zhangchan, undefined);
 });
 
-test('列阵、护词缀：周围的妖物护甲 +2（不含自己和 Boss），出圈后过期；护甲进伤害结算', () => {
+test('列阵：周围的妖物护甲 +2（不含自己和 Boss），出圈后过期；护甲进伤害结算', () => {
   const { g, mgr } = trickScene(5);
   const leader = trickMob('tiejia', 5, { x: 0, y: 0 });
   const near = trickMob('canbing', 5, { x: 20, y: 0, guardUntil: 0, guardArmor: 0 });
   const far = trickMob('canbing', 5, { x: 300, y: 0, guardUntil: 0, guardArmor: 0 });
   const boss = trickMob('xingtian', 5, { x: 10, y: 0, guardUntil: 0, guardArmor: 0 });
-  leader.aura = {};
   mgr.list.push(leader, near, far, boss);
   for (const e of mgr.list) mgr.grid.insert(e);
   mgr.updateAuras(1);
@@ -1509,7 +1508,7 @@ test('寒词缀第 7 关起才抽得到，圈里的玩家按 tick 迟缓', () =>
   for (let i = 0; i < 20; i++) assert.ok(!trickScene(6).mgr.rollAffixes(3).includes('frost'));
   assert.ok(trickScene(7).mgr.rollAffixes(4).includes('frost'));
   const { g, mgr, inflicts } = trickScene(7);
-  const e = trickMob('aoxie', 7, { x: 20, y: 0, affixes: ['frost'], affixTick: 0, frostTick: 0, aura: {} });
+  const e = trickMob('aoxie', 7, { x: 20, y: 0, affixes: ['frost'], affixTick: 0, frostTick: 0 });
   mgr.list.push(e);
   mgr.updateAuras(1);
   mgr.updateAuras(1);
@@ -1909,7 +1908,7 @@ test('评审回归：冰爆按预警的压扁椭圆判定，圈外不受伤；�
 
 test('评审回归：瘴、寒同时带时各自计时，重叠范围里两种都按 tick 结算', () => {
   const { g, mgr, inflicts } = trickScene(7);
-  const e = trickMob('aoxie', 7, { x: 10, y: 0, affixes: ['miasma', 'frost'], affixTick: 0, frostTick: 0, aura: {} });
+  const e = trickMob('aoxie', 7, { x: 10, y: 0, affixes: ['miasma', 'frost'], affixTick: 0, frostTick: 0 });
   mgr.list.push(e);
   const random = Math.random;
   Math.random = () => 0;
@@ -2520,9 +2519,9 @@ test('增援按战斗时间获得招式和精英词缀，存量敌人不会突�
   assert.deepEqual(mgr.spawn('shiyong', 0, 0).tricks, ['quake']);
   assert.deepEqual(early.tricks, [], '旧怪保留出生时的招式');
   g.elapsed = 89;
-  assert.equal(mgr.spawn('tiejia', 0, 0).aura, null, '未列阵就不显示护甲光环');
+  assert.equal(mgr.spawn('tiejia', 0, 0).auras.length, 0, '未列阵就不显示护甲光环');
   g.elapsed = 90;
-  assert.ok(mgr.spawn('tiejia', 0, 0).aura);
+  assert.equal(mgr.spawn('tiejia', 0, 0).auras.length, 1);
   g.elapsed = 119;
   const elite = mgr.spawn('shiyong', 0, 0, {elite: true});
   assert.equal(elite.affixes.length, 1);
@@ -2548,7 +2547,7 @@ test('精英继承本体快怪移速，伤害高于同类煞怪；Boss 的追击
     assert.equal(elite.maxHp, 100, '精英仍为基础血量十倍，不继承普通快怪额外血量');
     const boss = mgr.spawn('xuanming', 0, 0);
     assert.ok(Math.abs(boss.speed - 41) < 1e-8);
-    assert.equal(boss.dmg, 25);
+    assert.equal(boss.dmg, 34);
     assert.equal(boss.maxHp, 5800);
   } finally {Math.random = random;}
 });
@@ -2602,4 +2601,176 @@ test('受伤含护盾受击后两秒持续回复减半，脱离后全额恢复�
   g.now = 0; g.shield = 0; g.player.hp = 80;
   g.regenPlayer(4);
   assert.equal(g.player.hp, 84, '重开清除旧战斗窗口');
+});
+
+function pressureScene(level, elapsed = 240) {
+  const g = runScene('qingdai', level);
+  const visuals = [];
+  const visual = (x, y, key) => {
+    const v = new Proxy({ x, y, key, destroyed: false, anims: { stop() {} },
+      setScale(x, y = x) { this.scaleX = x; this.scaleY = y; return this; },
+      destroy() { this.destroyed = true; } }, { get: (t, k) => k in t ? t[k] : () => v });
+    visuals.push(v);
+    return v;
+  };
+  Object.assign(g, { elapsed, now: elapsed, roarStacks: 0, levelDef: { ...g.levelDef, eliteAffixes: 0 },
+    add: { sprite: visual, image: visual, text: visual }, anims: { exists: () => true } });
+  Object.defineProperty(g, 'hud', { value: { toast() {} } });
+  return { g, mgr: new EnemyManager(g), visuals };
+}
+
+test('攻击成长保留前90秒和前五关普通怪，90–240秒连续缓入；精英与Boss独立成长', async () => {
+  const { enemyAttackGrowth } = await import('../src/config/enemies.ts');
+  for (let level = 1; level <= 10; level++) {
+    assert.equal(enemyAttackGrowth(level, 90, 'mob'), 1);
+    assert.equal(enemyAttackGrowth(level, 90, 'elite'), 1);
+    if (level <= 5) assert.equal(enemyAttackGrowth(level, 900, 'mob'), 1);
+    for (const kind of ['mob', 'elite']) {
+      let prev = 1;
+      for (let t = 90; t <= 300; t++) {
+        const v = enemyAttackGrowth(level, t, kind);
+        assert.ok(v >= prev && v - prev < 0.003);
+        prev = v;
+      }
+      assert.equal(enemyAttackGrowth(level, 240, kind), enemyAttackGrowth(level, 900, kind));
+    }
+  }
+  assert.equal(enemyAttackGrowth(6, 240, 'mob'), 1.05);
+  assert.equal(enemyAttackGrowth(10, 165, 'mob'), 1.125);
+  assert.equal(enemyAttackGrowth(10, 240, 'mob'), 1.25);
+  assert.ok(Math.abs(enemyAttackGrowth(10, 240, 'elite') - 1.36) < 1e-9);
+  assert.equal(enemyAttackGrowth(1, 900, 'boss'), 1);
+  assert.equal(enemyAttackGrowth(10, 0, 'boss'), 1.54);
+  assert.equal(enemyAttackGrowth(10, 900, 'boss'), 1.54);
+
+  const { g, mgr } = pressureScene(10, 90);
+  const old = mgr.spawn('tengguai', 0, 0);
+  g.elapsed = 240;
+  const normal = mgr.spawn('tengguai', 0, 0), elite = mgr.spawn('tengguai', 0, 0, { elite: true });
+  const boss = mgr.spawn('dijiang', 0, 0);
+  assert.equal(old.attackGrowth, 1, '旧怪不会中途跳涨');
+  assert.equal(normal.maxHp, old.maxHp, '不额外堆血');
+  assert.ok(Math.abs(normal.dmg - 7.4) < 1e-9);
+  assert.ok(Math.abs(elite.dmg - 14.49216) < 1e-9);
+  assert.ok(Math.abs(boss.dmg - 43.12) < 1e-9);
+  assert.ok(Math.abs(normal.atkDps - 2.22) < 1e-9, '新增倍率不放大异常');
+  assert.ok(Math.abs(elite.atkDps - 3.996) < 1e-9);
+});
+
+test('Boss固定弹幕只叠一次成长与敌弹倍率，换相保留；普通远程不重复增伤', async () => {
+  const { ProjectileManager } = await import('../src/game/Projectiles.ts');
+  const { g, mgr } = pressureScene(10);
+  g.proj = new ProjectileManager(g);
+  const b = mgr.spawn('dijiang', 0, 0);
+  mgr.elementRing(b, 'water', 1);
+  assert.ok(Math.abs(g.proj.list[0].dmg - 21.56) < 1e-9);
+  mgr.reform(b, (await import('../src/config/enemies.ts')).DIJIANG_FORMS.fire);
+  mgr.fireRing(b, 1);
+  assert.equal(b.attackGrowth, 1.54);
+  assert.ok(Math.abs(b.dmg - 43.12) < 1e-9);
+  assert.ok(Math.abs(g.proj.list[1].dmg - 21.56) < 1e-9);
+  const archer = mgr.spawn('feilian', 0, 0, { elite: true });
+  const shot = g.proj.enemyShot('ep_blade', 0, 0, 90, 0, archer.dmg, 'metal');
+  assert.ok(Math.abs(shot.dmg - 25.36128) < 1e-9, '已成长的远程攻击只再乘敌弹1.4');
+});
+
+test('固定水柱、冰锥与土刺继承Boss成长，地形和附带异常参数不重复放大', () => {
+  const { g, mgr, run, hurts, patches } = trickScene(10);
+  const ice = [];
+  g.hazards.iceAt = (...a) => ice.push(a);
+  g.tweens = { add() {} };
+  g.envDamage = () => {};
+  mgr.spout(0, 0, 1.54);
+  mgr.icicles(1, 1.54);
+  mgr.thornLine(-20, 0, 0, undefined, 'earth', 1.54);
+  run();
+  assert.deepEqual(hurts.map(h => Math.round(h[0] * 100)), [2156, 1848, 2464]);
+  assert.equal(patches[0][4], 0, '水洼仍不直接伤人');
+  assert.equal(ice.length, 1);
+  const calls = [];
+  g.hazards.rain = n => calls.push(['rain', n]);
+  mgr.dijiangMove(mob('dijiang', { attackGrowth: 1.54, chanceAdd: 0, atkDps: 0 }), 'earth', 0, false);
+  assert.deepEqual(calls, [['rain', 4]], '已有时间成长的地形路径不传新增倍率');
+});
+
+test('护词缀覆盖列阵，扩大的椭圆边界内加3甲，排除自身/Boss且不叠层', () => {
+  const { g, mgr } = trickScene(5);
+  const leader = trickMob('tiejia', 5, { x: 0, y: 0, affixes: ['guard'], guardUntil: 0 });
+  const ally = (x, y, id = 'canbing') => trickMob(id, 5, { x, y, guardUntil: 0, guardArmor: 0 });
+  const inside = ally(90, 0), vertical = ally(0, 66), outside = ally(0, 68), boss = ally(20, 0, 'xingtian');
+  mgr.list.push(leader, inside, vertical, outside, boss);
+  for (const e of mgr.list) mgr.grid.insert(e);
+  mgr.updateAuras(0.5);
+  assert.equal(inside.guardArmor, 3);
+  assert.equal(vertical.guardArmor, 3);
+  assert.equal(outside.guardUntil, 0);
+  assert.equal(boss.guardUntil, 0);
+  assert.equal(leader.guardUntil, 0);
+  mgr.updateAuras(0.5);
+  assert.equal(inside.guardArmor, 3);
+  const until = inside.guardUntil;
+  leader.alive = false; g.now = until + 0.1;
+  mgr.updateAuras(0.5);
+  assert.ok(inside.guardUntil < g.now, '精英死亡后不再续护甲');
+});
+
+test('瘴寒扩大范围且独立触发，保留一秒间隔及五行/重复异常的下游结算', () => {
+  const { g, mgr } = trickScene(7);
+  const attempts = [];
+  g.status.inflict = f => attempts.push(f);
+  const e = trickMob('aoxie', 7, { x: 0, y: 0, affixes: ['miasma', 'frost'], affixTick: 0, frostTick: 0 });
+  mgr.list.push(e);
+  g.player.x = 60;
+  mgr.updateAuras(0.5);
+  assert.deepEqual(attempts.map(f => [f.kind, f.chance, f.mob]), [['poison', 0.6, true], ['slow', 0.65, true]]);
+  g.now += 0.5; mgr.updateAuras(0.5);
+  assert.equal(attempts.length, 2);
+  g.now += 0.5; g.player.x = 70; mgr.updateAuras(0.5);
+  assert.equal(attempts.length, 3);
+  assert.equal(attempts[2].kind, 'poison', '70像素只在瘴圈内');
+  g.now += 1; g.player.x = 0; g.player.y = 51; mgr.updateAuras(0.5);
+  assert.equal(attempts.length, 3, '椭圆外不触发');
+});
+
+test('多词缀各自显示，范围与判定一致，回收和复用清空全部光环及攻击成长', () => {
+  const { g, mgr } = pressureScene(10);
+  const e = mgr.spawn('tiejia', 0, 0, { elite: true });
+  e.affixes = ['guard', 'miasma', 'frost', 'summon'];
+  mgr.makeAura(e);
+  assert.deepEqual(e.auras.map(a => a.key), ['fx_ring', 'fx_fog', 'fx_ring', 'fx_frost', 'fx_ring']);
+  const [guard, fog, poisonEdge, frost] = e.auras;
+  assert.ok(Math.abs(guard.scaleX * 31 - 96) < 1e-9);
+  assert.ok(Math.abs(guard.scaleY * 31 - 96 * 0.7) < 1e-9);
+  assert.ok(Math.abs(fog.scaleY * 18 - 72 * 0.7) < 1e-9);
+  assert.ok(Math.abs(poisonEdge.scaleX * 31 - 72) < 1e-9);
+  assert.ok(Math.abs(frost.scaleY * 30 - 64 * 0.7) < 1e-9);
+  const old = [...e.auras];
+  mgr.deactivate(e); mgr.list.length = 0; mgr.pool.push(e);
+  assert.ok(old.every(a => a.destroyed));
+  g.levelDef = LEVELS[0]; g.elapsed = 0;
+  const reused = mgr.spawn('shiyong', 0, 0);
+  assert.equal(reused, e);
+  assert.deepEqual(reused.auras, []);
+  assert.equal(reused.attackGrowth, 1);
+  assert.equal(reused.dmg, 6);
+});
+
+test('召援现身4秒后首发、每8秒3只无经验同类，逐只检查容量', () => {
+  const { g, mgr } = pressureScene(7, 0);
+  g.player = { x: 500, y: 500 };
+  g.fx = { ring() {}, text() {} };
+  let cap = 10;
+  g.spawnCap = () => cap;
+  const e = mgr.spawn('shiyong', 0, 0, { elite: true });
+  e.affixes = ['summon'];
+  mgr.updateAuras(0.5);
+  g.now = 3.99; mgr.updateAuras(0.5);
+  assert.equal(mgr.count, 1);
+  g.now = 4; mgr.updateAuras(0.5);
+  assert.equal(mgr.count, 4);
+  assert.ok(mgr.list.slice(1).every(o => o.xp === 0 && !o.elite && o.affixes.length === 0));
+  g.now = 11.99; mgr.updateAuras(0.5);
+  assert.equal(mgr.count, 4);
+  cap = 5; g.now = 12; mgr.updateAuras(0.5);
+  assert.equal(mgr.count, 5, '只剩一个名额时不能一次召三只突破上限');
 });

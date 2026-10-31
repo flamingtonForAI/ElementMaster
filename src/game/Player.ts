@@ -76,7 +76,7 @@ export class Player {
       const mud = g.world.inMud(this.x, this.y);
       const sand = g.hazards.sandAt(this.x, this.y);
       const drag = Math.max(MIN_SLOW, st.speedMult * (mud ? mud.player : 1) * (sand ? sand.def.player : 1));
-      const sp = g.pstats.speed * speedK * drag * (g.now < g.dunUntil ? 1.4 : 1) * (ice ? ice.boost : 1);
+      const sp = g.pstats.speed * speedK * drag * (g.now < g.dunUntil ? g.dunSpeed : 1) * (ice ? ice.boost : 1);
       tx = mx * sp;
       ty = my * sp;
       this.facing.x = mx;

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { GameScene } from '../scenes/GameScene';
 import { audio } from '../audio/Audio';
-import { TALISMANS, type TalismanId } from '../config/map';
+import type { TalismanId } from '../config/map';
 
 export type ChestKind = 'gold' | 'copper';
 
@@ -195,7 +195,6 @@ export class PickupManager {
           g.openCrate(c.x, c.y);
         } else {
           g.useTalisman(it.talisman!);
-          g.hud.toast(TALISMANS[it.talisman!].name, TALISMANS[it.talisman!].css);
         }
         c.destroy();
       }

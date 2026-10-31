@@ -23,7 +23,7 @@ import { loadSave, writeSave, type Save } from '../game/save';
 import { talentMods, daoPoints, legacyPoints } from '../game/talents';
 import { HEHUA_PROC, HEHUA_VULN, hehuaPairs } from '../config/startree';
 import { createDebug, debugEnabled } from '../game/debug';
-import { CRATE_LOOT, ITEM_SPAWN, TALISMANS, itemSpot, pickWeighted, type TalismanId } from '../config/map';
+import { CRATE_LOOT, ITEM_SPAWN, TALISMANS, talismanEffects, itemSpot, pickWeighted, type TalismanId } from '../config/map';
 import { hex } from '../ui/text';
 import { audio } from '../audio/Audio';
 import type { HudScene } from './HudScene';
@@ -69,8 +69,8 @@ export interface RunResult {
 /** 精英词缀的说明 */
 const AFFIX_TEXT: Record<Affix, string> = {
   miasma: '身边一圈瘴气，靠近会中毒',
-  guard: '周围的妖物护甲 +2，先杀它',
-  summon: '每隔一会儿唤来同类',
+  guard: '金圈里的妖物护甲 +3，先杀它',
+  summon: '现身 4 秒后召援，之后每 8 秒唤来 3 只同类',
   frost: '身边一圈寒气，靠近会迟缓',
 };
 
@@ -129,6 +129,9 @@ export class GameScene extends Phaser.Scene {
   private zhoutianAt = 0;
   /** 遁符：无敌并加速到这个时刻 */
   dunUntil = 0;
+  /** 当前遁符的移速倍率；拾取时固定，后续叠加不缩短持续时间。 */
+  dunSpeed = 1;
+  dingUntil = 0;
   /** 下一只游荡精英的时间 */
   private nextEliteAt = 0;
   /** 待打开的铜匣（和升级一样排队弹三选一） */
@@ -163,6 +166,8 @@ export class GameScene extends Phaser.Scene {
     this.pendingLevelUps = 0;
     this.pendingCopper = 0;
     this.dunUntil = 0;
+    this.dunSpeed = 1;
+    this.dingUntil = 0;
     this.iframeUntil = 0;
     this.spawnAcc = 0;
     this.shield = 0;
@@ -580,12 +585,14 @@ export class GameScene extends Phaser.Scene {
   // ---------- 战斗 ----------
 
   /** 玩家一方打这个敌人的伤害倍率：五行、地气（含沙暴的金系加成）、本命、星图、周天，以及护盾、蚀骨这类条件加成 */
-  dmgMult(e: Enemy, el: El) {
+  dmgMult(e: Enemy, el: El | null) {
     const ps = this.pstats;
     const m = this.build.mods;
     // 风暴（沙暴里金气更盛）按强度给这一系加伤
-    let k = REL_MULT[relation(el, e.def.el)] * this.terrainMods[el] * (this.hazards?.boost(el) ?? 1) * (this.build.benming === el ? 1.25 : 1) * ps.dmgMult * ps.elDmg[el] * ps.vsEl[e.def.el];
-    if (el === this.zhoutian) k *= 1.25 + (m['xuan.bonus'] ?? 0);
+    let k = ps.dmgMult;
+    // 无属性只继承通用增伤，不受攻守元素、地气、本命、周天或克弦加成影响。
+    if (el) k *= REL_MULT[relation(el, e.def.el)] * this.terrainMods[el] * (this.hazards?.boost(el) ?? 1) * (this.build.benming === el ? 1.25 : 1) * ps.elDmg[el] * ps.vsEl[e.def.el];
+    if (el && el === this.zhoutian) k *= 1.25 + (m['xuan.bonus'] ?? 0);
     if (this.shield > 0 && m['qing.shieldDmg']) k *= 1 + m['qing.shieldDmg'];
     if (m['qing.vuln'] && this.now < e.poisonUntil) k *= 1 + m['qing.vuln'];
     if (m.vsSlow && this.now < e.slowUntil) k *= 1 + m.vsSlow;
@@ -607,7 +614,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** 敌人对玩家一方的有效护甲：煞气剑阵，透甲、烧结、盘根、熔金 */
-  private armorOf(e: Enemy) {
+  private armorOf(e: Enemy, elemental = true) {
     const m = this.build.mods;
     const zone = this.world?.zoneArmor(e.x, e.y) ?? 0;
     // 列阵、护词缀罩着的加甲
@@ -615,8 +622,8 @@ export class GameScene extends Phaser.Scene {
     const armor = e.armor + guard + (zone && zone + (this.levelDef.roar?.zoneArmor ?? 0) * this.roarStacks);
     if (armor <= 0) return armor;
     if (m['hh.stunBreak'] && this.now < e.stunUntil) return 0;
-    if (m['kx.fire'] && e.def.el === 'metal' && this.now < e.burnUntil) return 0;
-    const a = m['kx.wood'] && e.def.el === 'earth' ? armor * 0.5 : armor;
+    if (elemental && m['kx.fire'] && e.def.el === 'metal' && this.now < e.burnUntil) return 0;
+    const a = elemental && m['kx.wood'] && e.def.el === 'earth' ? armor * 0.5 : armor;
     return Math.max(0, a - (m.armorPen ?? 0));
   }
 
@@ -633,9 +640,9 @@ export class GameScene extends Phaser.Scene {
     if (m['kx.earth'] && foe === 'water' && Math.random() < 0.2) this.stunEnemy(e, 0.6);
   }
 
-  hitEnemy(e: Enemy, base: number, el: El, o: HitOpts = {}) {
+  hitEnemy(e: Enemy, base: number, el: El | null, o: HitOpts = {}) {
     if (!e.alive || this.now < e.invulnUntil) return 0;
-    const rel = relation(el, e.def.el);
+    const rel = el ? relation(el, e.def.el) : 'neutral';
     const ps = this.pstats;
     let m = this.dmgMult(e, el);
     if (this.char.ownDmg !== undefined && !o.puppet) m *= this.char.ownDmg;
@@ -649,11 +656,11 @@ export class GameScene extends Phaser.Scene {
     const rate = this.pstats.crit + (this.player.moving ? 0 : md.stillCrit ?? 0) + (stunned ? md['hh.stunCrit'] ?? 0 : 0);
     const crit = !o.noCrit && !md.noCrit && Math.random() < rate;
     const critDmg = this.pstats.critDmg + (this.now < e.slowUntil ? md['hh.slowCritDmg'] ?? 0 : 0);
-    const dmg = Math.max(1, Math.round(base * m * (crit ? critDmg : 1) - this.armorOf(e)));
+    const dmg = Math.max(1, Math.round(base * m * (crit ? critDmg : 1) - this.armorOf(e, el !== null)));
     e.hp -= dmg;
     e.lastEl = el;
     // 伐木：残血的木系敌人直接斩杀
-    if (md['kx.metal'] && e.def.el === 'wood' && !e.boss && e.hp > 0 && e.hp < e.maxHp * 0.15) {
+    if (el && md['kx.metal'] && e.def.el === 'wood' && !e.boss && e.hp > 0 && e.hp < e.maxHp * 0.15) {
       e.hp = 0;
       this.fx.text(e.x, e.y - 20, '伐', '#e0d8ff', 0.6);
     }
@@ -685,8 +692,8 @@ export class GameScene extends Phaser.Scene {
       // 水系命中带来的迟缓攒寒意（毒雾、藤缚这类别系的迟缓不算）
       if (el === 'water') this.chillEnemy(e);
     }
-    if (o.proc && e.hp > 0 && Math.random() < o.proc * statusChance(STATUS_OF[el], e.def.el)) this.afflict(e, STATUS_OF[el], dmg);
-    if (e.hp > 0) this.comboHit(e, el, dmg);
+    if (el && o.proc && e.hp > 0 && Math.random() < o.proc * statusChance(STATUS_OF[el], e.def.el)) this.afflict(e, STATUS_OF[el], dmg);
+    if (el && e.hp > 0) this.comboHit(e, el, dmg);
 
     let prefix = '';
     if (rel === 'counter' && !e.counterShown) {
@@ -1054,14 +1061,15 @@ export class GameScene extends Phaser.Scene {
   /** 在玩家周围屏幕外不远处刷一个木匣或符箓；同类满了就不刷 */
   private spawnItem() {
     const items = this.pickups.items;
+    const effects = talismanEffects(this.pstats.luck);
     const n = (k: 'crate' | 'talisman') => items.filter((i) => i.kind === k).length;
-    const canT = n('talisman') < ITEM_SPAWN.max.talisman;
+    const canT = n('talisman') < effects.maxOnMap;
     const canC = n('crate') < ITEM_SPAWN.max.crate;
     if (!canT && !canC) return;
     const spot = itemSpot(this.player.x, this.player.y, this.world.half, (x, y) => this.world.blocked(x, y));
     if (!spot) return;
     const [x, y] = spot;
-    if (canT && (!canC || Math.random() < ITEM_SPAWN.talismanChance)) {
+    if (canT && (!canC || Math.random() < effects.chance)) {
       const talis = (Object.keys(TALISMANS) as TalismanId[]).map((id) => ({ id, w: TALISMANS[id].w }));
       this.pickups.talisman(x, y, pickWeighted(talis), ITEM_SPAWN.life);
     } else this.pickups.crate(x, y, ITEM_SPAWN.life);
@@ -1097,25 +1105,39 @@ export class GameScene extends Phaser.Scene {
   useTalisman(id: TalismanId) {
     const p = this.player;
     const col = TALISMANS[id].color;
-    const onScreen = this.enemies.list.filter((e) => e.alive && Math.abs(e.x - p.x) < 340 && Math.abs(e.y - p.y) < 200);
+    const effects = talismanEffects(this.pstats.luck, this.build.level);
+    const view = this.cameras.main.worldView;
+    const onScreen = this.enemies.list.filter((e) => e.alive && view.contains(e.x, e.y));
     this.fx.ring(p.x, p.y - 8, 120, col, 0.6);
     if (id === 'bao') {
       this.cameras.main.flash(180, 255, 140, 90);
       this.cameras.main.shake(200, 0.006);
-      const dmg = 40 + this.build.level * 6;
-      for (const e of onScreen) this.hitEnemy(e, e.boss ? dmg * 0.25 : dmg, this.build.benming, { kb: 80, fromX: p.x, fromY: p.y, noCrit: true });
+      for (const e of onScreen) {
+        if (e.boss) continue;
+        this.hitEnemy(e, effects.damage * (e.elite ? effects.eliteDamage : 1), this.build.benming, { kb: 80, fromX: p.x, fromY: p.y, noCrit: true });
+      }
+      this.hud.toast(`爆符 · 威力 ${effects.damage}，精英承受 50%，Boss 免疫`, TALISMANS[id].css);
       audio.sfx('killBig');
     } else if (id === 'ding') {
       for (const e of onScreen) {
         if (e.boss) {
-          e.slowUntil = Math.max(e.slowUntil, this.now + 3);
+          e.slowUntil = Math.max(e.slowUntil, this.now + effects.duration);
           e.slowF = ON_ENEMY.slow.bossF;
-        } else e.stunUntil = Math.max(e.stunUntil, this.now + 3);
+        } else {
+          e.daze = e.chill = 0;
+          e.confusedUntil = 0;
+          e.stunUntil = Math.max(e.stunUntil, this.now + effects.duration);
+          e.stunImmuneUntil = Math.max(e.stunImmuneUntil, e.stunUntil + ON_ENEMY.stun.immune);
+        }
       }
+      this.dingUntil = Math.max(this.dingUntil, this.now + effects.duration);
+      this.hud.toast(`定身符 · 屏内定身 ${effects.duration.toFixed(1)} 秒，Boss 迟缓`, TALISMANS[id].css);
       audio.sfx('benming');
     } else {
-      this.dunUntil = this.now + 3;
+      this.dunSpeed = this.now < this.dunUntil ? Math.max(this.dunSpeed, effects.speed) : effects.speed;
+      this.dunUntil = Math.max(this.dunUntil, this.now + effects.duration);
       this.iframeUntil = Math.max(this.iframeUntil, this.dunUntil);
+      this.hud.toast(`遁符 · 无敌 ${effects.duration.toFixed(1)} 秒，移速 +${Math.round((effects.speed - 1) * 100)}%`, TALISMANS[id].css);
       audio.sfx('benming');
     }
   }

@@ -79,12 +79,33 @@ export const TRICKS = {
  */
 export type Affix = 'miasma' | 'guard' | 'summon' | 'frost';
 
-export const AFFIXES: Record<Affix, { name: string; css: string; r?: number; tick?: number; armor?: number; every?: number; n?: number; from?: number }> = {
-  miasma: { name: '瘴', css: '#8fe06a', r: 44, tick: 0.7 },
-  guard: { name: '护', css: '#e8d38a', r: 72, armor: 2 },
-  summon: { name: '召', css: '#c8a0ff', every: 9, n: 2 },
-  frost: { name: '寒', css: '#c8ecff', r: 48, tick: 0.8, from: 7 },
+export const AFFIXES: Record<Affix, { name: string; css: string; r?: number; tick?: number; chance?: number; armor?: number; first?: number; every?: number; n?: number; from?: number }> = {
+  miasma: { name: '瘴', css: '#8fe06a', r: 72, tick: 1, chance: 0.6 },
+  guard: { name: '护', css: '#e8d38a', r: 96, armor: 3 },
+  summon: { name: '召', css: '#c8a0ff', first: 4, every: 8, n: 3 },
+  frost: { name: '寒', css: '#c8ecff', r: 64, tick: 1, chance: 0.65, from: 7 },
 };
+
+/** 词缀光环的显示与判定共用纵向比例。列阵仍保留原来的范围。 */
+export const AFFIX_SQUASH = 0.7;
+
+/** 额外直接伤害成长；不重复放大异常、余火或已有时间成长的地形招式。 */
+export const ENEMY_DAMAGE_GROWTH = {
+  rampStart: 90, rampEnd: 240,
+  mobFrom: 6, mobPerLevel: 0.05,
+  elitePerLevel: 0.04,
+  bossPerLevel: 0.06,
+} as const;
+
+/** 普通怪/精英按出生时间缓入，Boss 按关卡独立成长，不吃普通怪的时间倍率。 */
+export function enemyAttackGrowth(level: number, elapsed: number, kind: 'mob' | 'elite' | 'boss'): number {
+  const D = ENEMY_DAMAGE_GROWTH;
+  const lv = Math.max(1, Math.min(10, level));
+  if (kind === 'boss') return 1 + (lv - 1) * D.bossPerLevel;
+  const ramp = Math.max(0, Math.min(1, (elapsed - D.rampStart) / (D.rampEnd - D.rampStart)));
+  const bonus = kind === 'elite' ? (lv - 1) * D.elitePerLevel : Math.max(0, lv - D.mobFrom + 1) * D.mobPerLevel;
+  return 1 + bonus * ramp;
+}
 
 /**
  * 小怪升阶：同一种怪的二阶「凶」、三阶「煞」，数值加强、贴图在启动时按原帧重新着色（见 art/enemyArt.ts 的 tierFrame），

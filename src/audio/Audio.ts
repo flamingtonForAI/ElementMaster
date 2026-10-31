@@ -344,7 +344,7 @@ class AudioManager {
   }
 
   /** 命中：克制叠编钟，暴击更亮，被克更闷 */
-  hit(rel: Rel, crit: boolean) {
+  hit(rel: Rel | 'neutral', crit: boolean) {
     if (crit) this.sfx('crit');
     else if (rel === 'counter') this.sfx('hitCounter');
     else this.sfx('hit', { rate: rel === 'countered' ? 0.75 : 1 });

@@ -34,7 +34,7 @@ test('散人每四级获得全伤成长，最低灵根与其他角色专属成�
     assert.equal(b.stats().dmgMult, expected);
     assert.equal(b.stats().sigDmg, 1);
   }
-  assert.equal(Object.values(b.lingen).reduce((a, v) => a + v, 0), 3);
+  assert.equal(Object.values(b.lingen).reduce((a, v) => a + v, 0), 2);
   const zhu = new Build(character('zhu'), LEVELS[0]);
   zhu.level = 20;
   assert.equal(zhu.stats().dmgMult, 1);
@@ -46,7 +46,7 @@ test('小周天只在已学术元素间轮转，保留相生顺序，新学元�
   g.build = new Build(character('xuanyi'), LEVELS[0]);
   assert.deepEqual(g.zhoutianElements(), GEN_ORDER);
   addMods(g.build.mods, LEGACIES.xuanyi[0].nodes[0].mods);
-  assert.deepEqual(g.zhoutianElements(), ['fire']);
+  assert.deepEqual(g.zhoutianElements(), GEN_ORDER, '无属性拂尘不算已学五行，尚未学五行术时照常轮转');
   g.build.skills.set('waterdragon', 1);
   g.build.skills.set('lihuo', 1);
   g.build.passives.set('houtu', 1);

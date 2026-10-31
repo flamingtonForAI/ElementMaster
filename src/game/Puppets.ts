@@ -136,7 +136,7 @@ export class PuppetManager {
     const b = this.g.build;
     if (this.shellVersion === b.version) return;
     this.shellVersion = b.version;
-    const shells = [...new Set([...b.skills.keys()].map((id) => SKILLS[id].el))].filter((e) => e !== 'earth');
+    const shells = [...new Set([...b.skills.keys()].map((id) => SKILLS[id].el))].filter((e): e is El => e !== null && e !== 'earth');
     let i = 0;
     for (const p of this.list) {
       p.el = p.giant ? 'earth' : shells[i++] ?? 'earth';

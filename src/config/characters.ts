@@ -97,9 +97,9 @@ export const CHARACTERS: CharacterDef[] = [
   },
   {
     id: 'xuanyi', name: '玄一', title: '五行散人', el: 'earth', role: '轮转，五系兼修', hp: 85, speed: 72, armor: 1, balanced: true,
-    startSkill: 'fireball', lingen: 0, meleeBonus: 0, meleeRange: 0,
+    startSkill: 'fuchen', lingen: 0, meleeBonus: 0, meleeRange: 0,
     growth: [{ every: 4, stat: 'dmg', v: 0.02 }, { every: 10, stat: 'lowLingen', v: 1 }],
-    bio: '云游散人，五行在他身上轮流做主。',
+    bio: '云游散人，以无属性清风拂尘扫敌，五行在他身上轮流做主。',
     trait: '周天：每 30 秒按相生轮转一系，该系伤害 +25%。升级选项五系均等，星图从中宫出发。成长：每 4 级全部伤害 +2%，每 10 级最低灵根 +1。',
     available: true,
   },

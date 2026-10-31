@@ -2,7 +2,7 @@
 
 export type UpgradeStat =
   | 'hp' | 'armor' | 'regen' | 'speed' | 'pickup' | 'xp'
-  | 'lingshi' | 'revive' | 'reroll' | 'banish';
+  | 'lingshi' | 'revive' | 'reroll' | 'banish' | 'skillSlots' | 'luck';
 
 export interface UpgradeDef {
   id: string;
@@ -26,6 +26,8 @@ export const UPGRADES: (UpgradeDef & { stat: UpgradeStat })[] = [
   { id: 'xuming', stat: 'revive', name: '续命', glyph: '命', v: 1, maxLv: 2, base: 800, desc: '每局可原地复活 1 次，复活时回复一半生命' },
   { id: 'huanqian', stat: 'reroll', name: '换签', glyph: '签', v: 1, maxLv: 3, base: 300, desc: '每局可重抽升级选项 1 次' },
   { id: 'zhanyuan', stat: 'banish', name: '斩缘', glyph: '斩', v: 1, maxLv: 3, base: 300, desc: '每局可封禁 1 个升级选项，本局不再出现' },
+  { id: 'shuhai', stat: 'skillSlots', name: '技能数量', glyph: '术', v: 1, maxLv: 5, base: 300, desc: '自带术独立；初始 6 个普通格，每级 +1，末级开放大招格' },
+  { id: 'xingyun', stat: 'luck', name: '幸运', glyph: '幸', v: 0.2, maxLv: 5, base: 180, desc: '符箓出现率、威力、持续时间与加速效果 +20%' },
 ];
 
 /** 修炼已购等级，key 是修炼 id */

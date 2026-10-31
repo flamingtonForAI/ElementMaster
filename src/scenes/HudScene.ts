@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { coverView, configureView, viewPoint } from '../config/view';
 import { EL_INFO, GEN_ORDER, counters, counteredBy, type El, type Terrain } from '../config/elements';
-import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS } from '../config/skills';
+import { SKILLS, PASSIVES, MAX_SKILL_SLOTS } from '../config/skills';
 import { LEVELS, phaseTerrain } from '../config/levels';
 import { ENEMIES } from '../config/enemies';
 import { optionKey, type Option } from '../game/Build';
@@ -11,6 +11,7 @@ import { wrap } from '../ui/wrap';
 import type { GameScene, RunResult } from './GameScene';
 import { stick, isTouch } from '../ui/touch';
 import { audio } from '../audio/Audio';
+import { skillIconKey } from '../art/skillIcons';
 import { canFullscreen, isFullscreen, isStandalone, toggleFullscreen } from '../ui/fullscreen';
 
 type Mode = 'play' | 'levelup' | 'menu';
@@ -22,6 +23,9 @@ interface MenuItem {
 
 const PANEL = 0x161220;
 const LINE = 0x4a3f5c;
+const slotLayout = (i: number) => i === 0 || i === MAX_SKILL_SLOTS - 1
+  ? { x: i === 0 ? 6 : 182, y: 26, size: 42, iconScale: 2 }
+  : { x: 60 + ((i - 1) % 5) * 23, y: 22 + Math.floor((i - 1) / 5) * 34, size: 18, iconScale: 1 };
 /** 摇杆半径（逻辑像素） */
 const STICK_R = 26;
 /** 右上角小地图：显示整张地图 */
@@ -72,10 +76,9 @@ export class HudScene extends Phaser.Scene {
   private big!: MapLayer;
   private mapKey = '';
   private bossText!: Phaser.GameObjects.Text;
-  private skillGlyphs: Phaser.GameObjects.Text[] = [];
-  private passiveGlyphs: Phaser.GameObjects.Text[] = [];
-  private skillLvs: Phaser.GameObjects.Text[] = [];
-  private passiveLvs: Phaser.GameObjects.Text[] = [];
+  private slotIcons: Phaser.GameObjects.Image[] = [];
+  private slotLvs: Phaser.GameObjects.Text[] = [];
+  private talismanText!: Phaser.GameObjects.Text;
   private toasts: { t: Phaser.GameObjects.Text; life: number }[] = [];
   private version = -1;
 
@@ -149,15 +152,14 @@ export class HudScene extends Phaser.Scene {
     this.roarText = label(this, MM_X + MM / 2, MM_Y + MM + 41, '', hex(EL_INFO[ENEMIES[L.boss]?.el ?? 'metal'].color)).setOrigin(0.5, 0);
     this.bossText = label(this, 320, 44, '').setOrigin(0.5, 0).setVisible(false);
 
-    this.skillGlyphs = [];
-    for (let i = 0; i < SKILL_SLOTS; i++) this.skillGlyphs.push(label(this, 6 + i * 23 + 9, 25, '', '#fff', 12, false).setOrigin(0.5, 0));
-    this.passiveGlyphs = [];
-    for (let i = 0; i < PASSIVE_SLOTS; i++) this.passiveGlyphs.push(label(this, 6 + i * 23 + 9, 59, '', '#fff', 12, false).setOrigin(0.5, 0));
-    // 槽位下方的等级
-    this.skillLvs = [];
-    for (let i = 0; i < SKILL_SLOTS; i++) this.skillLvs.push(label(this, 6 + i * 23 + 9, 41, '').setOrigin(0.5, 0));
-    this.passiveLvs = [];
-    for (let i = 0; i < PASSIVE_SLOTS; i++) this.passiveLvs.push(label(this, 6 + i * 23 + 9, 75, '').setOrigin(0.5, 0));
+    this.slotIcons = [];
+    this.slotLvs = [];
+    for (let i = 0; i < this.g.build.skillSlots; i++) {
+      const { x, y, size, iconScale } = slotLayout(i);
+      this.slotIcons.push(this.add.image(x + size / 2, y + size / 2, skillIconKey('flysword')).setScale(iconScale).setVisible(false));
+      this.slotLvs.push(label(this, x + size / 2, y + size + 1, '').setOrigin(0.5, 0));
+    }
+    this.talismanText = label(this, 6, 91, '', '#a6d9ff', 10);
 
     this.terrainLabels = [];
     const phase = L.cycle && this.g.hazards?.phaseEl;
@@ -263,44 +265,35 @@ export class HudScene extends Phaser.Scene {
     this.timeText.setText(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
     this.killText.setText(`击杀 ${g.kills}`);
 
-    // 技能槽
-    const skills = [...b.skills];
-    for (let i = 0; i < SKILL_SLOTS; i++) {
-      const x = 6 + i * 23;
-      const y = 22;
-      const it = skills[i];
-      const col = it ? EL_INFO[SKILLS[it[0]].el].color : LINE;
-      gfx.fillStyle(PANEL, 1).fillRect(x, y, 18, 18);
-      gfx.lineStyle(1, col, 1).strokeRect(x + 0.5, y + 0.5, 17, 17);
-    }
-    const passives = [...b.passives];
-    for (let i = 0; i < PASSIVE_SLOTS; i++) {
-      const x = 6 + i * 23;
-      const y = 56;
-      const it = passives[i];
-      const el = it ? PASSIVES[it[0]].el : null;
-      const col = it ? (el ? EL_INFO[el].color : 0xb8aec8) : LINE;
-      gfx.fillStyle(PANEL, 1).fillRect(x, y, 18, 18);
-      gfx.lineStyle(1, col, 0.8).strokeRect(x + 0.5, y + 0.5, 17, 17);
+    // 左侧自带术、中央十个普通格、右侧大招。
+    const slots = b.slots;
+    for (let i = 0; i < b.skillSlots; i++) {
+      const { x, y, size } = slotLayout(i);
+      const it = slots[i];
+      const el = it?.def.el;
+      const ultimate = i === MAX_SKILL_SLOTS - 1;
+      const col = ultimate ? 0xffd23f : it ? (el ? EL_INFO[el].color : 0xb8aec8) : LINE;
+      gfx.fillStyle(PANEL, 1).fillRect(x, y, size, size);
+      gfx.lineStyle(ultimate || i === 0 ? 2 : 1, col, 1).strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
     }
 
     if (this.version !== b.version) {
       this.version = b.version;
-      for (let i = 0; i < SKILL_SLOTS; i++) {
-        const it = skills[i];
-        this.skillGlyphs[i].setText(it ? SKILLS[it[0]].glyph : '').setColor(it ? hex(EL_INFO[SKILLS[it[0]].el].color) : '#fff');
-        this.setLv(this.skillLvs[i], it ? it[1] : 0, it ? SKILLS[it[0]].maxLv : 0);
-      }
-      for (let i = 0; i < PASSIVE_SLOTS; i++) {
-        const it = passives[i];
-        const el = it ? PASSIVES[it[0]].el : null;
-        this.passiveGlyphs[i].setText(it ? PASSIVES[it[0]].glyph : '').setColor(el ? hex(EL_INFO[el].color) : '#d8d0e4');
-        this.setLv(this.passiveLvs[i], it ? it[1] : 0, it ? PASSIVES[it[0]].maxLv : 0);
+      for (let i = 0; i < b.skillSlots; i++) {
+        const it = slots[i];
+        this.slotIcons[i].setVisible(!!it);
+        if (it) this.slotIcons[i].setTexture(skillIconKey(it.def.id));
+        this.setLv(this.slotLvs[i], it?.lv ?? 0, it?.def.maxLv ?? 0);
       }
       this.drawSeal(b.benming);
       const zt = this.g.zhoutian;
       this.ztText.setText(zt ? `周天 ${EL_INFO[zt].name}` : '').setColor(zt ? hex(EL_INFO[zt].color) : '#fff');
     }
+
+    const buffs: string[] = [];
+    if (g.now < g.dingUntil) buffs.push(`定身符 ${(g.dingUntil - g.now).toFixed(1)}s`);
+    if (g.now < g.dunUntil) buffs.push(`遁符·无敌 ${(g.dunUntil - g.now).toFixed(1)}s`);
+    this.talismanText.setText(buffs.join('　'));
 
     if (g.roarStacks !== this.roarShown) {
       this.roarShown = g.roarStacks;
@@ -351,8 +344,8 @@ export class HudScene extends Phaser.Scene {
 
   private setLv(t: Phaser.GameObjects.Text, lv: number, max: number) {
     if (!lv) t.setText('');
-    else if (lv >= max) t.setText('MAX').setColor('#ffd23f');
-    else t.setText(`Lv${lv}`).setColor('#d8d0e4');
+    else if (lv >= max) t.setText('Max').setFontSize(10).setColor('#ffd23f');
+    else t.setText(`Lv${lv}`).setFontSize(12).setColor('#d8d0e4');
   }
 
   /** 本命印：本命变了翻一下 */
@@ -553,32 +546,27 @@ export class HudScene extends Phaser.Scene {
     const H = 192;
     const card = this.add.container(cx, y);
     let name = '';
-    let glyph = '';
     let el: El | null = null;
     let tag = '';
     let desc = '';
     if (o.kind === 'skill') {
       const d = SKILLS[o.id];
       name = d.name;
-      glyph = d.glyph;
       el = d.el;
       tag = o.lv === 1 ? '新 · 术' : `Lv ${o.lv - 1} → ${o.lv}`;
       desc = d.desc[o.lv - 1];
     } else if (o.kind === 'passive') {
       const d = PASSIVES[o.id];
       name = d.name;
-      glyph = d.glyph;
       el = d.el;
       tag = o.lv === 1 ? '新 · 心法' : `Lv ${o.lv - 1} → ${o.lv}`;
       desc = d.desc;
     } else if (o.kind === 'heal') {
       name = '回气丹';
-      glyph = '丹';
       tag = '消耗品';
       desc = '回复 30% 生命';
     } else {
       name = '灵石';
-      glyph = '石';
       tag = '消耗品';
       desc = `局外货币 +${this.g.lingshiCard()}，结算时发放，可在洞府购买修炼`;
     }
@@ -595,7 +583,8 @@ export class HudScene extends Phaser.Scene {
     });
     card.add(bg);
     card.add(this.add.rectangle(0, 14, 40, 40, 0x0e0b14, 1).setOrigin(0.5, 0).setStrokeStyle(1, col, 1));
-    card.add(label(this, 0, 22, glyph, hex(col), 24).setOrigin(0.5, 0));
+    const icon = skillIconKey(o.kind === 'skill' || o.kind === 'passive' ? o.id : o.kind);
+    card.add(this.add.image(0, 34, icon).setScale(2));
     card.add(label(this, 0, 62, name, '#f4eee0').setOrigin(0.5, 0));
     card.add(label(this, 0, 78, tag, o.kind !== 'heal' && o.kind !== 'lingshi' && o.lv === 1 ? '#ffd23f' : '#b8aec8').setOrigin(0.5, 0));
     card.add(label(this, -W / 2 + 10, 100, wrap(desc, W - 20), '#d8d0e4', 12, false).setLineSpacing(4));
@@ -604,6 +593,8 @@ export class HudScene extends Phaser.Scene {
       const tmTxt = tm === 0 ? '地气 ±0%' : `地气 ${tm > 0 ? '+' : ''}${tm}%`;
       card.add(label(this, -W / 2 + 10, H - 36, `${EL_INFO[el].name}系 · 克${EL_INFO[counters(el)].name}`, hex(col)));
       card.add(label(this, -W / 2 + 10, H - 20, tmTxt, tm > 0 ? '#8fe08a' : tm < 0 ? '#ff8a7a' : '#8a8494'));
+    } else if (o.kind === 'skill') {
+      card.add(label(this, -W / 2 + 10, H - 36, '无属性 · 五行同伤', '#d8d0e4'));
     }
     card.setData('bg', bg);
     card.setData('col', col);

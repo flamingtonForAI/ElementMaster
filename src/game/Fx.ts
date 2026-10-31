@@ -17,7 +17,8 @@ interface Part {
   max: number;
 }
 
-const REL_COLOR: Record<Rel, string> = {
+const REL_COLOR: Record<Rel | 'neutral', string> = {
+  neutral: '#eee7dc',
   counter: '#ffd23f',
   fed: '#ffa860',
   drain: '#e8e2d4',
@@ -41,7 +42,7 @@ export class Fx {
     }
   }
 
-  number(x: number, y: number, v: number, rel: Rel | 'player', crit: boolean, prefix = '') {
+  number(x: number, y: number, v: number, rel: Rel | 'neutral' | 'player', crit: boolean, prefix = '') {
     const n = this.nums[this.numIdx];
     this.numIdx = (this.numIdx + 1) % this.nums.length;
     const color = rel === 'player' ? '#ff5a5a' : REL_COLOR[rel];
@@ -95,6 +96,29 @@ export class Fx {
   ring(x: number, y: number, radius: number, color: number, dur = 0.35) {
     const s = this.g.add.image(x, y, 'fx_ring').setTint(color).setDepth(FX_DEPTH).setScale(0.2).setAlpha(1);
     this.g.tweens.add({ targets: s, scale: radius / 31, alpha: 0, duration: dur * 1000, ease: 'Cubic.out', onComplete: () => s.destroy() });
+  }
+
+  /** 拂尘：白色尘丝沿扇面扫开，保留线间空隙，不遮住敌人或地面预警。 */
+  whisk(x: number, y: number, angle: number, radius: number, arc: number) {
+    const tuft = this.g.add.graphics().setPosition(x, y).setRotation(angle).setDepth(FX_DEPTH);
+    const half = arc * Math.PI / 360;
+    for (let strand = 0; strand < 7; strand++) {
+      const r = radius * (0.66 + strand * 0.05);
+      const start = -half + strand * 0.07;
+      const end = half - strand * 0.04;
+      tuft.lineStyle(1, strand % 2 ? 0xeee7dc : 0x9daeb8, strand % 2 ? 0.85 : 0.5);
+      const steps = 24;
+      for (let i = 0; i < steps; i++) {
+        const a = start + (end - start) * i / steps;
+        const b = start + (end - start) * (i + 1) / steps;
+        tuft.lineBetween(Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r), Math.round(Math.cos(b) * r), Math.round(Math.sin(b) * r));
+      }
+      // 尘丝收束到木柄，呈现拂尘本体而非另一道剑气。
+      tuft.lineStyle(1, 0xeee7dc, 0.9);
+      tuft.lineBetween(Math.round(Math.cos(end) * 18), Math.round(Math.sin(end) * 18), Math.round(Math.cos(end) * r), Math.round(Math.sin(end) * r));
+    }
+    tuft.lineStyle(3, 0xc29352, 1).lineBetween(0, 0, Math.cos(half) * 18, Math.sin(half) * 18);
+    this.g.tweens.add({ targets: tuft, alpha: 0, scale: 1.06, duration: 320, onComplete: () => tuft.destroy() });
   }
 
   /** 玩家范围命中：火球翻焰、符印迸裂、冰脉碎晶、落石扬尘。只负责画面。 */

@@ -1,5 +1,5 @@
 import { GEN_ORDER, relation, type El, type Rel, type Terrain } from '../config/elements';
-import { SKILLS, PASSIVES, SKILL_SLOTS, PASSIVE_SLOTS, type SkillId, type PassiveId, type PassiveDef } from '../config/skills';
+import { SKILLS, PASSIVES, SKILL_SLOTS, NORMAL_SKILL_SLOTS, MAX_SKILL_SLOTS, ULTIMATES, MIN_CD_MULT, type SkillId, type SkillDef, type PassiveId, type PassiveDef } from '../config/skills';
 import { ADVANCE } from '../config/status';
 import type { CharacterDef } from '../config/characters';
 import type { LevelDef } from '../config/levels';
@@ -24,6 +24,8 @@ export interface PlayerStats {
   xpMult: number;
   critDmg: number;
   cdMult: number;
+  /** 幸运修炼：0–1，符箓掉率与效果的额外比例。 */
+  luck: number;
   /** 各元素术的伤害系数（星图） */
   elDmg: Record<El, number>;
   /** 受各元素敌人伤害的系数（星图） */
@@ -59,7 +61,7 @@ export function optionKey(o: Option) {
 
 /** 修炼项目的合计加成 */
 export function upgradeSum(meta: MetaLevels, stat: UpgradeStat) {
-  return UPGRADES.filter((u) => u.stat === stat).reduce((s, u) => s + u.v * (meta[u.id] ?? 0), 0);
+  return UPGRADES.filter((u) => u.stat === stat).reduce((s, u) => s + u.v * Math.max(0, Math.min(u.maxLv, Math.floor(meta[u.id] || 0))), 0);
 }
 
 /**
@@ -98,6 +100,37 @@ export class Build {
     return this.level < 20 ? 5 + (this.level - 1) * 6 : 119 + (this.level - 20) * 12;
   }
 
+  get skillSlots() {
+    return Math.min(MAX_SKILL_SLOTS, SKILL_SLOTS + upgradeSum(this.meta, 'skillSlots'));
+  }
+
+  get ultimate() {
+    return [...this.skills.keys()].find((id) => SKILLS[id].ultimate);
+  }
+
+  get masteredSkills() {
+    return [...this.skills].filter(([id, lv]) => !SKILLS[id].ultimate && lv >= SKILLS[id].maxLv).length
+      + [...this.passives].filter(([id, lv]) => lv >= PASSIVES[id].maxLv).length;
+  }
+
+  private get hasOpenSlot() {
+    const normal = [...this.skills.keys()].filter(id => id !== this.char.startSkill && !SKILLS[id].ultimate).length + this.passives.size;
+    return normal < Math.min(NORMAL_SKILL_SLOTS, this.skillSlots - 1);
+  }
+
+  /** 左侧固定自带术，中间十格混合术/心法，最右固定大招；不按获取顺序挤占独立格。 */
+  get slots(): { def: SkillDef | PassiveDef; lv: number }[] {
+    const slots: { def: SkillDef | PassiveDef; lv: number }[] = [];
+    const starter = this.skills.get(this.char.startSkill);
+    if (starter) slots[0] = { def: SKILLS[this.char.startSkill], lv: starter };
+    let index = 1;
+    for (const [id, lv] of this.skills) if (id !== this.char.startSkill && !SKILLS[id].ultimate) slots[index++] = { def: SKILLS[id], lv };
+    for (const [id, lv] of this.passives) slots[index++] = { def: PASSIVES[id], lv };
+    const ultimate = this.ultimate;
+    if (ultimate) slots[MAX_SKILL_SLOTS - 1] = { def: SKILLS[ultimate], lv: 1 };
+    return slots;
+  }
+
   /** 返回升了几级 */
   addXp(v: number): number {
     this.xp += v;
@@ -115,7 +148,10 @@ export class Build {
     const l: Record<El, number> = { metal: 0, wood: 0, water: 0, fire: 0, earth: 0 };
     l[this.char.el] += this.char.lingen;
     for (const e of GEN_ORDER) l[e] += this.mods[`lingen.${e}`] ?? 0;
-    for (const [id, lv] of this.skills) l[SKILLS[id].el] += lv;
+    for (const [id, lv] of this.skills) {
+      const el = SKILLS[id].el;
+      if (el) l[el] += lv;
+    }
     for (const [id, lv] of this.passives) {
       const el = PASSIVES[id].el;
       if (el) l[el] += lv;
@@ -132,6 +168,12 @@ export class Build {
     const top = GEN_ORDER.filter((e) => l[e] === max);
     const prev = this.benming;
     if (!top.includes(prev)) this.benming = top.includes(this.lastLeveled) ? this.lastLeveled : top[0];
+    if (this.skillSlots === MAX_SKILL_SLOTS && !this.ultimate && this.masteredSkills === NORMAL_SKILL_SLOTS + 1) {
+      // 自动觉醒也覆盖宝箱升满最后一个术；散人锁定此刻的本命，之后不随本命换招。
+      const id = ULTIMATES[this.char.balanced ? this.benming : this.char.el];
+      this.skills.set(id, 1);
+      return this.recompute() || prev !== this.benming;
+    }
     this.version++;
     return prev !== this.benming;
   }
@@ -160,7 +202,7 @@ export class Build {
     const ln = GEN_ORDER.map((e) => this.lingen[e]);
     const even = Math.max(...ln) - Math.min(...ln) <= 3 ? m('xuan.even') : 0;
     const taiji = m('xuan.taiji') && Math.min(...ln) >= 2 ? 1 : 0;
-    const variety = new Set([...this.skills.keys()].map((id) => SKILLS[id].el)).size * m('xuan.variety');
+    const variety = new Set([...this.skills.keys()].map((id) => SKILLS[id].el).filter(el => el !== null)).size * m('xuan.variety');
     return {
       maxHp: Math.round(c.hp * (1 + 0.12 * p('houtu') + u('hp') + m('hp'))),
       speed: c.speed * (1 + 0.07 * p('qingshen') + u('speed') + gr('speed') + m('speed') + 0.1 * taiji),
@@ -172,7 +214,8 @@ export class Build {
       pickup: 30 * (1 + (c.pickup ?? 0) + 0.25 * p('juling') + u('pickup') + m('pickup')),
       xpMult: 1 + 0.05 * p('juling') + u('xp') + m('xp'),
       critDmg: 2 + m('critDmg'),
-      cdMult: 1 - (c.cdr ?? 0) - m('cd') - gr('cd') - 0.1 * taiji - 0.04 * p('ningshen'),
+      cdMult: Math.max(MIN_CD_MULT, 1 - (c.cdr ?? 0) - m('cd') - gr('cd') - 0.1 * taiji - 0.04 * p('ningshen')),
+      luck: u('luck'),
       elDmg,
       resist,
       vsEl,
@@ -203,11 +246,12 @@ export class Build {
       return aff * (1 + 2 * this.terrain[el]);
     };
     for (const def of Object.values(SKILLS)) {
+      if (def.ultimate) continue;
       if (def.exclusive && def.exclusive !== this.char.id) continue;
       const lv = this.skills.get(def.id);
       if (lv !== undefined) {
         if (lv < def.maxLv) add({ kind: 'skill', id: def.id, lv: lv + 1 }, 3 * elW(def.el));
-      } else if (this.skills.size < SKILL_SLOTS) {
+      } else if (this.hasOpenSlot) {
         add({ kind: 'skill', id: def.id, lv: 1 }, 2 * elW(def.el));
       }
     }
@@ -215,7 +259,7 @@ export class Build {
       const lv = this.passives.get(def.id);
       if (lv !== undefined) {
         if (lv < def.maxLv) add({ kind: 'passive', id: def.id, lv: lv + 1 }, 2 * elW(def.el));
-      } else if (this.passives.size < PASSIVE_SLOTS && this.unlocked(def)) {
+      } else if (this.hasOpenSlot && this.unlocked(def)) {
         add({ kind: 'passive', id: def.id, lv: 1 }, 1.5 * elW(def.el));
       }
     }
@@ -243,9 +287,12 @@ export class Build {
   /** 应用选项，返回本命是否变化 */
   apply(o: Option): boolean {
     if (o.kind === 'skill') {
+      const def = SKILLS[o.id];
+      if (def.ultimate || (!this.skills.has(o.id) && !this.hasOpenSlot)) return false;
       this.skills.set(o.id, o.lv);
-      this.lastLeveled = SKILLS[o.id].el;
+      if (def.el) this.lastLeveled = def.el;
     } else if (o.kind === 'passive') {
+      if (!this.passives.has(o.id) && !this.hasOpenSlot) return false;
       this.passives.set(o.id, o.lv);
       const el = PASSIVES[o.id].el;
       if (el) this.lastLeveled = el;
@@ -279,7 +326,8 @@ export class Build {
     if (!up.length) return null;
     const [id, lv] = up[Math.floor(Math.random() * up.length)];
     this.skills.set(id, lv + 1);
-    this.lastLeveled = SKILLS[id].el;
+    const el = SKILLS[id].el;
+    if (el) this.lastLeveled = el;
     return { id, lv: lv + 1 };
   }
 }

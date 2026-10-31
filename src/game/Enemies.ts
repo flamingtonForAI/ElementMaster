@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ENEMIES, ENEMY_PROJECTILE_DAMAGE, LATE_MOB_ROLES, TRICKS, AFFIXES, TIERS, HANBA_FIRE, PHASE_FORMS, DIJIANG_FORMS, BOSS_MOVES, MOB_MOVES, tierTex, type EnemyDef, type Trick, type Affix, type Tier } from '../config/enemies';
+import { ENEMIES, ENEMY_PROJECTILE_DAMAGE, LATE_MOB_ROLES, TRICKS, AFFIXES, AFFIX_SQUASH, enemyAttackGrowth, TIERS, HANBA_FIRE, PHASE_FORMS, DIJIANG_FORMS, BOSS_MOVES, MOB_MOVES, tierTex, type EnemyDef, type Trick, type Affix, type Tier } from '../config/enemies';
 import { enemyTex, roarBuff, tricksOf, eliteAffixCount, type RoarBuff } from '../config/levels';
 import { STATUS_INFO, STATUS_OF, FROZEN, type Inflict } from '../config/status';
 import { EL_INFO, GEN_ORDER, type El } from '../config/elements';
@@ -24,6 +24,8 @@ export class Enemy {
   hp = 0;
   maxHp = 0;
   dmg = 0;
+  /** 出生时确定的额外直接伤害倍率；固定伤害招式也使用它，换相不重算。 */
+  attackGrowth = 1;
   armor = 0;
   radius = 0;
   speed = 0;
@@ -139,8 +141,8 @@ export class Enemy {
   /** 被列阵 / 护词缀罩着：这之前护甲 +guardArmor */
   guardUntil = 0;
   guardArmor = 0;
-  /** 列阵、护、瘴的脚下光环 */
-  aura: Phaser.GameObjects.Image | null = null;
+  /** 列阵与各词缀的光环；复合词缀同时显示。 */
+  auras: Phaser.GameObjects.Image[] = [];
   glyph: Phaser.GameObjects.Text | null = null;
   constructor(readonly sprite: Phaser.GameObjects.Sprite) {}
 }
@@ -218,7 +220,8 @@ export class EnemyManager {
     const role = !e.elite && !e.boss && def.lateRole && this.g.levelDef.id >= LATE_MOB_ROLES.fromLevel ? LATE_MOB_ROLES[def.lateRole] : null;
     const hpMult = (o.hpMult ?? 1) * (e.elite ? 10 : 1) * (T?.hp ?? 1) * (role?.hp ?? 1);
     e.maxHp = e.hp = Math.round(def.hp * hpMult);
-    e.dmg = def.dmg * (e.elite ? 1.8 : 1) * (T?.dmg ?? 1) * (e.boss ? 1 : this.g.dmgScale());
+    e.attackGrowth = enemyAttackGrowth(this.g.levelDef.id, this.g.elapsed ?? 0, e.boss ? 'boss' : e.elite ? 'elite' : 'mob');
+    e.dmg = def.dmg * (e.elite ? 1.8 : 1) * (T?.dmg ?? 1) * (e.boss ? 1 : this.g.dmgScale()) * e.attackGrowth;
     e.armor = def.armor + (T?.armor ?? 0);
     const scale = e.elite ? 1.5 : T?.scale ?? 1;
     e.radius = def.radius * scale;
@@ -247,7 +250,7 @@ export class EnemyManager {
     e.castUntil = e.guardUntil = e.guardArmor = 0;
     e.affixes = e.elite ? this.rollAffixes(eliteAffixCount(this.g.levelDef, this.g.elapsed ?? 0)) : [];
     e.affixTick = e.frostTick = 0;
-    e.summonAt = this.g.now + (AFFIXES.summon.every ?? 9);
+    e.summonAt = this.g.now + AFFIXES.summon.first!;
     e.alive = true;
     e.kbx = e.kby = 0;
     e.poisonDeepUntil = e.burnDeepUntil = e.burnBuild = 0;
@@ -547,7 +550,7 @@ export class EnemyManager {
         else if (tint === 8) s.setTint(this.roarTint);
         else s.setTint(TINTS[tint]);
       }
-      if (e.aura) e.aura.setPosition(Math.round(e.x), Math.round(e.y)).setDepth(e.aura.texture.key === 'fx_fog' ? e.y + 2 : -9e4);
+      for (const aura of e.auras) aura.setPosition(Math.round(e.x), Math.round(e.y));
       if (e.glyph) e.glyph.setPosition(Math.round(e.x), Math.round(e.y - e.lift - s.displayHeight * 0.9)).setDepth(e.y + 1);
     }
 
@@ -783,7 +786,7 @@ export class EnemyManager {
             audio.sfx('bossShot');
             for (let i = 0; i < n; i++) {
               const a = (i / n) * Math.PI * 2;
-              g.proj.enemyShot('ep_wind', e.x, e.y - 12, Math.cos(a) * 95, Math.sin(a) * 95, 10, 'metal', hurt);
+              g.proj.enemyShot('ep_wind', e.x, e.y - 12, Math.cos(a) * 95, Math.sin(a) * 95, 10 * e.attackGrowth, 'metal', hurt);
             }
           }
           return [e.dashX * 250, e.dashY * 250];
@@ -814,7 +817,7 @@ export class EnemyManager {
           const off = Math.random() * Math.PI;
           for (let i = 0; i < n; i++) {
             const a = off + (i / n) * Math.PI * 2;
-            g.proj.enemyShot('ep_leaf', e.x, e.y - 30, Math.cos(a) * 100, Math.sin(a) * 100, 9, 'wood', hurt);
+            g.proj.enemyShot('ep_leaf', e.x, e.y - 30, Math.cos(a) * 100, Math.sin(a) * 100, 9 * e.attackGrowth, 'wood', hurt);
           }
         }
         if (e.timer2 <= 0) {
@@ -829,7 +832,7 @@ export class EnemyManager {
           e.timer3 -= dt;
           if (e.timer3 <= 0) {
             e.timer3 = 4.5;
-            this.thornLine(e.x, e.y, Math.atan2(ny, nx), hurt);
+            this.thornLine(e.x, e.y, Math.atan2(ny, nx), hurt, 'wood', e.attackGrowth);
           }
         }
         return [nx * sp, ny * sp];
@@ -851,15 +854,26 @@ export class EnemyManager {
     return out;
   }
 
-  /** 列阵、护画成脚下一圈淡色阵环，瘴画成一团跟着走的瘴气，寒画成脚下一圈霜 */
+  /** 各词缀分别画范围与效果，避免复合词缀互相遮掉。 */
   private makeAura(e: Enemy) {
     const g = this.g;
-    e.aura?.destroy();
-    e.aura = null;
-    const r = e.tricks.includes('formation') ? TRICKS.formation.r : e.affixes.includes('guard') ? AFFIXES.guard.r! : 0;
-    if (r) e.aura = g.add.image(e.x, e.y, 'fx_ring').setTint(e.tricks.includes('formation') ? 0xc8d0e0 : 0xe8d38a).setAlpha(0.2).setScale(r / 31, (r / 31) * 0.6).setDepth(-9e4);
-    else if (e.affixes.includes('miasma')) e.aura = g.add.image(e.x, e.y, 'fx_fog').setAlpha(0.4).setScale(AFFIXES.miasma.r! / 26);
-    else if (e.affixes.includes('frost')) e.aura = g.add.image(e.x, e.y, 'fx_frost').setAlpha(0.7).setScale(AFFIXES.frost.r! / 30, (AFFIXES.frost.r! / 30) * 0.7);
+    for (const aura of e.auras) aura.destroy();
+    e.auras = [];
+    const ring = (r: number, color: number, alpha: number, squash = AFFIX_SQUASH) =>
+      e.auras.push(g.add.image(e.x, e.y, 'fx_ring').setTint(color).setAlpha(alpha).setScale(r / 31, r / 31 * squash).setDepth(-9e4 + 1));
+    // 护比列阵范围更大、加甲更高；同时携带时用护覆盖，不能被列阵抢先屏蔽。
+    if (e.affixes.includes('guard')) ring(AFFIXES.guard.r!, 0xe8d38a, 0.45);
+    else if (e.tricks.includes('formation')) ring(TRICKS.formation.r, 0xc8d0e0, 0.2, 0.6);
+    if (e.affixes.includes('miasma')) {
+      const r = AFFIXES.miasma.r!;
+      e.auras.push(g.add.image(e.x, e.y, 'fx_fog').setAlpha(0.55).setScale(r / 26, r * AFFIX_SQUASH / 18).setDepth(-9e4));
+      ring(r, 0x8fe06a, 0.35);
+    }
+    if (e.affixes.includes('frost')) {
+      const r = AFFIXES.frost.r!;
+      e.auras.push(g.add.image(e.x, e.y, 'fx_frost').setAlpha(0.85).setScale(r / 30, r / 30 * AFFIX_SQUASH).setDepth(-9e4 + 2));
+    }
+    if (e.affixes.includes('summon')) ring(24, 0xc8a0ff, 0.6);
   }
 
   /** 第一次见到某种手段时提示一句 */
@@ -950,27 +964,30 @@ export class EnemyManager {
     const p = g.player;
     const until = now + TRICKS.formation.every + 0.2;
     for (const e of this.list) {
-      if (!e.alive || (!e.aura && !e.affixes.length)) continue;
-      const guard = e.tricks.includes('formation') ? TRICKS.formation : e.affixes.includes('guard') ? { r: AFFIXES.guard.r!, armor: AFFIXES.guard.armor! } : null;
+      if (!e.alive) continue;
+      const guardAffix = e.affixes.includes('guard');
+      const guard = guardAffix ? { r: AFFIXES.guard.r!, armor: AFFIXES.guard.armor! } : e.tricks.includes('formation') ? TRICKS.formation : null;
       if (guard) {
         for (const o of this.inRadius(e.x, e.y, guard.r, this.near)) {
           if (o === e || o.boss) continue;
+          if (guardAffix && Math.hypot(o.x - e.x, (o.y - e.y) / AFFIX_SQUASH) >= guard.r) continue;
           o.guardArmor = o.guardUntil > now ? Math.max(o.guardArmor, guard.armor) : guard.armor;
           o.guardUntil = until;
         }
       }
-      if (e.affixes.includes('miasma') && now >= e.affixTick && Math.hypot(p.x - e.x, (p.y - e.y) / 0.7) < AFFIXES.miasma.r!) {
+      if (e.affixes.includes('miasma') && now >= e.affixTick && Math.hypot(p.x - e.x, (p.y - e.y) / AFFIX_SQUASH) < AFFIXES.miasma.r!) {
         e.affixTick = now + AFFIXES.miasma.tick!;
-        g.status.inflict({ kind: 'poison', chance: 0.35, dps: 2 * g.dmgScale(), dur: 3, mob: true });
+        g.status.inflict({ kind: 'poison', chance: AFFIXES.miasma.chance!, dps: 2 * g.dmgScale(), dur: 3, mob: true });
       }
-      if (e.affixes.includes('frost') && now >= e.frostTick && Math.hypot(p.x - e.x, (p.y - e.y) / 0.7) < AFFIXES.frost.r!) {
+      if (e.affixes.includes('frost') && now >= e.frostTick && Math.hypot(p.x - e.x, (p.y - e.y) / AFFIX_SQUASH) < AFFIXES.frost.r!) {
         e.frostTick = now + AFFIXES.frost.tick!;
-        g.status.inflict({ kind: 'slow', chance: 0.35, mob: true });
+        g.status.inflict({ kind: 'slow', chance: AFFIXES.frost.chance!, mob: true });
       }
       if (e.affixes.includes('summon') && now >= e.summonAt && this.count < g.spawnCap()) {
         e.summonAt = now + AFFIXES.summon.every!;
-        g.fx.ring(e.x, e.y - 6, 30, 0xc8a0ff, 0.4);
-        for (let i = 0; i < AFFIXES.summon.n!; i++) {
+        g.fx.ring(e.x, e.y - 6, 44, 0xc8a0ff, 0.5);
+        g.fx.text(e.x, e.y - 32, '召援', '#c8a0ff', 0.7);
+        for (let i = 0; i < AFFIXES.summon.n! && this.count < g.spawnCap(); i++) {
           const a = Math.random() * Math.PI * 2;
           this.spawn(e.def.id, e.x + Math.cos(a) * 24, e.y + Math.sin(a) * 18, { hpMult: g.hpScale(), noXp: true });
         }
@@ -1073,7 +1090,7 @@ export class EnemyManager {
         const hurt = this.hurtOf(e);
         for (let i = 0; i < n; i++) {
           const a = off + (i / n) * Math.PI * 2;
-          g.proj.enemyShot('ep_water', e.x, e.y - 8, Math.cos(a) * 90, Math.sin(a) * 90, 9, 'water', hurt);
+          g.proj.enemyShot('ep_water', e.x, e.y - 8, Math.cos(a) * 90, Math.sin(a) * 90, 9 * e.attackGrowth, 'water', hurt);
         }
       }
       return [0, 0];
@@ -1094,7 +1111,7 @@ export class EnemyManager {
     for (let i = 0; i < 9; i++) {
       const k = a + (i - 4) * 0.16;
       const toxic = i % 3 === 1;
-      g.proj.enemyShot(toxic ? 'ep_poison' : 'ep_water', e.x, e.y - 30, Math.cos(k) * 105, Math.sin(k) * 105, 10, toxic ? 'wood' : 'water', toxic ? poison : water);
+      g.proj.enemyShot(toxic ? 'ep_poison' : 'ep_water', e.x, e.y - 30, Math.cos(k) * 105, Math.sin(k) * 105, 10 * e.attackGrowth, toxic ? 'wood' : 'water', toxic ? poison : water);
     }
   }
 
@@ -1153,7 +1170,7 @@ export class EnemyManager {
         } else {
           e.timer2 = HB.thorn.every;
           const a = Math.atan2(ny, nx);
-          for (const k of [-0.35, 0, 0.35]) this.thornLine(e.x, e.y, a + k, hurt, 'earth');
+          for (const k of [-0.35, 0, 0.35]) this.thornLine(e.x, e.y, a + k, hurt, 'earth', e.attackGrowth);
         }
       }
       if (e.timer3 <= 0) {
@@ -1290,7 +1307,7 @@ export class EnemyManager {
           const a = off + (i / Math.max(1, n - 1)) * Math.PI * 2;
           const d = i === 0 ? 0 : 80;
           const [x, y] = g.world.clampPt(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d * 0.7, 20);
-          if (water) this.spout(x, y);
+          if (water) this.spout(x, y, e.attackGrowth);
           else g.hazards.blast(x, y, 30, 1.1, 14, 2.5);
         }
       }
@@ -1376,7 +1393,7 @@ export class EnemyManager {
         e.combo = (e.combo + 1) % 5;
         const k = GEN_ORDER[e.combo];
         const hurt: HurtOpts = { inflict: { kind: STATUS_OF[k], chance: 0.3, dps: 3 } };
-        g.proj.enemyShot(EL_SHOT[k], e.x, this.bodyY(e, 0.5), Math.cos(e.dashX) * 95, Math.sin(e.dashX) * 95, 10, k, hurt);
+        g.proj.enemyShot(EL_SHOT[k], e.x, this.bodyY(e, 0.5), Math.cos(e.dashX) * 95, Math.sin(e.dashX) * 95, 10 * e.attackGrowth, k, hurt);
       }
       if (e.timer <= 0) {
         e.state = 3;
@@ -1405,11 +1422,11 @@ export class EnemyManager {
     const g = this.g;
     const hurt = this.hurtOf(e);
     const n = at(DJ.n[el], rage);
-    if (el === 'wood') for (let i = 0; i < n; i++) this.thornLine(e.x, e.y, a + (i - (n - 1) / 2) * 0.33, hurt);
+    if (el === 'wood') for (let i = 0; i < n; i++) this.thornLine(e.x, e.y, a + (i - (n - 1) / 2) * 0.33, hurt, 'wood', e.attackGrowth);
     else if (el === 'fire') this.fireRing(e, n);
     else if (el === 'earth') g.hazards.rain(n);
     else if (el === 'metal') this.bladeRing(e, n, hurt);
-    else this.icicles(n);
+    else this.icicles(n, e.attackGrowth);
   }
 
   /** 换系时震出的一圈弹（新元素） */
@@ -1419,7 +1436,7 @@ export class EnemyManager {
     const off = Math.random() * Math.PI;
     for (let i = 0; i < n; i++) {
       const a = off + (i / n) * Math.PI * 2;
-      g.proj.enemyShot(EL_SHOT[el], e.x, this.bodyY(e, 0.5), Math.cos(a) * 90, Math.sin(a) * 90, 10, el, hurt);
+      g.proj.enemyShot(EL_SHOT[el], e.x, this.bodyY(e, 0.5), Math.cos(a) * 90, Math.sin(a) * 90, 10 * e.attackGrowth, el, hurt);
     }
   }
 
@@ -1436,13 +1453,13 @@ export class EnemyManager {
         if (!e.alive || e.id !== id || e.state !== 0 || g.over) return;
         const a = base + i * 0.35;
         const wet = i % 2 === 0;
-        g.proj.enemyShot(wet ? 'ep_water' : 'ep_fire', e.x, this.bodyY(e, 0.65), Math.cos(a) * 100, Math.sin(a) * 100, 10, wet ? 'water' : 'fire', wet ? water : fire);
+        g.proj.enemyShot(wet ? 'ep_water' : 'ep_fire', e.x, this.bodyY(e, 0.65), Math.cos(a) * 100, Math.sin(a) * 100, 10 * e.attackGrowth, wet ? 'water' : 'fire', wet ? water : fire);
       });
     }
   }
 
   /** 水柱：预警后从海底喷起，砸中必定迟缓，落地留一汪水洼 */
-  private spout(x: number, y: number) {
+  private spout(x: number, y: number, growth = 1) {
     const g = this.g;
     const r = 28;
     g.fx.telegraph(x, y, r, 0x5a9ae8, 1.2);
@@ -1452,7 +1469,7 @@ export class EnemyManager {
       g.fx.ring(x, y - 2, r + 4, 0x9fc0ff, 0.35);
       g.fx.burst(x, y - 10, 0x6aa8e8, 14);
       const p = g.player;
-      if (Math.hypot(p.x - x, (p.y - y) / 0.6) < r + PLAYER_RADIUS) g.hurtPlayer(14, 'water', { inflict: { kind: 'slow', chance: 1 } });
+      if (Math.hypot(p.x - x, (p.y - y) / 0.6) < r + PLAYER_RADIUS) g.hurtPlayer(14 * growth, 'water', { inflict: { kind: 'slow', chance: 1 } });
       g.hazards.patch(x, y, 16, 4, 0, 'water');
     });
   }
@@ -1465,7 +1482,7 @@ export class EnemyManager {
     const off = Math.random() * Math.PI;
     for (let i = 0; i < n; i++) {
       const a = off + (i / n) * Math.PI * 2;
-      g.proj.enemyShot('ep_fire', e.x, this.bodyY(e, 0.5), Math.cos(a) * 95, Math.sin(a) * 95, 10, 'fire', hurt);
+      g.proj.enemyShot('ep_fire', e.x, this.bodyY(e, 0.5), Math.cos(a) * 95, Math.sin(a) * 95, 10 * e.attackGrowth, 'fire', hurt);
     }
   }
 
@@ -1491,7 +1508,7 @@ export class EnemyManager {
       }
       if (e.timer3 <= 0) {
         e.timer3 = at(XM.icicle.every, rage);
-        this.icicles(at(XM.icicle.n, rage));
+        this.icicles(at(XM.icicle.n, rage), e.attackGrowth);
       }
       if (e.timer <= 0 && dist < XM.inhale.range) {
         // 吸寒：预警圈慢慢收，期间一直往身边拉，收完冰爆
@@ -1546,12 +1563,12 @@ export class EnemyManager {
     audio.sfx('bossShot', { rate: 1.2 });
     for (let i = 0; i < n; i++) {
       const k = a + (i - (n - 1) / 2) * 0.17;
-      g.proj.enemyShot('ep_ice', e.x, this.bodyY(e, 0.55), Math.cos(k) * 115, Math.sin(k) * 115, 10, 'water', hurt);
+      g.proj.enemyShot('ep_ice', e.x, this.bodyY(e, 0.55), Math.cos(k) * 115, Math.sin(k) * 115, 10 * e.attackGrowth, 'water', hurt);
     }
   }
 
   /** 冰锥：落在玩家脚下和周围，预警后砸下，落地结一片临时冰面；砸中非水系的普通敌人也掉一截血 */
-  private icicles(n: number) {
+  private icicles(n: number, growth = 1) {
     const g = this.g;
     const p = g.player;
     const I = XM.icicle;
@@ -1570,7 +1587,7 @@ export class EnemyManager {
         g.fx.ring(x, y - 2, r + 4, 0xd8f0ff, 0.3);
         g.fx.burst(x, y - 4, 0x9fd8ff, 8);
         const pl = g.player;
-        if (Math.hypot(pl.x - x, (pl.y - y) / 0.6) < r + PLAYER_RADIUS) g.hurtPlayer(I.dmg, 'water', { inflict: { kind: 'slow', chance: 1 } });
+        if (Math.hypot(pl.x - x, (pl.y - y) / 0.6) < r + PLAYER_RADIUS) g.hurtPlayer(I.dmg * growth, 'water', { inflict: { kind: 'slow', chance: 1 } });
         for (const o of this.inRadius(x, y, r, this.near)) if (!o.boss && o.def.el !== 'water') g.envDamage(o, o.maxHp * (o.elite ? 0.1 : 0.4), 'water');
         g.hazards.iceAt(x, y, 30, I.ice);
       });
@@ -1609,7 +1626,7 @@ export class EnemyManager {
         audio.sfx('bossShot', { rate: 1.1 });
         for (let i = 0; i < n; i++) {
           const k = (i - (n - 1) / 2) * 0.2;
-          g.proj.enemyShot('ep_fire', e.x, e.y - 20, Math.cos(a + k) * 120, Math.sin(a + k) * 120, 10, 'fire', this.hurtOf(e));
+          g.proj.enemyShot('ep_fire', e.x, e.y - 20, Math.cos(a + k) * 120, Math.sin(a + k) * 120, 10 * e.attackGrowth, 'fire', this.hurtOf(e));
         }
       }
       if (e.timer <= 0 && dist < 260) {
@@ -1756,7 +1773,7 @@ export class EnemyManager {
     const off = Math.random() * Math.PI;
     for (let i = 0; i < n; i++) {
       const a = off + (i / n) * Math.PI * 2;
-      g.proj.enemyShot('ep_blade', e.x, e.y - 18, Math.cos(a) * 95, Math.sin(a) * 95, 10, 'metal', hurt);
+      g.proj.enemyShot('ep_blade', e.x, e.y - 18, Math.cos(a) * 95, Math.sin(a) * 95, 10 * e.attackGrowth, 'metal', hurt);
     }
   }
 
@@ -1836,7 +1853,7 @@ export class EnemyManager {
         e.timer2 = rage ? 4 : 5.5;
         audio.sfx('bossShot', { rate: 0.7 });
         const a = Math.atan2(ny, nx);
-        for (const k of [-0.28, 0, 0.28]) g.proj.enemyShot('ep_boulder', e.x, e.y - 26, Math.cos(a + k) * 115, Math.sin(a + k) * 115, 12, 'earth', this.hurtOf(e));
+        for (const k of [-0.28, 0, 0.28]) g.proj.enemyShot('ep_boulder', e.x, e.y - 26, Math.cos(a + k) * 115, Math.sin(a + k) * 115, 12 * e.attackGrowth, 'earth', this.hurtOf(e));
       }
       if (e.timer <= 0) {
         // 蓄力：锁定玩家当前位置
@@ -1881,7 +1898,7 @@ export class EnemyManager {
         const hurt = this.hurtOf(e);
         for (let i = 0; i < n; i++) {
           const a = off + (i / n) * Math.PI * 2;
-          g.proj.enemyShot('ep_rock', e.x, e.y - 6, Math.cos(a) * 90, Math.sin(a) * 90, 9, 'earth', hurt);
+          g.proj.enemyShot('ep_rock', e.x, e.y - 6, Math.cos(a) * 90, Math.sin(a) * 90, 9 * e.attackGrowth, 'earth', hurt);
         }
       }
       return [0, 0];
@@ -1925,8 +1942,8 @@ export class EnemyManager {
     e.sprite.anims.stop();
     e.glyph?.destroy();
     e.glyph = null;
-    e.aura?.destroy();
-    e.aura = null;
+    for (const aura of e.auras) aura.destroy();
+    e.auras = [];
   }
 
   kill(e: Enemy) {
@@ -1968,6 +1985,7 @@ export class EnemyManager {
       const x = e.x;
       const y = e.y;
       const el = e.def.el;
+      const attackGrowth = e.attackGrowth;
       // 自爆按元素附带异常（火鸦灼烧、冰蚕迟缓），一半几率
       const inflict: Inflict | undefined = e.def.inflict && { ...e.def.inflict, chance: 0.5, dps: e.atkDps, mob: true };
       // 冰爆圈大一点、慢一点，看得清
@@ -1989,7 +2007,7 @@ export class EnemyManager {
         }
         // 和预警圈一样纵向压扁到 0.6
         const p = g.player;
-        if (Math.hypot(p.x - x, (p.y - y) / 0.6) < R + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale(), el, { inflict });
+        if (Math.hypot(p.x - x, (p.y - y) / 0.6) < R + PLAYER_RADIUS) g.hurtPlayer(4 * g.dmgScale() * attackGrowth, el, { inflict });
       });
     }
     // 残兵最多复活一次，火系终结直接阻止；精英不复活。
@@ -2010,7 +2028,7 @@ export class EnemyManager {
   }
 
   /** 预警 0.7 秒后沿直线钻出毒刺（木）或土刺（土），压到玩家就造成伤害 */
-  private thornLine(x: number, y: number, a: number, hurt?: HurtOpts, el: 'wood' | 'earth' = 'wood') {
+  private thornLine(x: number, y: number, a: number, hurt?: HurtOpts, el: 'wood' | 'earth' = 'wood', growth = 1) {
     const g = this.g;
     const len = 260;
     const cx = Math.cos(a);
@@ -2028,7 +2046,7 @@ export class EnemyManager {
       // 玩家到线段的距离
       const p = g.player;
       const t = Math.max(0, Math.min(len, (p.x - x) * cx + (p.y - y) * cy));
-      if (Math.hypot(p.x - (x + cx * t), p.y - (y + cy * t)) < 10 + PLAYER_RADIUS) g.hurtPlayer(16, el, hurt);
+      if (Math.hypot(p.x - (x + cx * t), p.y - (y + cy * t)) < 10 + PLAYER_RADIUS) g.hurtPlayer(16 * growth, el, hurt);
     });
   }
 

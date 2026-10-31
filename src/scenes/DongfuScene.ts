@@ -6,6 +6,9 @@ import { EL_INFO, GEN_ORDER, type El } from '../config/elements';
 import { STAR, CENTER, R_KEY, canLight, canUnlight, describe, type StarNode } from '../config/startree';
 import { LEGACIES, LEGACY_LEVELS, type LegacyNode } from '../config/legacy';
 import { loadSave, writeSave, type Save } from '../game/save';
+import { upgradeSum } from '../game/Build';
+import { talismanEffects } from '../config/map';
+import { SKILL_SLOTS } from '../config/skills';
 import { daoPoints, legacyPoints, litNodes, treeStart } from '../game/talents';
 import { label, hex } from '../ui/text';
 import { wrap } from '../ui/wrap';
@@ -252,7 +255,14 @@ export class DongfuScene extends Phaser.Scene {
     L.add(label(this, x + 12, 80, d.name, '#f4eee0', 24));
     L.add(label(this, x + 208, 88, `Lv ${lv} / ${d.maxLv}`, max ? '#ffd23f' : '#b8aec8').setOrigin(1, 0));
     L.add(label(this, x + 12, 116, wrap(`每级：${d.desc}`, 196), '#d8d0e4', 12, false).setLineSpacing(4));
-    L.add(label(this, x + 12, 162, wrap('修炼对所有角色生效，换角色不用重买。伤害、暴击、范围、冷却在各角色的星图里点。', 196), '#8a8494', 12, false).setLineSpacing(4));
+    let detail = '修炼对所有角色生效，换角色不用重买。伤害、暴击、范围、冷却在各角色的星图里点。';
+    if (d.id === 'shuhai') {
+      detail = `当前共 ${SKILL_SLOTS + lv} 格：自带术 1 格，普通 ${Math.min(10, 6 + lv)} 格${lv === 5 ? '，大招 1 格' : ''}。\n普通格由术与心法共用。所有角色共享修炼。`;
+    } else if (d.id === 'xingyun') {
+      const f = talismanEffects(upgradeSum(save.meta, 'luck'));
+      detail = `当前符箓出现率 ${Math.round(f.chance * 100)}%。\n定身/遁符 ${f.duration.toFixed(1)} 秒；遁符移速 +${Math.round((f.speed - 1) * 100)}%；爆符威力 +${Math.round(lv * 20)}%。\n所有角色共享。`;
+    }
+    L.add(label(this, x + 12, 174, wrap(detail, 196), '#8a8494', 12, false).setLineSpacing(4));
     if (max) L.add(label(this, x + 110, 276, '已满级', '#ffd23f').setOrigin(0.5, 0));
     else this.button(x + 12, 268, 196, 30, `购买　${p} 灵石`, p <= save.lingshi, () => this.buy());
 

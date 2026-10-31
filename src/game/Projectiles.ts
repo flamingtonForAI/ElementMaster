@@ -212,10 +212,10 @@ export class ProjectileManager {
         continue;
       }
 
-      // 带目标的弹道会追踪（飞剑、贴符）
+      // 带目标的弹道会追踪；穿透或弹射后只追未命中的目标。
       if (p.target) {
-        if (!p.target.alive || p.target.id !== p.targetId) {
-          p.target = g.enemies.nearest(p.x, p.y, 200, p.hit);
+        if (!p.target.alive || p.target.id !== p.targetId || p.hit.has(p.target.id)) {
+          p.target = g.enemies.nearest(p.x, p.y + 6, p.kind === 'leaf' ? 130 : 200, p.hit);
           p.targetId = p.target?.id ?? 0;
         }
         if (p.target) {
@@ -233,6 +233,7 @@ export class ProjectileManager {
         p.vx += p.ax * dt;
         p.vy += p.ay * dt;
       }
+      const previousX = p.x, previousY = p.y;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       const s = p.sprite;
@@ -264,8 +265,15 @@ export class ProjectileManager {
         continue;
       }
 
-      // 命中敌人（以身体中心判定）
-      const hits = g.enemies.inRadius(p.x, p.y + 6, p.radius, this.tmp);
+      // 按本帧经过的线段命中，避免高速/低帧率时跳过敌人；近处先消耗贯穿次数。
+      const dx = p.x - previousX, dy = p.y - previousY;
+      const length2 = dx * dx + dy * dy;
+      const along = (e: Enemy) => length2 ? Phaser.Math.Clamp(((e.x - previousX) * dx + (e.y - 6 - previousY) * dy) / length2, 0, 1) : 0;
+      const hits = g.enemies.inRadius((p.x + previousX) / 2, (p.y + previousY) / 2 + 6, Math.sqrt(length2) / 2 + p.radius, this.tmp)
+        .filter(e => {
+          const k = along(e);
+          return Math.hypot(e.x - previousX - dx * k, e.y - 6 - previousY - dy * k) <= p.radius + e.radius;
+        }).sort((a, b) => along(a) - along(b));
       for (const e of hits) {
         if (p.hit.has(e.id)) continue;
         p.hit.add(e.id);
@@ -278,7 +286,7 @@ export class ProjectileManager {
         p.onHit?.(e);
         if (p.kind === 'leaf') {
           p.bounces--;
-          const next = p.bounces >= 0 ? g.enemies.nearest(p.x, p.y, 130, p.hit) : null;
+          const next = p.bounces >= 0 ? g.enemies.nearest(p.x, p.y + 6, 130, p.hit) : null;
           if (!next) {
             this.release(p);
           } else {
@@ -286,6 +294,10 @@ export class ProjectileManager {
             const sp = Math.hypot(p.vx, p.vy);
             p.vx = Math.cos(a) * sp;
             p.vy = Math.sin(a) * sp;
+            p.target = next;
+            p.targetId = next.id;
+            // 只补足这一跳的飞行时间；剩余弹射次数仍是硬上限。
+            p.life = Math.max(p.life, 130 / sp + 0.2);
           }
           break;
         }

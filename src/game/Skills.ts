@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SKILLS, type SkillId, type Stats } from '../config/skills';
+import { SKILLS, ULTIMATE_MIN_CD, type SkillId, type Stats } from '../config/skills';
 import { EL_INFO, relation, type El } from '../config/elements';
 import type { Enemy } from './Enemies';
 import type { GameScene } from '../scenes/GameScene';
@@ -11,6 +11,8 @@ const AURA_FLAT = 0.6;
 /** 按冷却自动释放已习得的术 */
 export class SkillSystem {
   private timers = new Map<SkillId, number>();
+  /** 最早可再次施放的战斗时刻；不随退射加速，暂停时也不流逝。 */
+  private ultimateReadyAt = new Map<SkillId, number>();
   private tmp: Enemy[] = [];
   /** 剑客传承：上一斩的方向、累计斩数 */
   private lastSlash: number | null = null;
@@ -27,6 +29,8 @@ export class SkillSystem {
   private orbHit = new Map<number, number>();
   /** 藤缚：地上的藤蔓 */
   private vines: { x: number; y: number; r: number; t: number; tick: number; dmg: number; img: Phaser.GameObjects.Image }[] = [];
+  /** 同一敌人处于多片藤蔓中时，仍只每半秒受伤一次。 */
+  private vineHit = new Map<number, number>();
 
   constructor(private g: GameScene) {}
 
@@ -39,12 +43,16 @@ export class SkillSystem {
     const kite = this.mod('ruan.kite');
     if (kite && this.retreating()) dt *= 1 + kite;
     for (const [id, lv] of this.g.build.skills) {
+      const ultimate = SKILLS[id].ultimate;
       let t = this.timers.get(id) ?? 0.4;
       t -= dt;
+      if (ultimate) t = Math.max(t, (this.ultimateReadyAt.get(id) ?? 0) - this.g.now);
       if (t <= 0) {
         const st = this.stats(id, lv);
         const cd = st.cd * this.g.pstats.cdMult * (id === 'slash' ? 1 - this.mod('slashCd') : 1);
-        t = this.fire(id, st) ? cd : 0.2;
+        const fired = this.fire(id, st);
+        t = fired ? (ultimate ? Math.max(ULTIMATE_MIN_CD, cd) : cd) : 0.2;
+        if (fired && ultimate) this.ultimateReadyAt.set(id, this.g.now + ULTIMATE_MIN_CD);
       }
       this.timers.set(id, t);
     }
@@ -58,7 +66,26 @@ export class SkillSystem {
     const cy = p.y - 8;
     const proc = SKILLS[id].proc;
 
+    if (SKILLS[id].ultimate) return this.ultimate(id, st);
+
     switch (id) {
+      case 'fuchen': {
+        const range = st.range * area;
+        const target = g.enemies.nearest(cx, cy, range);
+        if (!target) return false;
+        const angle = Math.atan2(target.y - 6 - cy, target.x - cx);
+        const half = st.arc * Math.PI / 360;
+        p.attack(target.x - cx, target.y - 6 - cy);
+        audio.sfx('leaf', { rate: 0.75 });
+        g.fx.whisk(cx, cy, angle, range, st.arc);
+        for (const e of [...g.enemies.inRadius(cx, cy, range, this.tmp)]) {
+          const dx = e.x - cx, dy = e.y - 6 - cy;
+          if (Math.hypot(dx, dy) > range) continue;
+          const diff = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - angle), Math.cos(Math.atan2(dy, dx) - angle)));
+          if (Math.hypot(dx, dy) < 12 || diff <= half) g.hitEnemy(e, st.dmg, null, { kb: st.kb, fromX: cx, fromY: cy });
+        }
+        return true;
+      }
       case 'slash': {
         // 移动时朝移动方向斩；站定时自动转向身边最近的敌人
         let ang = Math.atan2(p.facing.y, p.facing.x);
@@ -178,13 +205,11 @@ export class SkillSystem {
       }
       case 'fireball': {
         // 炮击：在附近挑敌人最密的几处，慢速高抛砸下去
-        const cands = g.enemies.randomIn(p.x, p.y, 220, 10);
-        if (!cands.length) return false;
         const r = st.radius * area;
-        const spots = cands.map((e) => ({ e, n: g.enemies.inRadius(e.x, e.y, r, this.tmp).length })).sort((a, b) => b.n - a.n);
+        const targets = this.clusterTargets(220, st.count, r);
+        if (!targets.length) return false;
         audio.sfx('fireball', { rate: 0.8 });
-        for (let i = 0; i < st.count; i++) {
-          const t = spots[i % spots.length].e;
+        for (const t of targets) {
           const ball = g.proj.lob('pj_fireball', 'pj_fireball', cx, cy, t.x, t.y, 0.8, st.dmg, 'fire', r, undefined, 70);
           ball.sprite.setScale(1.6);
           ball.proc = proc;
@@ -197,9 +222,9 @@ export class SkillSystem {
         audio.sfx('leaf');
         for (let i = 0; i < st.count; i++) {
           const t = targets[i % targets.length];
-          const a = Math.atan2(t.y - 6 - cy, t.x - cx) + i * 0.3;
+          const a = Math.atan2(t.y - 6 - cy, t.x - cx);
           g.proj.fire('leaf', 'pj_leaf', cx, cy, Math.cos(a) * 260, Math.sin(a) * 260, {
-            dmg: st.dmg, el: 'wood', life: 2, bounces: st.bounces, radius: 5, kb: 10, proc,
+            dmg: st.dmg, el: 'wood', life: 2, bounces: st.bounces, radius: 5, kb: 10, proc, target: t,
           });
         }
         return true;
@@ -207,12 +232,13 @@ export class SkillSystem {
       case 'waterdragon': {
         const t = g.enemies.nearest(cx, cy, 260);
         const base = t ? Math.atan2(t.y - 6 - cy, t.x - cx) : Math.atan2(p.facing.y, p.facing.x);
-        const offs = st.count > 1 ? [-0.18, 0.18] : [0];
+        const width = st.width * area;
+        // 两条平行通路在中心稍有重叠，远处不会因发散而漏掉瞄准的目标。
+        const offs = st.count > 1 ? [-width * 0.85, width * 0.85] : [0];
         audio.sfx('water');
         for (const o of offs) {
-          const a = base + o;
-          const dragon = g.proj.fire('water', 'pj_water', cx, cy, Math.cos(a) * 170, Math.sin(a) * 170, {
-            dmg: st.dmg, el: 'water', life: 1.8, pierce: 999, radius: st.width * area, slow: st.slow, kb: 30, anim: 'pj_water',
+          const dragon = g.proj.fire('water', 'pj_water', cx - Math.sin(base) * o, cy + Math.cos(base) * o, Math.cos(base) * 170, Math.sin(base) * 170, {
+            dmg: st.dmg * (st.count > 1 ? st.twinDmg : 1), el: 'water', life: 1.8, pierce: 999, radius: width, slow: st.slow, kb: 30, anim: 'pj_water',
           });
           // 水龙的宽度随技能成长，仍保留细长的穿透轮廓。
           dragon.sprite.setScale(1, st.width * area / 7);
@@ -270,12 +296,11 @@ export class SkillSystem {
       }
       case 'luoshi': {
         // 砸向附近敌人最密的地方；玩家的落石没有地面预警，下落也快，和关卡落石区分开
-        const cands = g.enemies.randomIn(p.x, p.y, 240, 10);
-        if (!cands.length) return false;
         const r = st.radius * area;
-        const spots = cands.map((e) => ({ e, n: g.enemies.inRadius(e.x, e.y, r, this.tmp).length })).sort((a, b) => b.n - a.n);
-        for (let i = 0; i < st.count; i++) {
-          const t = spots[i % spots.length].e;
+        const targets = this.clusterTargets(240, st.count, r);
+        if (!targets.length) return false;
+        for (let i = 0; i < targets.length; i++) {
+          const t = targets[i];
           this.boulder(t.x, t.y, i * 0.15, r, st.dmg, st.daze);
         }
         return true;
@@ -322,6 +347,64 @@ export class SkillSystem {
         return true;
       }
     }
+    return false;
+  }
+
+  /** 优先落在尚未覆盖的密集敌群；全覆盖后允许余下炮击继续集火。 */
+  private clusterTargets(range: number, count: number, radius: number): Enemy[] {
+    const g = this.g;
+    const candidates = g.enemies.randomIn(g.player.x, g.player.y, range, 10);
+    const spots = candidates.map(e => ({ e, near: [...g.enemies.inRadius(e.x, e.y, radius, this.tmp)] }));
+    if (!spots.length) return [];
+    const covered = new Set<number>();
+    const result: Enemy[] = [];
+    for (let i = 0; i < count; i++) {
+      const best = [...spots].sort((a, b) => {
+        const fresh = (s: typeof a) => s.near.filter(e => !covered.has(e.id)).length;
+        return fresh(b) - fresh(a) || b.near.length - a.near.length;
+      })[0];
+      result.push(best.e);
+      for (const e of best.near) covered.add(e.id);
+    }
+    return result;
+  }
+
+  /** 大招的每一轮都重新查找活敌人，不保留会被对象池复用的目标。 */
+  private ultimate(id: SkillId, st: Stats): boolean {
+    const g = this.g;
+    const def = SKILLS[id];
+    if (!def.el) return false;
+    const r = st.radius * g.pstats.area;
+    if (!g.enemies.inRadius(g.player.x, g.player.y, r, []).length) return false;
+    const col = EL_INFO[def.el].color;
+    g.player.attack();
+    g.hud.toast(`大招 · ${def.name}`, EL_INFO[def.el].css);
+    audio.sfx('benming');
+    for (let wave = 0; wave < st.count; wave++) {
+      g.later(0.15 + wave * st.interval, () => {
+        if (g.over || !g.player.alive) return;
+        const { x, y } = g.player;
+        g.fx.ring(x, y - 6, r, col, 0.6);
+        // 控制每轮的装饰数量，十个普通术同时施放时仍能看清角色和敌弹。
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2 + wave * 0.25;
+          const px = x + Math.cos(a) * r * 0.6;
+          const py = y + Math.sin(a) * r * 0.6;
+          if (def.el === 'metal') g.fx.anim('fx_slash', px, py, { rotation: a, scale: 1.5, tint: col });
+          else if (def.el === 'wood') g.fx.burst(px, py, col, 4);
+          else g.fx.impact(def.el === 'fire' ? 'fire' : def.el === 'water' ? 'ice' : 'stone', px, py, 28, col);
+        }
+        for (const e of g.enemies.inRadius(x, y, r, [])) {
+          g.hitEnemy(e, st.dmg, def.el, {
+            proc: def.proc, slow: st.slow, stun: st.root,
+            kb: st.kb ?? 15, fromX: x, fromY: y,
+            // 昆仑由山岳傀灵施放，沿用傀儡伤害通路，免受本体术减伤。
+            puppet: def.el === 'earth',
+          });
+        }
+      });
+    }
+    return true;
   }
 
   /**
@@ -329,7 +412,7 @@ export class SkillSystem {
    * 五雷：每第 5 张优先画成克制目标的元素
    */
   private drawFu(t: Enemy): El {
-    const owned = [...new Set([...this.g.build.skills.keys()].map((id) => SKILLS[id].el))];
+    const owned = [...new Set([...this.g.build.skills.keys()].map((id) => SKILLS[id].el).filter((el): el is El => el !== null))];
     this.fuCount++;
     if (this.mod('zhu.thunder') && this.fuCount % 5 === 0) {
       const best = owned.find((e) => relation(e, t.def.el) === 'counter') ?? owned.find((e) => relation(e, t.def.el) === 'fed');
@@ -407,7 +490,7 @@ export class SkillSystem {
         onComplete: () => {
           s.destroy();
           g.fx.burst(x, y - 2, EL_INFO.metal.color, 2);
-          for (const e of g.enemies.inRadius(x, y, r, this.tmp)) g.hitEnemy(e, dmg, 'metal', { kb: 10, fromX: x - fx * 10, fromY: y - fy * 10, proc: SKILLS.jinzhen.proc });
+          for (const e of [...g.enemies.inRadius(x, y, r, this.tmp)]) g.hitEnemy(e, dmg, 'metal', { kb: 10, fromX: x - fx * 10, fromY: y - fy * 10, proc: SKILLS.jinzhen.proc });
         },
       });
     });
@@ -426,7 +509,7 @@ export class SkillSystem {
           g.fx.impact('stone', x, y, r);
           const near = g.enemies.inRadius(x, y, r, this.tmp);
           if (near.length) g.cameras.main.shake(90, 0.003);
-          for (const e of near) g.hitEnemy(e, dmg, 'earth', { daze, kb: 50, fromX: x, fromY: y });
+          for (const e of [...near]) g.hitEnemy(e, dmg, 'earth', { daze, kb: 50, fromX: x, fromY: y });
         },
       });
     });
@@ -440,22 +523,33 @@ export class SkillSystem {
     const st = this.stats('lihuo', lv);
     const p = g.player;
     while (this.orbs.length < st.count) this.orbs.push(g.add.sprite(0, 0, 'fx_orbit_flame', 0).play('fx_orbit_flame'));
-    this.orbAng += (dt * Math.PI * 2) / (st.period * g.pstats.cdMult);
     const R = st.orbit * g.pstats.area;
-    const hitR = 9 * g.pstats.area;
+    const hitR = st.hitRadius * g.pstats.area;
+    const period = Math.max(st.hitCd, st.period * g.pstats.cdMult);
+    const advance = (dt * Math.PI * 2) / period;
+    const previous = this.orbAng;
+    this.orbAng = (previous + advance) % (Math.PI * 2);
+    // 高减冷却/低帧率下沿本帧弧线补点，点间距不超过火团半径，避免跳过敌人。
+    const steps = Math.max(1, Math.ceil(advance * R / hitR));
     const now = g.now;
     if (this.orbHit.size > 300) for (const [id, t] of this.orbHit) if (t < now) this.orbHit.delete(id);
     for (let i = 0; i < this.orbs.length; i++) {
       const a = this.orbAng + (i / this.orbs.length) * Math.PI * 2;
       const x = p.x + Math.cos(a) * R;
-      const y = p.y - 6 + Math.sin(a) * R * AURA_FLAT;
+      const y = p.y - 6 + Math.sin(a) * R * st.flat;
       this.orbs[i].setPosition(x, y).setDepth(y + 10).setVisible(p.alive)
-        .setRotation(Math.atan2(Math.cos(a) * AURA_FLAT, -Math.sin(a))).setScale(g.pstats.area);
+        .setRotation(Math.atan2(Math.cos(a) * st.flat, -Math.sin(a))).setScale(g.pstats.area);
       if (!p.alive) continue;
-      for (const e of g.enemies.inRadius(x, y + 6, hitR, this.tmp)) {
-        if ((this.orbHit.get(e.id) ?? 0) > now) continue;
-        this.orbHit.set(e.id, now + 0.35);
-        g.hitEnemy(e, st.dmg, 'fire', { kb: 25, fromX: p.x, fromY: p.y, proc: SKILLS.lihuo.proc });
+      for (let step = 1; step <= steps; step++) {
+        const hitAngle = previous + advance * step / steps + (i / this.orbs.length) * Math.PI * 2;
+        const hx = p.x + Math.cos(hitAngle) * R;
+        const hy = p.y + Math.sin(hitAngle) * R * st.flat;
+        // 伤害可能触发死亡范围效果，查询结果单独保留。
+        for (const e of [...g.enemies.inRadius(hx, hy, hitR, this.tmp)]) {
+          if ((this.orbHit.get(e.id) ?? 0) > now) continue;
+          this.orbHit.set(e.id, now + st.hitCd);
+          g.hitEnemy(e, st.dmg, 'fire', { kb: 25, fromX: p.x, fromY: p.y, proc: SKILLS.lihuo.proc });
+        }
       }
     }
   }
@@ -463,6 +557,8 @@ export class SkillSystem {
   /** 藤缚：每 0.5 秒给藤蔓里的敌人一跳伤害并迟缓，到时淡出 */
   private updateVines(dt: number) {
     const g = this.g;
+    const due = new Map<number, { e: Enemy; dmg: number }>();
+    for (const [id, until] of this.vineHit) if (until <= g.now + 1e-8) this.vineHit.delete(id);
     for (let i = this.vines.length - 1; i >= 0; i--) {
       const v = this.vines[i];
       v.t -= dt;
@@ -473,8 +569,8 @@ export class SkillSystem {
         v.img.setScale(v.r / 20 * 0.9).setAlpha(0.85);
         g.tweens.add({ targets: v.img, scale: v.r / 20, alpha: 0.55, duration: 260, ease: 'Cubic.out' });
         for (const e of this.inVine(v.x, v.y, v.r)) {
-          g.hitEnemy(e, v.dmg, 'wood', { proc: SKILLS.tengfu.proc });
-          if (e.alive) g.slowEnemy(e, 0.6);
+          if ((this.vineHit.get(e.id) ?? 0) - g.now > 1e-8) continue;
+          if (v.dmg > (due.get(e.id)?.dmg ?? 0)) due.set(e.id, { e, dmg: v.dmg });
         }
       }
       if (v.t <= 0) {
@@ -482,6 +578,11 @@ export class SkillSystem {
         g.tweens.add({ targets: img, alpha: 0, duration: 250, onComplete: () => img.destroy() });
         this.vines.splice(i, 1);
       }
+    }
+    for (const { e, dmg } of due.values()) {
+      this.vineHit.set(e.id, g.now + 0.5);
+      g.hitEnemy(e, dmg, 'wood', { proc: SKILLS.tengfu.proc });
+      if (e.alive) g.slowEnemy(e, 0.6);
     }
   }
 
@@ -536,7 +637,7 @@ export class SkillSystem {
     const cx = p.x;
     const cy = p.y - 8;
     g.fx.anim('fx_slash', cx, cy, { rotation: ang, scale: range / 30, depth: p.y + 5 });
-    for (const e of g.enemies.inRadius(cx, cy, range, this.tmp)) {
+    for (const e of [...g.enemies.inRadius(cx, cy, range, this.tmp)]) {
       const ex = e.x - cx;
       const ey = e.y - 6 - cy;
       const d = Math.hypot(ex, ey);
