@@ -129,7 +129,7 @@ function drawScroll9(): PC {
   const p = new PC(SCROLL_ART_W, SCROLL_ART_H);
   const R = rng(909);
   sky(p, [0x100c1e, 0x1e1636, 0x2e2048, 0x1c2c4c, 0x102038]);
-  // 天穹之上的昆仑裂隙与穷奇凶芒
+  // 天穹之上的昆仑裂隙与混沌异光
   p.line(26, 8, 86, 16, 0xd898ff, 3);
   p.line(28, 8, 84, 16, 0xffffff, 1);
   p.line(48, 11, 38, 24, 0xb878f0, 1);

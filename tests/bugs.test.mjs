@@ -512,6 +512,25 @@ test('星图：去相邻元素的脉 3 点不变，去相克的元素多绕 2 �
   assert.ok(STAR['fire.yt'].mods['sres.burn'] > 0);
 });
 
+test('星图外围连线：深修本系至 m1 后可经 3 个过渡点切入邻系外脉，或 3 点点出合化要穴，且不破坏早期内环最短路', () => {
+  const order = ['wood', 'fire', 'earth', 'metal', 'water'];
+  order.forEach((el, i) => {
+    const next = order[(i + 1) % 5];
+    const prev = order[(i + 4) % 5];
+    // 从深系汇合点 m1 出发：经 oa -> zc2 -> zk 仅需 3 点点亮合化要穴；经 oa -> zc2 -> ob（3 个过渡点）第 4 步踏入邻系 m1
+    assert.ok(STAR[`${el}.m1`].links.includes(`${el}.oa`));
+    assert.ok(STAR[`${el}.oa`].links.includes(`${el}.zc2`));
+    assert.ok(STAR[`${el}.zc2`].links.includes(`${el}.ob`));
+    assert.ok(STAR[`${el}.ob`].links.includes(`${next}.m1`));
+    assert.ok(STAR[`${el}.m1`].links.includes(`${prev}.ob`));
+    // 不能靠外围连线白嫖捷径：从本命门直接去邻系 m1 最短路仍是内环分叉（11 点），深修本系（9 点）再走外围过去共 13 点（含本系双要穴）
+    const d = realCosts(`${el}.gate`);
+    assert.equal(d.get(`${el}.m1`), 9);
+    assert.equal(d.get(`${el}.zk`), 10);
+    assert.equal(d.get(`${next}.m1`), 11);
+  });
+});
+
 function comboScene(mods) {
   const scene = runScene('qingdai', 1);
   scene.build = new Build(scene.char, LEVELS[0], {}, mods);

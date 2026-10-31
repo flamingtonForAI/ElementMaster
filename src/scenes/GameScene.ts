@@ -7,7 +7,7 @@ import { LEVEL_STORY } from '../config/story';
 import { ENEMIES, AFFIXES, type Affix } from '../config/enemies';
 import { advances, BOSS_STATUS, STATUS_TIERS, ENEMY_CRIT, ENEMY_CRIT_DMG, FROZEN, ON_ENEMY, STATUS_INFO, STATUS_OF, statusChance, statusPower, type Inflict, type StatusId } from '../config/status';
 import { EL_INFO, GEN_ORDER, REL_MULT, relation, terrainMod, type El } from '../config/elements';
-import { SKILLS } from '../config/skills';
+import { SKILLS, PASSIVES, type SkillId, type PassiveId } from '../config/skills';
 import { Build, upgradeSum, type Option, type PlayerStats } from '../game/Build';
 import { Player } from '../game/Player';
 import { EnemyManager, type Enemy } from '../game/Enemies';
@@ -604,7 +604,7 @@ export class GameScene extends Phaser.Scene {
     if (m['qing.vuln'] && this.now < e.poisonUntil) k *= 1 + m['qing.vuln'];
     if (m.vsSlow && this.now < e.slowUntil) k *= 1 + m.vsSlow;
     if (m.hpHighDmg && e.hp > e.maxHp * 0.7) k *= 1 + m.hpHighDmg;
-    if (m['hh.stunBreak'] && this.now < e.stunUntil) k *= 1 + m['hh.stunBreak'];
+    if (m['hh.stunBreak'] && this.hasStatus(e, 'stun')) k *= 1 + m['hh.stunBreak'];
     for (const h of this.hehua) if (this.hasStatus(e, STATUS_OF[h.a]) && this.hasStatus(e, STATUS_OF[h.b])) k *= 1 + HEHUA_VULN;
     return k;
   }
@@ -628,14 +628,14 @@ export class GameScene extends Phaser.Scene {
     const guard = this.now < e.guardUntil ? e.guardArmor : 0;
     const armor = e.armor + guard + (zone && zone + (this.levelDef.roar?.zoneArmor ?? 0) * this.roarStacks);
     if (armor <= 0) return armor;
-    if (m['hh.stunBreak'] && this.now < e.stunUntil) return 0;
+    if (m['hh.stunBreak'] && this.hasStatus(e, 'stun')) return 0;
     if (elemental && m['kx.fire'] && e.def.el === 'metal' && this.now < e.burnUntil) return 0;
     const a = elemental && m['kx.wood'] && e.def.el === 'earth' ? armor * 0.5 : armor;
     return Math.max(0, a - (m.armorPen ?? 0));
   }
 
   /** 星图的跨系效果：合化要穴让两系术互附对方的异常；相克奇穴对被克的那系敌人 */
-  private comboHit(e: Enemy, el: El, dmg: number) {
+  comboHit(e: Enemy, el: El, dmg: number) {
     const m = this.build.mods;
     const foe = e.def.el;
     for (const h of this.hehua) {
@@ -659,11 +659,12 @@ export class GameScene extends Phaser.Scene {
       if (dx * dx + dy * dy <= ps.meleeRange * ps.meleeRange) m *= 1 + ps.meleeBonus;
     }
     const md = this.build.mods;
-    const stunned = this.now < e.stunUntil;
+    const stunned = this.hasStatus(e, 'stun');
     const rate = this.pstats.crit + (this.player.moving ? 0 : md.stillCrit ?? 0) + (stunned ? md['hh.stunCrit'] ?? 0 : 0);
     const crit = !o.noCrit && !md.noCrit && Math.random() < rate;
     const critDmg = this.pstats.critDmg + (this.now < e.slowUntil ? md['hh.slowCritDmg'] ?? 0 : 0);
-    const dmg = Math.max(1, Math.round(base * m * (crit ? critDmg : 1) - this.armorOf(e, el !== null)));
+    const raw = base * m * (crit ? critDmg : 1);
+    const dmg = Math.max(1, Math.round(Math.max(raw * 0.3, raw - this.armorOf(e, el !== null))));
     e.hp -= dmg;
     e.lastEl = el;
     // 伐木：残血的木系敌人直接斩杀
@@ -699,7 +700,10 @@ export class GameScene extends Phaser.Scene {
       // 水系命中带来的迟缓攒寒意（毒雾、藤缚这类别系的迟缓不算）
       if (el === 'water') this.chillEnemy(e);
     }
-    if (el && o.proc && e.hp > 0 && Math.random() < o.proc * statusChance(STATUS_OF[el], e.def.el)) this.afflict(e, STATUS_OF[el], dmg);
+    if (el && o.proc && e.hp > 0 && Math.random() < o.proc * statusChance(STATUS_OF[el], e.def.el)) {
+      const dotBase = STATUS_OF[el] === 'bleed' ? dmg : Math.max(dmg, Math.round(raw * 0.6));
+      this.afflict(e, STATUS_OF[el], dotBase);
+    }
     if (el && e.hp > 0) this.comboHit(e, el, dmg);
 
     let prefix = '';
@@ -1054,7 +1058,8 @@ export class GameScene extends Phaser.Scene {
       const prevMax = this.pstats.maxHp;
       this.pstats = this.build.stats();
       if (this.pstats.maxHp > prevMax) this.player.hp += this.pstats.maxHp - prevMax;
-      this.hud.toast(`宝箱：${SKILLS[r.id].name} 升到 Lv${r.lv}`, '#ffd23f');
+      const def = SKILLS[r.id as SkillId] ?? PASSIVES[r.id as PassiveId];
+      this.hud.toast(`宝箱：${def.name} 升到 Lv${r.lv}`, '#ffd23f');
     } else {
       this.player.hp = this.pstats.maxHp;
       this.hud.toast('宝箱：生命回满', '#ffd23f');

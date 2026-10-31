@@ -1,5 +1,5 @@
 import { GEN_ORDER, relation, type El, type Rel, type Terrain } from '../config/elements';
-import { SKILLS, PASSIVES, SKILL_SLOTS, NORMAL_SKILL_SLOTS, MAX_SKILL_SLOTS, ULTIMATES, MIN_CD_MULT, type SkillId, type SkillDef, type PassiveId, type PassiveDef } from '../config/skills';
+import { SKILLS, PASSIVES, SKILL_SLOTS, NORMAL_SKILL_SLOTS, MAX_SKILL_SLOTS, ULTIMATES, ULTIMATE_UNLOCK_LEVEL, MIN_CD_MULT, type SkillId, type SkillDef, type PassiveId, type PassiveDef } from '../config/skills';
 import { ADVANCE } from '../config/status';
 import type { CharacterDef } from '../config/characters';
 import type { LevelDef } from '../config/levels';
@@ -97,7 +97,8 @@ export class Build {
   }
 
   xpNeeded() {
-    return this.level < 20 ? 5 + (this.level - 1) * 6 : 119 + (this.level - 20) * 12;
+    // 中后期逐段放缓经验斜率，让十格构筑持续成长；大招另按填格数与角色等级觉醒。
+    return this.level < 20 ? 5 + (this.level - 1) * 6 : this.level < 35 ? 119 + (this.level - 20) * 8 : 239 + (this.level - 35) * 5;
   }
 
   get skillSlots() {
@@ -108,14 +109,12 @@ export class Build {
     return [...this.skills.keys()].find((id) => SKILLS[id].ultimate);
   }
 
-  get masteredSkills() {
-    return [...this.skills].filter(([id, lv]) => !SKILLS[id].ultimate && lv >= SKILLS[id].maxLv).length
-      + [...this.passives].filter(([id, lv]) => lv >= PASSIVES[id].maxLv).length;
+  private get normalSkillCount() {
+    return [...this.skills.keys()].filter(id => id !== this.char.startSkill && !SKILLS[id].ultimate).length + this.passives.size;
   }
 
   private get hasOpenSlot() {
-    const normal = [...this.skills.keys()].filter(id => id !== this.char.startSkill && !SKILLS[id].ultimate).length + this.passives.size;
-    return normal < Math.min(NORMAL_SKILL_SLOTS, this.skillSlots - 1);
+    return this.normalSkillCount < Math.min(NORMAL_SKILL_SLOTS, this.skillSlots - 1);
   }
 
   /** 左侧固定自带术，中间十格混合术/心法，最右固定大招；不按获取顺序挤占独立格。 */
@@ -168,8 +167,8 @@ export class Build {
     const top = GEN_ORDER.filter((e) => l[e] === max);
     const prev = this.benming;
     if (!top.includes(prev)) this.benming = top.includes(this.lastLeveled) ? this.lastLeveled : top[0];
-    if (this.skillSlots === MAX_SKILL_SLOTS && !this.ultimate && this.masteredSkills === NORMAL_SKILL_SLOTS + 1) {
-      // 自动觉醒也覆盖宝箱升满最后一个术；散人锁定此刻的本命，之后不随本命换招。
+    if (this.skillSlots === MAX_SKILL_SLOTS && !this.ultimate && this.level >= ULTIMATE_UNLOCK_LEVEL && this.normalSkillCount === NORMAL_SKILL_SLOTS) {
+      // 升级或铜匣填入最后一个普通格时均可觉醒；散人锁定此刻的本命，之后不随本命换招。
       const id = ULTIMATES[this.char.balanced ? this.benming : this.char.el];
       this.skills.set(id, 1);
       return this.recompute() || prev !== this.benming;
@@ -207,7 +206,7 @@ export class Build {
       maxHp: Math.round(c.hp * (1 + 0.12 * p('houtu') + u('hp') + m('hp'))),
       speed: c.speed * (1 + 0.07 * p('qingshen') + u('speed') + gr('speed') + m('speed') + 0.1 * taiji),
       armor,
-      regen: ((c.regen ?? 0) + 0.5 * p('changsheng') + u('regen') + gr('regen') + m('regen')) * (1 + m('regenMult')),
+      regen: ((c.regen ?? 0) + 0.7 * p('changsheng') + u('regen') + gr('regen') + m('regen')) * (1 + m('regenMult')),
       dmgMult: 1 + 0.08 * p('yanyang') + m('dmg') + gr('dmg') + variety + even + 0.15 * taiji,
       crit: m('noCrit') ? 0 : 0.05 + (c.crit ?? 0) + 0.06 * p('ruijin') + m('crit') + gr('crit'),
       area: 1 + (c.area ?? 0) + 0.08 * p('roushui') + m('area') + gr('area'),
@@ -229,7 +228,7 @@ export class Build {
       puppetHp: 1 + gr('puppetHp') + m('mo.hp'),
       puppetDmg: 1 + gr('puppetDmg'),
       sigDmg: 1 + gr('sigDmg'),
-      pierce: Math.floor((p('guanri') + 1) / 2),
+      pierce: Math.round(p('guanri')),
       advanceBonus: { metal: ADVANCE.perLevel * p('pojun'), wood: ADVANCE.perLevel * p('fanmao'), water: ADVANCE.perLevel * p('xuanming'), fire: ADVANCE.perLevel * p('liaoyuan'), earth: ADVANCE.perLevel * p('zhenyue') },
     };
   }
@@ -296,10 +295,8 @@ export class Build {
       this.passives.set(o.id, o.lv);
       const el = PASSIVES[o.id].el;
       if (el) this.lastLeveled = el;
-    } else {
-      this.version++;
-      return false;
     }
+    // 即使普通项目已满级、这次只能选择回血或灵石，也要检查角色等级带来的觉醒。
     return this.recompute();
   }
 
@@ -320,13 +317,21 @@ export class Build {
     return out;
   }
 
-  /** 宝箱：随机一个未满级的技能 +1 */
-  chestUpgrade(): { id: SkillId; lv: number } | null {
+  /** 宝箱：优先随机一个未满级的主动术 +1；主动术全满时继续提升未满级的心法。 */
+  chestUpgrade(): { id: SkillId | PassiveId; lv: number } | null {
     const up = [...this.skills].filter(([id, lv]) => lv < SKILLS[id].maxLv);
-    if (!up.length) return null;
-    const [id, lv] = up[Math.floor(Math.random() * up.length)];
-    this.skills.set(id, lv + 1);
-    const el = SKILLS[id].el;
+    if (up.length) {
+      const [id, lv] = up[Math.floor(Math.random() * up.length)];
+      this.skills.set(id, lv + 1);
+      const el = SKILLS[id].el;
+      if (el) this.lastLeveled = el;
+      return { id, lv: lv + 1 };
+    }
+    const passUp = [...this.passives].filter(([id, lv]) => lv < PASSIVES[id].maxLv);
+    if (!passUp.length) return null;
+    const [id, lv] = passUp[Math.floor(Math.random() * passUp.length)];
+    this.passives.set(id, lv + 1);
+    const el = PASSIVES[id].el;
     if (el) this.lastLeveled = el;
     return { id, lv: lv + 1 };
   }

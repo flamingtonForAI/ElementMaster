@@ -91,42 +91,42 @@ const NOTABLES: Record<El, [Notable, Notable, Notable, Notable, Notable]> = {
     { name: '锋芒', glyph: '芒', note: '对生命高于 70% 的敌人伤害 +20%', mods: { hpHighDmg: 0.2 } },
   ],
   wood: [
-    { name: '回春', glyph: '春', mods: { regen: 0.5 } },
-    { name: '繁茂', glyph: '茂', mods: { 'el.wood': 0.06, regen: 0.2 } },
+    { name: '回春', glyph: '春', mods: { regen: 0.6 } },
+    { name: '繁茂', glyph: '茂', mods: { 'el.wood': 0.08, regen: 0.25 } },
     { name: '根深', glyph: '根', mods: { hp: 0.12 } },
-    { name: '坚木', glyph: '坚', mods: { hp: 0.08, armor: 1 } },
+    { name: '坚木', glyph: '坚', mods: { hp: 0.1, armor: 1 } },
     { name: '蔓生', glyph: '蔓', note: '你造成的中毒持续时间 +50%', mods: { poisonDur: 0.5 } },
   ],
   water: [
     { name: '流转', glyph: '流', mods: { cd: 0.06 } },
-    { name: '涟漪', glyph: '漪', mods: { area: 0.06, 'el.water': 0.05 } },
+    { name: '涟漪', glyph: '漪', mods: { area: 0.06, 'el.water': 0.06 } },
     { name: '寒潮', glyph: '寒', mods: { slowDur: 0.3, 'el.water': 0.06 } },
     { name: '澄心', glyph: '澄', mods: { cd: 0.04, speed: 0.04 } },
-    { name: '潮汐', glyph: '潮', note: '对迟缓中的敌人伤害 +12%', mods: { vsSlow: 0.12 } },
+    { name: '潮汐', glyph: '潮', note: '对迟缓中的敌人伤害 +15%', mods: { vsSlow: 0.15 } },
   ],
   fire: [
     { name: '燎原', glyph: '燎', mods: { area: 0.1 } },
     { name: '烈性', glyph: '烈', mods: { 'el.fire': 0.1 } },
     { name: '炎心', glyph: '炎', mods: { dmg: 0.08 } },
-    { name: '火势', glyph: '势', mods: { area: 0.05, dmg: 0.04 } },
+    { name: '火势', glyph: '势', mods: { area: 0.05, dmg: 0.05 } },
     { name: '烈焰', glyph: '焰', note: '灼烧最多叠加的层数 +2', mods: { burnMax: 2 } },
   ],
   earth: [
-    { name: '厚土', glyph: '厚', mods: { armor: 2 } },
-    { name: '坤载', glyph: '坤', mods: { hp: 0.1 } },
+    { name: '厚土', glyph: '厚', mods: { armor: 2, hp: 0.04 } },
+    { name: '坤载', glyph: '坤', mods: { hp: 0.12, 'el.earth': 0.05 } },
     { name: '镇岳', glyph: '岳', mods: { stunDur: 0.3, hp: 0.06 } },
     { name: '山重', glyph: '重', mods: { 'el.earth': 0.08, stunDur: 0.15 } },
-    { name: '磐石', glyph: '磐', note: '生命低于 50% 时护甲 +3', mods: { lowArmor: 3 } },
+    { name: '磐石', glyph: '磐', note: '生命低于 50% 时护甲 +4', mods: { lowArmor: 4, armor: 1 } },
   ],
 };
 
 /** 极境印：规则型，有收益也有代价 */
 const KEYSTONES: Record<El, Notable> = {
-  metal: { name: '白虎印 · 肃杀', glyph: '虎', mods: { critDmg: 0.5, regenMult: -0.5 } },
-  wood: { name: '青龙印 · 生生', glyph: '龙', mods: { 'el.wood': 0.25, regen: 0.6, noCrit: 1 } },
-  water: { name: '玄武印 · 沉渊', glyph: '玄', mods: { cd: 0.12, slowDur: 0.5, speed: -0.1 } },
-  fire: { name: '朱雀印 · 焚身', glyph: '雀', mods: { area: 0.25, 'el.fire': 0.15, hp: -0.15 } },
-  earth: { name: '黄龙印 · 不动', glyph: '黄', mods: { armor: 2, stillArmor: 4, speed: -0.12 } },
+  metal: { name: '白虎印 · 肃杀', glyph: '虎', mods: { crit: 0.08, critDmg: 0.5, regenMult: -0.35 } },
+  wood: { name: '青龙印 · 生生', glyph: '龙', mods: { 'el.wood': 0.35, regen: 1.0, hp: 0.15, noCrit: 1 } },
+  water: { name: '玄武印 · 沉渊', glyph: '玄', mods: { cd: 0.15, slowDur: 0.5, armor: 2, speed: -0.07 } },
+  fire: { name: '朱雀印 · 焚身', glyph: '雀', mods: { area: 0.25, 'el.fire': 0.25, hp: -0.12 } },
+  earth: { name: '黄龙印 · 不动', glyph: '黄', mods: { 'el.earth': 0.2, armor: 3, stillArmor: 5, speed: -0.08 } },
 };
 
 /**
@@ -222,9 +222,9 @@ function build(): Record<string, StarNode> {
     sm('m5', 580, 0, { [E]: 0.02, ...T });
     sm('m6', 616, 0, { [E]: 0.03 });
     add(`${el}.k`, 'keystone', el, pol(R_KEY, th), k.name, k.glyph, { ...k.mods, [`off.${el}`]: -0.15 });
-    sm('l1', 440, -9, { [`lingen.${el}`]: 1 }, `${N}灵根`);
-    sm('l2', 548, 8, { [`lingen.${el}`]: 1 }, `${N}灵根`);
-    sm('l3', 620, -7, { [`lingen.${el}`]: 1 }, `${N}灵根`);
+    sm('l1', 440, -9, { [`lingen.${el}`]: 1, [E]: 0.02 }, `${N}灵根`);
+    sm('l2', 548, 8, { [`lingen.${el}`]: 1, [E]: 0.02 }, `${N}灵根`);
+    sm('l3', 620, -7, { [`lingen.${el}`]: 1, [E]: 0.02 }, `${N}灵根`);
     add(`${el}.i`, 'small', null, pol(R_INNER, th + 36), '通脉', '', { dmg: 0.03 });
 
     link(CENTER, `${el}.gate`);
@@ -271,12 +271,16 @@ function build(): Record<string, StarNode> {
     add(`${el}.zb`, 'small', next, pol(275, th + 43), `${n(next)}术`, '', { [`el.${next}`]: 0.03 });
     add(`${el}.zbn`, 'notable', next, pol(315, th + 41), h.b.name, h.b.glyph, h.b.mods, h.b.note, gen);
     add(`${el}.zc`, 'small', null, pol(355, th + 36), `${n(el)}${n(next)}合化`, '', both, undefined, gen);
-    add(`${el}.zc2`, 'small', null, pol(395, th + 36), `${n(el)}${n(next)}合化`, '', { burst: 0.25 }, undefined, gen);
+    add(`${el}.zc2`, 'small', null, pol(395, th + 36), `${n(el)}${n(next)}合化`, '', { [`el.${el}`]: 0.03, [`el.${next}`]: 0.03, burst: 0.2 }, undefined, gen);
     add(`${el}.zk`, 'notable', null, pol(440, th + 36), `${n(el)}${n(next)}${h.name}`, h.glyph,
       { [`hehua.${el}`]: 1, [`el.${el}`]: 0.05, [`el.${next}`]: 0.05, burst: 0.25 },
       `${n(el)}术命中时 ${HEHUA_PROC * 100}% 几率附带${ST[next]}，${n(next)}术命中时 ${HEHUA_PROC * 100}% 几率附带${ST[el]}；同时${ST[el]}、${ST[next]}的敌人受到伤害 +${HEHUA_VULN * 100}%`, gen);
+    // 外围星轨：深修本系至汇合点（m1）后，可经外围过渡点横向切入合化区或临近元素外脉（3 个过渡点对标内环早期分叉成本）。
+    add(`${el}.oa`, 'small', el, pol(400, th + 18), `${n(el)}${n(next)}外脉`, '', both, undefined, gen);
+    add(`${el}.ob`, 'small', next, pol(400, th + 54), `${n(el)}${n(next)}外脉`, '', both, undefined, gen);
     chain(`${el}.kt`, `${el}.za`, `${el}.zan`, `${el}.zc`, `${el}.zc2`, `${el}.zk`);
     chain(`${el}.yt`, `${el}.zb`, `${el}.zbn`, `${el}.zc`);
+    chain(`${el}.m1`, `${el}.oa`, `${el}.zc2`, `${el}.ob`, `${next}.m1`);
   });
   return nodes;
 }

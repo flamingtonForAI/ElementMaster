@@ -104,9 +104,9 @@ export class ProjectileManager {
     p.dmg = o.dmg;
     p.el = o.el;
     p.life = o.life;
-    // 破军诀：本来就能穿透的投射物再多穿几个
-    p.pierce = o.pierce ? o.pierce + this.g.pstats.pierce : 0;
-    p.bounces = o.bounces ?? 0;
+    // 贯日诀：能穿透或弹射的投射物再多穿/弹几次
+    p.pierce = o.pierce ? o.pierce + (this.g.pstats.pierce || 0) : 0;
+    p.bounces = o.bounces ? o.bounces + (this.g.pstats.pierce || 0) : 0;
     p.radius = o.radius ?? 4;
     p.slow = o.slow ?? 0;
     p.proc = o.proc ?? 0;
@@ -282,7 +282,8 @@ export class ProjectileManager {
           this.release(p);
           break;
         }
-        g.hitEnemy(e, p.dmg * (p.dmgAt?.(e) ?? 1), p.el, { kb: p.kb, fromX: p.x - p.vx, fromY: p.y - p.vy, slow: p.slow, proc: p.proc });
+        const bounceMult = p.kind === 'leaf' ? 1 + 0.12 * (p.hit.size - 1) : 1;
+        g.hitEnemy(e, p.dmg * bounceMult * (p.dmgAt?.(e) ?? 1), p.el, { kb: p.kb, fromX: p.x - p.vx, fromY: p.y - p.vy, slow: p.slow, proc: p.proc });
         p.onHit?.(e);
         if (p.kind === 'leaf') {
           p.bounces--;

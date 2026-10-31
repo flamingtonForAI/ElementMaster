@@ -73,7 +73,8 @@ export class PlayerStatus {
   inflict(f: Inflict) {
     const g = this.g;
     const sres = g.build.mods[`sres.${f.kind}`] ?? 0;
-    const again = f.mob && this.has(f.kind) ? MOB_REPEAT : 1;
+    const activeOrBuilding = this.has(f.kind) || (f.kind === 'stun' && this.stunMeter > 0);
+    const again = f.mob && activeOrBuilding ? MOB_REPEAT : 1;
     if (Math.random() >= f.chance * again * statusChance(f.kind, g.build.benming) * Math.max(0, 1 - sres)) return;
     // 本命和异常同系、或克这个异常时，异常也变弱
     const k = statusPower(f.kind, g.build.benming);
@@ -88,6 +89,7 @@ export class PlayerStatus {
         const C = ON_PLAYER.chill;
         if (this.stunned || now < this.chillImmuneUntil || Math.random() >= k) break;
         if (now - this.lastChill > C.window) this.chillBuild = 0;
+        if (f.mob && this.chillBuild > 0 && now - this.lastChill < 0.25) break;
         this.lastChill = now;
         if (++this.chillBuild < C.need) break;
         this.chillBuild = 0;
@@ -126,7 +128,8 @@ export class PlayerStatus {
         }
         this.bleedStacks++;
         shown = true;
-        this.bleedDps = Math.max(this.bleedDps, (f.dps ?? 0) * k);
+        const nextDps = (f.dps ?? 0) * k;
+        this.bleedDps = this.bleedStacks === 1 ? nextDps : (this.bleedDps * (this.bleedStacks - 1) + nextDps) / this.bleedStacks;
         this.bleedUntil = now + (f.dur ?? ON_PLAYER.bleed.dur);
         if (this.bleedStacks >= ON_PLAYER.bleed.max) {
           // 撕裂：剩下的流血一次打完
@@ -143,6 +146,7 @@ export class PlayerStatus {
         const S = ON_PLAYER.stun;
         if (this.stunned || now < this.stunImmuneUntil) return;
         if (now - this.lastStunHit > S.window) this.stunBuild = 0;
+        if (f.mob && this.stunBuild > 0 && now - this.lastStunHit < 0.25) return;
         this.lastStunHit = now;
         this.stunBuild++;
         if (this.stunBuild < S.need) return;

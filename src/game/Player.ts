@@ -90,11 +90,25 @@ export class Player {
     this.x += (this.vx + wx) * dt;
     this.y += (this.vy + wy) * dt;
     if (g.world.push(this, PLAYER_RADIUS)) {
+      const nx = g.world.hitNx;
+      const ny = g.world.hitNy;
       // 撞墙时去掉朝墙那一截速度，免得贴着墙一直滑
-      const into = this.vx * g.world.hitNx + this.vy * g.world.hitNy;
+      const into = this.vx * nx + this.vy * ny;
       if (into < 0) {
-        this.vx -= into * g.world.hitNx;
-        this.vy -= into * g.world.hitNy;
+        this.vx -= into * nx;
+        this.vy -= into * ny;
+      }
+      // 贴岩壁顺滑绕行：按住方向键撞上斜向岩壁或圆石边缘时，把被挡住的移速沿切线导流，避免卡在两石凹槽里
+      if (this.moving) {
+        const intoInput = mx * nx + my * ny;
+        const dotT = mx * -ny + my * nx;
+        if (intoInput < -0.05 && Math.abs(dotT) > 0.01) {
+          const sign = dotT >= 0 ? 1 : -1;
+          const slide = Math.hypot(tx, ty) * -intoInput * 0.65 * dt;
+          this.x += -ny * sign * slide;
+          this.y += nx * sign * slide;
+          g.world.push(this, PLAYER_RADIUS);
+        }
       }
     }
     // 遁符期间半透明闪烁

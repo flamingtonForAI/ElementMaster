@@ -30,10 +30,10 @@ const memory = new Map();
 globalThis.localStorage = { getItem: k => memory.get(k) ?? null, setItem: (k, v) => memory.set(k, v), removeItem: k => memory.delete(k) };
 const build = (id = 'xiao', meta = {}) => new Build(CHARACTERS.find(c => c.id === id), LEVELS[0], meta);
 
-function learnEleven(b, finalLevel = 8) {
+function learnEleven(b, level = 1) {
   const pool = Object.values(SKILLS).filter(s => !s.ultimate && (!s.exclusive || s.exclusive === b.char.id));
   const ids = [b.char.startSkill, ...pool.map(s => s.id).filter(id => id !== b.char.startSkill)].slice(0, 11);
-  for (const [i, id] of ids.entries()) b.apply({ kind: 'skill', id, lv: i === 10 ? finalLevel : 8 });
+  for (const id of ids) b.apply({ kind: 'skill', id, lv: level });
   return ids;
 }
 
@@ -72,39 +72,39 @@ test('自带术不占六个普通格，满槽后已有自带术、普通术与�
   assert.equal(b.passives.get('ningshen'), 2);
 });
 
-test('自带术之外一术九心法占十个普通格，第十二格只在全部满级后放大招', () => {
+test('51级填满十个普通格即觉醒，混合一术九心法及自带术均不必满级；预览不提前解锁', () => {
   const b = build('xiao', { shuhai: 5 });
-  b.apply({ kind: 'skill', id: 'slash', lv: 8 });
-  b.apply({ kind: 'skill', id: 'fireball', lv: 8 });
-  const ids = ['ruijin', 'yanyang', 'changsheng', 'roushui', 'houtu', 'pojun', 'ningshen', 'qingshen', 'juling'];
-  for (const id of ids) {
-    assert.ok(b.options(100).some(o => o.kind === 'passive' && o.id === id));
-    b.apply({ kind: 'passive', id, lv: id === 'juling' ? 4 : 5 });
-  }
-  assert.equal(b.skills.size + b.passives.size, 11);
+  b.level = 51;
+  b.apply({ kind: 'skill', id: 'fireball', lv: 1 });
+  const ids = ['ruijin', 'yanyang', 'changsheng', 'roushui', 'houtu', 'pojun', 'ningshen', 'qingshen'];
+  for (const id of ids) b.apply({ kind: 'passive', id, lv: 1 });
+  assert.equal(b.ultimate, undefined, '九个普通格还不能觉醒');
+  const last = { kind: 'passive', id: 'juling', lv: 1 };
+  b.preview(last);
   assert.equal(b.ultimate, undefined);
-  assert.ok(b.options(100).every(o => !('lv' in o) || o.lv > 1));
-  b.apply({ kind: 'passive', id: 'juling', lv: 5 });
+  assert.equal(b.passives.has('juling'), false);
+  assert.equal(b.slots[11], undefined);
+  b.apply(last);
   assert.equal(b.ultimate, 'wanjian');
   assert.equal(b.skills.size + b.passives.size, 12);
   assert.equal(b.slots[0].def.id, 'slash');
+  assert.equal(b.slots[0].lv, 1, '自带术不必升满');
   assert.equal(b.slots[11].def.id, 'wanjian');
   assert.equal(b.slots.slice(1, 11).length, 10);
   assert.equal(b.skills.get('wanjian'), 1);
-  assert.equal(b.options(100).filter(o => 'lv' in o).length, 0);
+  assert.ok(b.options(100).every(o => !('lv' in o) || o.lv > 1), '觉醒不多开放普通格');
+  assert.ok(b.options(100).some(o => o.kind === 'passive'), '觉醒后仍能升级普通术与心法');
 });
 
-test('必须五级修炼且自带术与十个普通术全满级；预览不提前解锁，大招不重复或进入抽签池', () => {
+test('六角色在50级不觉醒，升到51级确认升级即觉醒；大招固定一级、不重复或进入抽签池', () => {
   for (const c of CHARACTERS) {
     const b = build(c.id, { shuhai: 5 });
-    const ids = learnEleven(b, 7);
-    assert.equal(b.masteredSkills, 10);
+    b.level = 50;
+    learnEleven(b);
     assert.equal(b.ultimate, undefined);
-    const option = { kind: 'skill', id: ids[10], lv: 8 };
-    b.preview(option);
-    assert.equal(b.skills.size, 11);
-    assert.equal(b.skills.get(ids[10]), 7);
-    b.apply(option);
+    assert.equal(b.addXp(b.xpNeeded()), 1);
+    assert.equal(b.level, 51);
+    b.apply({ kind: 'skill', id: c.startSkill, lv: 2 });
     assert.equal(b.skills.size, 12);
     assert.equal(b.ultimate, ULTIMATES[c.balanced ? b.benming : c.el]);
     const awakened = b.ultimate;
@@ -113,50 +113,63 @@ test('必须五级修炼且自带术与十个普通术全满级；预览不提�
     b.recompute();
     assert.equal(b.ultimate, awakened);
     assert.equal(b.skills.size, 12);
-    assert.ok(b.options(100).every(o => o.kind !== 'skill'));
-    assert.equal(b.chestUpgrade(), null);
+    assert.ok(b.options(100).every(o => o.kind !== 'skill' || !SKILLS[o.id].ultimate));
+    const reward = b.chestUpgrade();
+    assert.ok(reward && reward.id !== awakened, '宝箱仍提升普通术，不升级大招');
   }
+});
+
+test('50级即使全部满级也不觉醒；51级十格填满仍须开放神通格', () => {
+  const low = build('xiao', { shuhai: 5 });
+  low.level = 50;
+  learnEleven(low, 8);
+  assert.equal(low.ultimate, undefined);
   const four = build('xiao', { shuhai: 4 });
-  learnEleven(four);
-  assert.equal(four.masteredSkills, 11);
+  four.level = 51;
+  learnEleven(four, 8);
+  assert.equal(four.skills.size, 11);
   assert.equal(four.ultimate, undefined);
 });
 
-test('宝箱升满最后普通术时解锁大招；散人大招锁定解锁时的本命', () => {
+test('50级已全部满级时，升到51级选择回血或灵石也会觉醒', () => {
+  for (const kind of ['heal', 'lingshi']) {
+    const b = build('xiao', { shuhai: 5 });
+    b.level = 50;
+    learnEleven(b, 8);
+    assert.equal(b.ultimate, undefined);
+    b.addXp(b.xpNeeded());
+    b.apply({ kind });
+    assert.equal(b.ultimate, 'wanjian');
+  }
+});
+
+test('超过51级后铜匣选项填满最后普通格也觉醒；散人大招锁定当时本命', () => {
   const g = new GameScene();
   g.build = build('xuanyi', { shuhai: 5 });
-  learnEleven(g.build, 7);
+  g.build.level = 60;
+  const normal = Object.values(SKILLS).filter(s => !s.ultimate && !s.exclusive);
+  for (const s of normal.slice(0, 9)) g.build.apply({ kind: 'skill', id: s.id, lv: 1 });
   g.pstats = g.build.stats();
   g.player = { x: 0, y: 0, hp: 20 };
   g.pickups = { magnetAll() {} };
   g.fx = { ring() {} }; g.later = () => {};
   const messages = [];
   Object.defineProperty(g, 'hud', { value: { toast: text => messages.push(text) } });
-  g.openChest();
+  assert.equal(g.build.ultimate, undefined);
+  // 铜匣与升级卡均通过 applyOption 应用选择。
+  g.applyOption({ kind: 'skill', id: normal[9].id, lv: 1 });
   const id = g.build.ultimate;
   assert.ok(id);
   assert.equal(g.build.skills.size, 12);
+  assert.equal(g.build.slots[0].lv, 1);
+  g.openChest();
+  assert.equal(g.build.skills.get(id), 1, '后续金宝箱不升级大招');
   assert.ok(messages.every(s => !s.includes('觉醒')), '不再显示觉醒说明');
   const other = SKILLS[id].el === 'fire' ? 'metal' : 'fire';
-  g.build.mods[`lingen.${other}`] = 5;
+  g.build.mods[`lingen.${other}`] = 100;
   g.build.recompute();
   assert.equal(g.build.benming, other);
   assert.equal(g.build.ultimate, id);
-});
-
-test('十个普通格满级后仍需升满自带术；升级预览不改变左右独立格', () => {
-  const b = build('xuanyi', { shuhai: 5 });
-  for (const s of Object.values(SKILLS).filter(s => !s.ultimate && !s.exclusive)) b.apply({ kind: 'skill', id: s.id, lv: 8 });
-  assert.equal(b.skills.size, 11);
-  assert.equal(b.masteredSkills, 10);
-  assert.equal(b.ultimate, undefined);
-  b.preview({ kind: 'skill', id: 'fuchen', lv: 8 });
-  assert.equal(b.slots[0].lv, 1);
-  assert.equal(b.slots[11], undefined);
-  b.apply({ kind: 'skill', id: 'fuchen', lv: 8 });
-  assert.equal(b.slots[0].def.id, 'fuchen');
-  assert.ok(b.slots[11].def.ultimate);
-  assert.equal(b.slots.length, 12);
 });
 
 test('无属性拂尘不偏置灵根、不凑第六元素、不解锁五行异常心法，仅散人可选', () => {
@@ -213,8 +226,8 @@ test('拂尘自动朝近敌扇扫：只命中范围内目标，升级扩大扇�
   hits.length = 0;
   assert.equal(system.fire('fuchen', SKILLS.fuchen.stats(8)), true);
   assert.deepEqual(hits.map(h => h.e.id), [1, 2]);
-  assert.ok(hits.every(h => h.el === null && h.options.kb === 50));
-  assert.equal(visuals[1][3], 68);
+  assert.ok(hits.every(h => h.el === null && h.options.kb === 56));
+  assert.equal(visuals[1][3], 88);
   g.enemies.nearest = () => null;
   assert.equal(system.fire('fuchen', SKILLS.fuchen.stats(8)), false);
   assert.equal(visuals.length, 2);

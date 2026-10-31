@@ -5,7 +5,7 @@ import type { Mods } from './startree';
  * 传承点来自里程碑（见 legacyPoints），总数少于节点数，必须取舍。
  *
  * 剑客专用加成：
- * xiao.turn 剑气斩与上一斩方向相差 90° 以上时的伤害加成；xiao.chain 每第 3 斩追加剑气波，Lv5 起强化该轮双向波；
+ * xiao.turn 剑气斩与上一斩方向相差 90° 以上时的伤害加成；xiao.chain 每第 3 斩追加剑气波，Lv3 起强化该轮双向波；
  * slashCd 剑气斩冷却缩短；slashArea 剑气斩范围；xiao.armorMelee 每点护甲的近身伤害加成
  *
  * 符师专用加成：
@@ -51,7 +51,7 @@ export const LEGACIES: Record<string, LegacyBranch[]> = {
       desc: '游身折转出剑，剑招连绵不绝',
       nodes: [
         { id: 'xiao.a1', name: '回锋', glyph: '回', note: '剑气斩与上一斩方向相差 90° 以上时，伤害 +40%', mods: { 'xiao.turn': 0.4 } },
-        { id: 'xiao.a2', name: '连斩', glyph: '连', note: '每第 3 斩追加剑气波；剑气斩 Lv5 起改为该轮双向剑气波伤害 +75%', mods: { 'xiao.chain': 1 } },
+        { id: 'xiao.a2', name: '连斩', glyph: '连', note: '每第 3 斩追加剑气波；剑气斩 Lv3 起改为该轮双向剑气波伤害 +75%', mods: { 'xiao.chain': 1 } },
         { id: 'xiao.a3', name: '剑心', glyph: '心', note: '剑气斩冷却 −15%，范围 +10%', mods: { slashCd: 0.15, slashArea: 0.1 } },
       ],
     },

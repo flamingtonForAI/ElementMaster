@@ -154,9 +154,8 @@ export class SkillSystem {
         p.attack(t.x - p.x, t.y - p.y);
         const speed = 320 * (1 + this.mod('ruan.range'));
         const pierce = st.pierce + this.mod('ruan.pierce');
-        // 远射：贴脸不打折，拉开到 180px 以上 ×1.2，奖励边退边打
+        // 贯潮：拉开到 180px 以上 ×1.2；近身肉搏时同一支箭每贯穿 1 名敌人亦递进增伤（第 3 名起同享 ×1.2），密集贴脸同样打满穿透收益
         const tid = t.id;
-        const dmgAt = (e: Enemy) => 1 + 0.2 * Phaser.Math.Clamp((Math.hypot(e.x - p.x, e.y - p.y) - 60) / 120, 0, 1);
         for (let i = 0; i < st.shots; i++) {
           g.later(i * 0.07, () => {
             // 中期起逐箭分配目标；每箭重新查询，避免追着死敌或对象池复用后的旧目标射。
@@ -166,8 +165,14 @@ export class SkillSystem {
             const ax = tgt ? tgt.x : p.x + p.facing.x;
             const ay = tgt ? tgt.y - 6 : p.y - 8 + p.facing.y;
             const a = Math.atan2(ay - (p.y - 8), ax - p.x) + (Math.random() - 0.5) * 0.06;
-            // 同一支箭贯穿多人时，每个敌人至多承受一次水花伤害；各箭独立。
+            // 同一支箭贯穿多人时，每个敌人至多承受一次水花伤害，且贯敌数递进提升后续直击伤害；各箭独立。
             const splashed = new Set<number>();
+            let pierced = 0;
+            const dmgAt = (e: Enemy) => {
+              const distK = Phaser.Math.Clamp((Math.hypot(e.x - p.x, e.y - p.y) - 60) / 120, 0, 1);
+              const pierceK = Math.min(1, pierced++ * 0.5);
+              return 1 + 0.2 * Math.max(distK, pierceK);
+            };
             const onHit = st.splash ? (e: Enemy) => this.boltSplash(e, st.dmg * st.splash, st.splashRadius * area, st.splashSlow, splashed) : undefined;
             audio.sfx('sword', { rate: 1.3 });
             g.proj.fire('bolt', 'pj_bolt', p.x, p.y - 8, Math.cos(a) * speed, Math.sin(a) * speed, {
@@ -178,12 +183,14 @@ export class SkillSystem {
         return true;
       }
       case 'duwu': {
-        // 毒雾光环：每次判定给光环里的敌人挂上中毒，离开后还会再毒一阵；药师的毒连木系也毒得动
+        // 毒雾光环：每次判定给光环里的敌人挂上中毒，离开后还会再毒一阵；药师的毒连木系也毒得动，且能触发木系合化/奇穴
         const r = this.auraRadius(st);
         const linger = st.linger + this.mod('qing.cloudDur');
         for (const e of g.enemies.inRadius(p.x, p.y, r, this.tmp)) {
           if (((e.x - p.x) / r) ** 2 + ((e.y - p.y) / (r * AURA_FLAT)) ** 2 > 1) continue;
-          g.poisonEnemy(e, st.dps * g.dmgMult(e, 'wood'), linger);
+          const dps = st.dps * g.dmgMult(e, 'wood');
+          g.poisonEnemy(e, dps, linger);
+          g.comboHit?.(e, 'wood', dps * 0.5);
           if (st.slow) g.slowEnemy(e, 0.6);
         }
         return true;
@@ -198,7 +205,7 @@ export class SkillSystem {
           const t = targets[i % targets.length];
           const a = Math.atan2(t.y - 6 - cy, t.x - cx) + (i - (st.count - 1) / 2) * 0.25;
           g.proj.fire('sword', 'pj_sword', cx, cy, Math.cos(a) * 230, Math.sin(a) * 230, {
-            dmg: st.dmg, el: 'metal', life: 1.4, pierce: st.pierce, radius: 4, target: t, kb: 25, proc,
+            dmg: st.dmg, el: 'metal', life: 1.4, pierce: st.pierce, radius: 4, target: t, kb: 12, proc,
           });
         }
         return true;
@@ -224,7 +231,7 @@ export class SkillSystem {
           const t = targets[i % targets.length];
           const a = Math.atan2(t.y - 6 - cy, t.x - cx);
           g.proj.fire('leaf', 'pj_leaf', cx, cy, Math.cos(a) * 260, Math.sin(a) * 260, {
-            dmg: st.dmg, el: 'wood', life: 2, bounces: st.bounces, radius: 5, kb: 10, proc, target: t,
+            dmg: st.dmg, el: 'wood', life: 2, bounces: st.bounces, radius: 5, kb: 0, proc, target: t,
           });
         }
         return true;
@@ -233,8 +240,8 @@ export class SkillSystem {
         const t = g.enemies.nearest(cx, cy, 260);
         const base = t ? Math.atan2(t.y - 6 - cy, t.x - cx) : Math.atan2(p.facing.y, p.facing.x);
         const width = st.width * area;
-        // 两条平行通路在中心稍有重叠，远处不会因发散而漏掉瞄准的目标。
-        const offs = st.count > 1 ? [-width * 0.85, width * 0.85] : [0];
+        // 两条平行通路在中心紧密交叠，既拓宽水幕又保证准星上的敌人稳定吃满双龙。
+        const offs = st.count > 1 ? [-width * 0.65, width * 0.65] : [0];
         audio.sfx('water');
         for (const o of offs) {
           const dragon = g.proj.fire('water', 'pj_water', cx - Math.sin(base) * o, cy + Math.cos(base) * o, Math.cos(base) * 170, Math.sin(base) * 170, {
@@ -273,8 +280,10 @@ export class SkillSystem {
         // 火焰常驻绕身，在 updateOrbs 里结算
         return true;
       case 'tengfu': {
-        const targets = g.enemies.randomIn(p.x, p.y, 180, st.count);
-        if (!targets.length) return false;
+        const candidates = g.enemies.randomIn(p.x, p.y, 180, st.count * 2);
+        if (!candidates.length) return false;
+        const inActiveVine = (e: Enemy) => this.vines.some(v => v.t > 0 && ((e.x - v.x) / v.r) ** 2 + ((e.y - v.y) / (v.r * AURA_FLAT)) ** 2 <= 1);
+        const targets = [...candidates].sort((a, b) => Number(inActiveVine(a)) - Number(inActiveVine(b))).slice(0, st.count);
         audio.sfx('vine');
         const r = st.radius * area;
         for (const t of targets) {
@@ -557,7 +566,7 @@ export class SkillSystem {
   /** 藤缚：每 0.5 秒给藤蔓里的敌人一跳伤害并迟缓，到时淡出 */
   private updateVines(dt: number) {
     const g = this.g;
-    const due = new Map<number, { e: Enemy; dmg: number }>();
+    const due = new Map<number, Enemy>();
     for (const [id, until] of this.vineHit) if (until <= g.now + 1e-8) this.vineHit.delete(id);
     for (let i = this.vines.length - 1; i >= 0; i--) {
       const v = this.vines[i];
@@ -570,7 +579,7 @@ export class SkillSystem {
         g.tweens.add({ targets: v.img, scale: v.r / 20, alpha: 0.55, duration: 260, ease: 'Cubic.out' });
         for (const e of this.inVine(v.x, v.y, v.r)) {
           if ((this.vineHit.get(e.id) ?? 0) - g.now > 1e-8) continue;
-          if (v.dmg > (due.get(e.id)?.dmg ?? 0)) due.set(e.id, { e, dmg: v.dmg });
+          due.set(e.id, e);
         }
       }
       if (v.t <= 0) {
@@ -579,7 +588,15 @@ export class SkillSystem {
         this.vines.splice(i, 1);
       }
     }
-    for (const { e, dmg } of due.values()) {
+    for (const e of due.values()) {
+      // 跳伤时机由到期藤蔓触发，增伤计入所有仍覆盖目标的藤蔓，不要求各轮同帧跳伤。
+      let total = 0, strongest = 0;
+      for (const v of this.vines) {
+        if (((e.x - v.x) / v.r) ** 2 + ((e.y - v.y) / (v.r * AURA_FLAT)) ** 2 > 1) continue;
+        total += v.dmg;
+        strongest = Math.max(strongest, v.dmg);
+      }
+      const dmg = strongest + (total - strongest) * 0.25;
       this.vineHit.set(e.id, g.now + 0.5);
       g.hitEnemy(e, dmg, 'wood', { proc: SKILLS.tengfu.proc });
       if (e.alive) g.slowEnemy(e, 0.6);

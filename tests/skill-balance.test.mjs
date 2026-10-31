@@ -56,7 +56,7 @@ function scene(enemies = [], area = 1) {
 }
 
 test('双水龙在远距离仍命中瞄准中心，并行加宽而非张开死角；各方向/范围加成一致', () => {
-  for (const lv of [6, 8]) for (const area of [1, 1.5]) for (let d = 0; d < 8; d++) {
+  for (const lv of [5, 6, 8]) for (const area of [1, 1.5]) for (let d = 0; d < 8; d++) {
     const a = d * Math.PI / 4, target = mob(1, Math.cos(a) * 240, -2 + Math.sin(a) * 240);
     const s = scene([target], area), st = SKILLS.waterdragon.stats(lv);
     s.system.fire('waterdragon', st); s.advance(1.7);
@@ -131,6 +131,24 @@ test('火球和落石先覆盖不同敌群，只有一个目标时仍可集火',
   }
 });
 
+test('藤缚跨轮重叠按所有存续藤蔓增伤，保持半秒间隔且过期后恢复单藤伤害', () => {
+  for (const hz of [20, 30, 60]) for (const [first, second, overlap] of [[9, 9, 11.25], [9, 24, 26.25], [24, 9, 26.25]]) {
+    const s = scene([mob(1, 40, 0)]);
+    const st = SKILLS.tengfu.stats(1);
+    s.system.fire('tengfu', { ...st, dmg: first });
+    for (let frame = 1; frame <= 3.6 * hz; frame++) {
+      s.g.now = frame / hz;
+      if (frame === Math.round(st.cd * hz)) s.system.fire('tengfu', { ...st, dmg: second });
+      s.system.updateVines(1 / hz);
+    }
+    const overlapped = s.hits.filter(h => h.time > 2.4 && h.time < 3);
+    assert.ok(overlapped.length > 0);
+    assert.ok(overlapped.every(h => h.dmg === overlap), `fps=${hz}, damage=${first}/${second}`);
+    assert.equal(s.hits.at(-1).dmg, second, '旧藤过期后不再贡献伤害');
+    for (let i = 1; i < s.hits.length; i++) assert.ok(s.hits[i].time - s.hits[i - 1].time >= 0.5 - 1e-9);
+  }
+});
+
 test('单片藤蔓在不同战斗时刻与帧率下都完整结算六跳，不被浮点误差误认为重叠命中', () => {
   for (const hz of [20, 30, 60]) for (const start of [0, 5.7, 300]) {
     const s = scene([mob(1, 40, 0)]);
@@ -160,4 +178,22 @@ test('火球覆盖大于火符，藤缚保留有限持续区域；所有技能�
     for (let lv = 1; lv <= def.maxLv; lv++) assert.ok(Object.values(def.stats(lv)).every(Number.isFinite), def.id);
     if (def.ultimate) { assert.equal(def.maxLv, 1); assert.equal(def.stats(1).cd, 15); }
   }
+});
+
+test('十技能构筑适配：核心数量质变在 Lv3–5 提前成型，宝箱在主动术全满后继续升心法', () => {
+  assert.equal(SKILLS.slash.stats(3).back, 1);
+  assert.equal(SKILLS.talisman.stats(3).count, 2);
+  assert.equal(SKILLS.fireball.stats(3).count, 2);
+  assert.equal(SKILLS.leaf.stats(3).count, 2);
+  assert.equal(SKILLS.luoshi.stats(4).count, 2);
+  assert.equal(SKILLS.luoshi.stats(8).count, 3);
+  assert.equal(SKILLS.waterdragon.stats(5).count, 2);
+  assert.deepEqual([1, 3, 5, 8].map(lv => SKILLS.crossbow.stats(lv).pierce), [2, 3, 4, 6]);
+
+  const b = new Build(CHARACTERS[0], LEVELS[0], { shuhai: 5 });
+  b.skills.set('slash', 8);
+  b.passives.set('ruijin', 4);
+  const up = b.chestUpgrade();
+  assert.deepEqual(up, { id: 'ruijin', lv: 5 });
+  assert.equal(b.chestUpgrade(), null);
 });

@@ -76,7 +76,7 @@ export const CHARACTERS: CharacterDef[] = [
     startSkill: 'crossbow', lingen: 3, cdr: 0.15, crit: 0.05, pickup: 0.3, critSplash: 0.4, meleeBonus: 0, meleeRange: 0,
     growth: [{ every: 4, stat: 'sigDmg', v: 0.04 }, { every: 10, stat: 'speed', v: 0.02 }, { every: 5, stat: 'cd', v: 0.01 }],
     bio: '东海私船的头领，水性通神，人称“浪里蛟”。',
-    trait: '攻速 +15%，暴击 +5%，吸灵范围 +30%。远射：弩箭越远越痛。惊涛：暴击溅起水花。成长：每 4 级连弩伤害 +4%，每 5 级冷却 −1%，每 10 级移速 +2%。',
+    trait: '攻速 +15%，暴击 +5%，吸灵范围 +30%。贯潮：弩箭距远或连续贯敌均增伤。惊涛：暴击溅起水花。成长：每 4 级连弩伤害 +4%，每 5 级冷却 −1%，每 10 级移速 +2%。',
     available: true,
   },
   {

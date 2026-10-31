@@ -375,6 +375,8 @@ export class World {
     const y0 = Math.floor((o.y - reach) / CHUNK);
     const y1 = Math.floor((o.y + reach) / CHUNK);
     let hit = edge;
+    let nxSum = edge ? this.hitNx : 0;
+    let nySum = edge ? this.hitNy : 0;
     for (let cy = y0; cy <= y1; cy++)
       for (let cx = x0; cx <= x1; cx++) {
         const list = this.solids.get(`${cx},${cy}`);
@@ -390,11 +392,16 @@ export class World {
           const ny = d2 ? dy / d : 0;
           o.x = s.x + nx * rr;
           o.y = s.y + ny * rr;
-          this.hitNx = nx;
-          this.hitNy = ny;
+          nxSum += nx;
+          nySum += ny;
           hit = true;
         }
       }
+    if (hit) {
+      const nl = Math.hypot(nxSum, nySum) || 1;
+      this.hitNx = nxSum / nl;
+      this.hitNy = nySum / nl;
+    }
     return hit;
   }
 
@@ -559,13 +566,13 @@ export class World {
     const STEP = Math.max(14, Math.round(def.radius * 1.6));
     for (let gy = 0; gy < CHUNK; gy += STEP)
       for (let gx = 0; gx < CHUNK; gx += STEP) {
-        const wx = x * CHUNK + gx + (R() - 0.5) * 8;
-        const wy = y * CHUNK + gy + (R() - 0.5) * 8;
+        const wx = x * CHUNK + gx + (R() - 0.5) * 4;
+        const wy = y * CHUNK + gy + (R() - 0.5) * 4;
         // 出生点附近留一片空地；地图外和兴趣点旁不放
         if (Math.hypot(wx, wy) < 170) continue;
         if (!this.inside(wx, wy, 10) || this.nearReserved(wx, wy, def.radius)) continue;
         if (!isRidge(wx, wy, seed, def)) continue;
-        const r = def.radius * (0.85 + R() * 0.3);
+        const r = def.radius * (0.72 + R() * 0.18);
         // 碰撞圆心在石头底部偏上，和贴图的落脚点对齐
         solids.push({ x: wx, y: wy - 3, r });
         this.nav?.addSolid(wx, wy - 3, r);

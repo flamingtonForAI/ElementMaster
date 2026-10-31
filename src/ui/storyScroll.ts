@@ -33,7 +33,7 @@ export function buildStoryScrollModal(
   const accentCol = EL_INFO[scroll.accent].color;
 
   const c = scene.add.container(0, 0).setDepth(120);
-  c.add(coverView(scene, scene.add.rectangle(0, 0, 640, 360, 0x07050b, 0.84).setOrigin(0)));
+  c.add(coverView(scene, scene.add.rectangle(0, 0, 640, 360, 0x07050b, 0.84).setOrigin(0)).setInteractive());
 
   // 左右画轴轴杆与金轴头
   for (const rx of [50, 584]) {

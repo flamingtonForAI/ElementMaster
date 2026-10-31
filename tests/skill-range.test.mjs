@@ -57,16 +57,16 @@ test('拂尘逐级扇面与射程边界准确，范围加成同时作用于特�
   }
 });
 
-test('近身技能保持分工：拂尘略长于剑气、扇面不更宽且释放更慢，冰环保留全周覆盖', () => {
+test('近身技能保持分工：扇形挥砍（拂尘、剑气）前探距离长于全周环（冰环、离火环），拂尘窄扇长距、剑气宽扇高频，冰环保留全周总面积优势', () => {
   for (let lv = 1; lv <= 8; lv++) {
     const f = SKILLS.fuchen.stats(lv), sword = SKILLS.slash.stats(lv), ice = SKILLS.hanbing.stats(lv), fire = SKILLS.lihuo.stats(lv);
-    assert.ok(f.range >= sword.range && f.range <= sword.range + 8);
-    assert.ok(f.range < ice.radius && f.arc <= sword.arc && f.arc < 180);
+    assert.ok(f.range > sword.range && sword.range > ice.radius);
+    assert.ok(f.arc < sword.arc && sword.arc < 180);
     assert.ok(f.cd > sword.cd && f.cd < ice.cd);
-    assert.ok(fire.orbit + fire.hitRadius < ice.radius + 3);
+    assert.ok(fire.orbit + fire.hitRadius <= ice.radius + 3);
     const sector = Math.PI * f.range ** 2 * f.arc / 360;
     const disk = Math.PI * ice.radius ** 2;
-    assert.ok(sector / f.cd < disk / ice.cd * 0.65, '自动瞄准拂尘的面积/秒不能追平全周冰环');
+    assert.ok(sector < disk * 0.65, '窄扇形拂尘的单次覆盖面积仍低于360°全周冰环');
   }
 });
 

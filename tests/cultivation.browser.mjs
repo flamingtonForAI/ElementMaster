@@ -65,18 +65,26 @@ test('真实战斗：自带术与大招左右大格，中间十小格，无觉�
         const { CHARACTERS } = await import('/src/config/characters.ts');
         const c = CHARACTERS.find(c => c.id === char);
         const bridge = (await import('/tools/playtest/bridge.js')).install(20261030, {
-          character: char, level: 1, meta: { shuhai: 5, xingyun: 5 }, skills: { [c.startSkill]: 1 }, passives: {}, buildLevel: 30, lockXp: true,
+          character: char, level: 1, meta: { shuhai: 5, xingyun: 5 }, skills: { [c.startSkill]: 1 }, passives: {}, buildLevel: 50,
         });
         window.cultivationBridge = bridge;
         const g = window.game.scene.getScene('game'), hud = window.game.scene.getScene('hud');
         g.spawnUpdate = () => {}; g.dbg.god = true;
         const ids = [c.startSkill, ...Object.values(SKILLS).filter(s => !s.ultimate && !s.exclusive && s.id !== c.startSkill).map(s => s.id)].slice(0, 6);
-        ids.forEach(id => g.applyOption({ kind: 'skill', id, lv: 8 }));
-        ['ruijin', 'yanyang', 'changsheng', 'roushui', 'houtu'].forEach(id => g.applyOption({ kind: 'passive', id, lv: id === 'houtu' ? 4 : 5 }));
+        ids.forEach(id => g.applyOption({ kind: 'skill', id, lv: 1 }));
+        ['ruijin', 'yanyang', 'changsheng', 'roushui', 'houtu'].forEach(id => g.applyOption({ kind: 'passive', id, lv: 1 }));
         bridge.advance('STAY', 1);
         const locked = !hud.slotIcons[11].visible;
-        g.applyOption({ kind: 'passive', id: 'houtu', lv: 5 });
+        g.gainXp(g.build.xpNeeded() / g.pstats.xpMult);
+        bridge.advance('STAY', 1);
+        bridge.choose(0);
         const ultimate = g.build.ultimate, st = SKILLS[ultimate].stats(1);
+        const expected = ULTIMATES[c.balanced ? g.build.benming : c.el];
+        const unlockedAt = g.build.level;
+        const lowLevels = [...g.build.skills].filter(([id]) => !SKILLS[id].ultimate).every(([, lv]) => lv <= 2);
+        // 觉醒后仍能正常升级；同时保留原有满级标签的布局回归。
+        ids.forEach(id => g.applyOption({ kind: 'skill', id, lv: 8 }));
+        ['ruijin', 'yanyang', 'changsheng', 'roushui', 'houtu'].forEach(id => g.applyOption({ kind: 'passive', id, lv: 5 }));
         const victims = [];
         for (let i = 0; i < 8; i++) {
           const a = i / 8 * Math.PI * 2;
@@ -91,7 +99,7 @@ test('真实战斗：自带术与大招左右大格，中间十小格，无觉�
         for (let i = 0; i < 3; i++) bridge.advance('STAY', 60);
         const labels = hud.slotLvs.map(t => t.getBounds());
         const normalRows = Object.values(Object.groupBy(hud.slotIcons.slice(1, 11), t => t.y)).map(row => row.length);
-        return { ultimate, expected: ULTIMATES[c.balanced ? g.build.benming : c.el], slots: hud.slotIcons.length,
+        return { ultimate, expected, unlockedAt, lowLevels, slots: hud.slotIcons.length,
           count: g.build.skills.size + g.build.passives.size, locked, icon: hud.slotIcons[11].texture.key, expectedIcon: `skill_icon_${ultimate}`,
           starter: hud.slotIcons[0].texture.key, expectedStarter: `skill_icon_${c.startSkill}`,
           hits: hits.length, cooldown: g.skills.timers.get(ultimate), hp: victims[0].hp, maxHp: victims[0].maxHp,
@@ -103,6 +111,7 @@ test('真实战斗：自带术与大招左右大格，中间十小格，无觉�
       assert.equal(result.slots, 12); assert.equal(result.count, 12);
       assert.equal(result.starter, result.expectedStarter); assert.ok(result.sameLargeSize);
       assert.equal(result.locked, true);
+      assert.equal(result.unlockedAt, 51); assert.ok(result.lowLevels);
       assert.equal(result.ultimate, result.expected);
       assert.equal(result.icon, result.expectedIcon);
       assert.ok(result.hits > 0 && result.hp < result.maxHp && result.cooldown > 0);
@@ -211,6 +220,7 @@ test('散人拂尘实战对五行同伤；桌面与手机保持左右大格、�
       await page.goto(`${url}?level=1&char=xuanyi&hd=0&playtest`);
       await page.waitForFunction(() => window.game?.scene.getScene('hud')?.slotIcons.length);
       const neutral = await page.evaluate(async () => {
+        const { SKILLS } = await import('/src/config/skills.ts');
         const bridge = (await import('/tools/playtest/bridge.js')).install(20261031, {
           character: 'xuanyi', level: 1, meta: { shuhai: 5 }, skills: { fuchen: 8 }, passives: {}, buildLevel: 1, lockXp: true,
         });
@@ -231,19 +241,20 @@ test('散人拂尘实战对五行同伤；桌面与手机保持左右大格、�
           return result;
         };
         bridge.advance('STAY', 28);
-        return { hits, count: enemies.length, lingen: g.build.lingen, owned: [...g.build.skills.keys()] };
+        return { hits, expectedDamage: SKILLS.fuchen.stats(8).dmg, count: enemies.length, lingen: g.build.lingen, owned: [...g.build.skills.keys()] };
       });
       assert.deepEqual(neutral.owned, ['fuchen']);
       assert.deepEqual(Object.values(neutral.lingen), [0, 0, 0, 0, 0]);
       assert.equal(neutral.hits.length, 5);
       assert.equal(new Set(neutral.hits.map(h => h.id)).size, 5);
-      assert.ok(neutral.hits.every(h => h.dmg === 44 && h.lastEl === null));
+      assert.ok(neutral.hits.every(h => h.dmg === neutral.expectedDamage && h.lastEl === null));
       await page.screenshot({ path: `${out}/${name}-fuchen.png` });
       const layout = await page.evaluate(() => {
         const g = window.game.scene.getScene('game'), h = window.game.scene.getScene('hud');
         g.skills.update = () => {}; g.tasks = [];
         for (const e of [...g.enemies.list]) g.enemies.deactivate(e);
         g.enemies.list.length = 0; g.enemies.grid.clear();
+        g.build.level = 51;
         for (const id of ['flysword', 'fireball', 'leaf', 'waterdragon', 'stonespike']) g.build.apply({ kind: 'skill', id, lv: 8 });
         for (const id of ['ruijin', 'yanyang', 'changsheng', 'roushui', 'houtu']) g.build.apply({ kind: 'passive', id, lv: 5 });
         window.cultivationBridge.advance('STAY', 30);

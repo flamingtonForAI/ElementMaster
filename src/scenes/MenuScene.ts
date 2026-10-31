@@ -207,7 +207,7 @@ export class MenuScene extends Phaser.Scene {
     const x = 302;
     L.add(this.add.rectangle(x, 116, 302, 204, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, LINE));
     L.add(label(this, x + 12, 124, `第${lv.id}关 · ${lv.name}`, '#f4eee0', 24));
-    if (story) L.add(label(this, x + 290, 130, story.chapter, '#b8aec8').setOrigin(1, 0));
+    if (story) L.add(label(this, x + 290, 96, story.chapter, '#b8aec8').setOrigin(1, 0));
     let tx = x + 12;
     const t0 = label(this, tx, 156, '地气', '#8a8494');
     L.add(t0);

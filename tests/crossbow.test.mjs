@@ -123,3 +123,13 @@ test('中期水花覆盖逐渐增加，成长伤害与远扬、分水传承兼�
     assert.equal(s.slows.length, lv < 8 ? 0 : 3);
   }
 });
+
+test('近身密集敌群下连续贯敌同样递进触发贯潮满额增伤，各箭计数独立', () => {
+  const s = scene(), st = SKILLS.crossbow.stats(8);
+  const closePack = [mob(1, 25, -2), mob(2, 35, -2), mob(3, 45, -2), mob(4, 55, -2)];
+  s.enemies.push(...closePack);
+  s.system.fire('crossbow', st); s.flush();
+  const b0 = s.bolts[0], b1 = s.bolts[1];
+  assert.deepEqual(closePack.map(e => b0.options.dmgAt(e)), [1, 1.1, 1.2, 1.2]);
+  assert.equal(b1.options.dmgAt(closePack[0]), 1, '另一支箭独立计算贯敌层数');
+});
