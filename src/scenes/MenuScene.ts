@@ -2,11 +2,13 @@ import Phaser from 'phaser';
 import { coverView, viewBounds, configureView } from '../config/view';
 import { CHARACTERS } from '../config/characters';
 import { LEVELS } from '../config/levels';
+import { LEVEL_STORY, STORY_SCROLLS } from '../config/story';
 import { EL_INFO, GEN_ORDER, SAY_ORDER } from '../config/elements';
 import { activeSlot, loadSave } from '../game/save';
 import { daoPoints, legacyPoints } from '../game/talents';
 import { PORTRAIT_W, PORTRAIT_H } from '../art/portraits';
 import { label, hex } from '../ui/text';
+import { buildStoryScrollModal } from '../ui/storyScroll';
 import { wrap } from '../ui/wrap';
 import { isTouch } from '../ui/touch';
 import { audio } from '../audio/Audio';
@@ -20,6 +22,7 @@ export class MenuScene extends Phaser.Scene {
   private charSel = 0;
   private levelSel = 0;
   private layer!: Phaser.GameObjects.Container;
+  private scrollModal: Phaser.GameObjects.Container | null = null;
   private clouds!: Phaser.GameObjects.TileSprite;
   private fg!: Phaser.GameObjects.TileSprite;
 
@@ -200,36 +203,75 @@ export class MenuScene extends Phaser.Scene {
 
     // 详情
     const lv = LEVELS[this.levelSel];
+    const story = LEVEL_STORY[lv.id];
     const x = 302;
     L.add(this.add.rectangle(x, 116, 302, 204, PANEL, 0.95).setOrigin(0).setStrokeStyle(1, LINE));
-    L.add(label(this, x + 12, 126, `第${lv.id}关 · ${lv.name}`, '#f4eee0', 24));
+    L.add(label(this, x + 12, 124, `第${lv.id}关 · ${lv.name}`, '#f4eee0', 24));
+    if (story) L.add(label(this, x + 290, 130, story.chapter, '#b8aec8').setOrigin(1, 0));
     let tx = x + 12;
-    const t0 = label(this, tx, 162, '地气', '#8a8494');
+    const t0 = label(this, tx, 156, '地气', '#8a8494');
     L.add(t0);
     tx += t0.width + 6;
     for (const el of GEN_ORDER) {
       const v = Math.round(lv.terrain[el] * 100);
       if (!v) continue;
-      const t = label(this, tx, 162, `${EL_INFO[el].name}${v}`, hex(EL_INFO[el].color));
+      const t = label(this, tx, 156, `${EL_INFO[el].name}${v}`, hex(EL_INFO[el].color));
       L.add(t);
       tx += t.width + 6;
     }
     const enemyEls = lv.enemies.length
       ? lv.enemies.map((e) => e.id)
       : [];
-    L.add(label(this, x + 12, 182, `Boss　${lv.bossName}`, '#ff8a7a'));
-    L.add(label(this, x + 12, 202, `时长　${lv.duration / 60} 分钟`, '#b8aec8'));
-    L.add(label(this, x + 12, 222, wrap(`要点　${lv.lesson}`, 278), '#d8d0e4', 12, false).setLineSpacing(3));
+    L.add(label(this, x + 12, 174, `首领　${lv.bossName}`, '#ff8a7a'));
+    L.add(label(this, x + 152, 174, `时长　${lv.duration / 60} 分钟`, '#b8aec8'));
+    let py = 194;
+    if (story) {
+      const introText = label(this, x + 12, py, wrap(story.intro, 278), '#e8dec8', 12, false).setLineSpacing(3);
+      L.add(introText);
+      py += introText.height + 6;
+    }
+    L.add(label(this, x + 12, py, wrap(`要点　${lv.lesson}`, 278), '#b8aec8', 12, false).setLineSpacing(3));
+    const hasScroll = !!STORY_SCROLLS[lv.id] && (save.unlocked > lv.id || Object.values(save.clears).some((c) => c.includes(lv.id)));
     if (!lv.available) L.add(label(this, x + 12, 290, '后续阶段开放', '#6a6474'));
     else if (lv.id > save.unlocked) L.add(label(this, x + 12, 290, '通关上一关后解锁', '#6a6474'));
     else if (enemyEls.length) {
-      const btn = this.add.rectangle(x + 12, 284, 96, 24, 0x2a2238).setOrigin(0).setStrokeStyle(1, 0xffd23f);
+      const btn = this.add.rectangle(x + 12, 284, 88, 24, 0x2a2238).setOrigin(0).setStrokeStyle(1, 0xffd23f);
       btn.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.confirm());
       L.add(btn);
-      L.add(label(this, x + 60, 290, '开始', '#ffd23f').setOrigin(0.5, 0));
-      if (!isTouch()) L.add(label(this, x + 118, 290, '或按 Enter', '#6a6474'));
+      L.add(label(this, x + 56, 290, '开始', '#ffd23f').setOrigin(0.5, 0));
+      if (hasScroll) {
+        const sBtn = this.add.rectangle(x + 108, 284, 96, 24, 0x1d172a).setOrigin(0).setStrokeStyle(1, 0x7a623c);
+        sBtn.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.openScroll());
+        L.add(sBtn);
+        L.add(label(this, x + 156, 290, isTouch() ? '定脉绘卷' : '绘卷 (V)', '#e8dec8').setOrigin(0.5, 0));
+      } else if (!isTouch()) {
+        L.add(label(this, x + 110, 290, '或按 Enter', '#6a6474'));
+      }
     }
     L.add(label(this, 320, 330, isTouch() ? '点选关卡查看，再点一次或点“开始”进入' : '↑ ↓ 选择　Enter 开始　Esc 返回', '#8a8494').setOrigin(0.5, 0));
+  }
+
+  private openScroll() {
+    const lv = LEVELS[this.levelSel];
+    const save = loadSave();
+    if (!STORY_SCROLLS[lv.id] || (save.unlocked <= lv.id && !Object.values(save.clears).some((c) => c.includes(lv.id)))) return;
+    audio.sfx('select');
+    this.closeScroll();
+    this.scrollModal = buildStoryScrollModal(
+      this,
+      lv.id,
+      CHARACTERS[this.charSel].id,
+      '收起绘卷',
+      () => {
+        audio.sfx('tick');
+        this.closeScroll();
+      },
+    );
+  }
+
+  private closeScroll() {
+    this.scrollModal?.destroy();
+    this.scrollModal = null;
   }
 
   private confirm() {
@@ -256,6 +298,13 @@ export class MenuScene extends Phaser.Scene {
 
   private onKey(e: KeyboardEvent) {
     const k = e.key;
+    if (this.scrollModal) {
+      if (k === 'Enter' || k === ' ' || k === 'z' || k === 'Z' || k === 'Escape' || k === 'v' || k === 'V') {
+        audio.sfx('tick');
+        this.closeScroll();
+      }
+      return;
+    }
     if (k === 'Enter' || k === ' ' || k === 'z' || k === 'Z') return this.confirm();
     if (this.step === 'char') {
       if (k === 'q' || k === 'Q') return this.toDongfu();
@@ -264,6 +313,7 @@ export class MenuScene extends Phaser.Scene {
       else if (k === 'ArrowRight' || k === 'd' || k === 'D') this.charSel = (this.charSel + 1) % CHARACTERS.length;
       else return;
     } else {
+      if (k === 'v' || k === 'V') return this.openScroll();
       if (k === 'ArrowUp' || k === 'w' || k === 'W') this.levelSel = (this.levelSel + LEVELS.length - 1) % LEVELS.length;
       else if (k === 'ArrowDown' || k === 's' || k === 'S') this.levelSel = (this.levelSel + 1) % LEVELS.length;
       else if (k === 'Escape') this.step = 'char';

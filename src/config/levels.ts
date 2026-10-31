@@ -184,7 +184,7 @@ export const LEVELS: LevelDef[] = [
       detail: '铁甲兵冲锋更快更急，水鬼更快，其余妖物更凶',
       buffs: { water: { speed: 0.1 }, other: { dmg: 0.08 }, tiejia: { windup: 0.15, dash: 0.15, cd: 0.1 } },
     },
-    lesson: '新手关：留意黄色的“克”字',
+    lesson: '初涉仙途：留意黄色的“克”字，择相克之术破敌',
     available: true,
   },
   {
@@ -206,7 +206,7 @@ export const LEVELS: LevelDef[] = [
       detail: '木系妖物更耐打、藤怪回血更快、竹叶青冲得更勤，其余更凶',
       buffs: { wood: { hp: 0.1, regen: 0.5 }, other: { dmg: 0.08 }, zhushe: { cd: 0.15 } },
     },
-    lesson: '金克木，火借势烧木',
+    lesson: '金能克木，火可借木势燎原',
     available: true,
   },
   {
@@ -233,7 +233,7 @@ export const LEVELS: LevelDef[] = [
       buffs: { earth: { armor: 1, cd: 0.15, chance: 0.05 }, other: { dmg: 0.08 } },
       event: { kind: 'rockfall', count: 3 },
     },
-    lesson: '顺地气：土生金，金很舒服；山道窄，留意头顶落石',
+    lesson: '顺应地气：土能生金，修金最宜；山道狭仄，留神头顶落石',
     available: true,
   },
   {
@@ -263,7 +263,7 @@ export const LEVELS: LevelDef[] = [
       buffs: { fire: { blast: 0.2, trail: 1, cd: 0.15, chance: 0.05 }, other: { dmg: 0.08 }, shiyong: { armor: 2 } },
       event: { kind: 'lava', count: 2 },
     },
-    lesson: '逆风关：火克金，剑客要补水或土；熔岩口发亮就快走',
+    lesson: '逆势破局：火盛克金，剑修宜兼修水土；熔岩发亮即刻避让',
     available: true,
   },
   {
@@ -293,7 +293,7 @@ export const LEVELS: LevelDef[] = [
       buffs: { metal: { cd: 0.15, dash: 0.15 }, other: { dmg: 0.08 }, canbing: { revive: 0.8 } },
       zoneArmor: 1,
     },
-    lesson: '用火终结复活的残兵；剑阵初始护甲 +2，战鼓会继续加甲，引出来打',
+    lesson: '以真火焚尽复生残兵；剑阵初始护甲 +2 且随战鼓递增，宜引敌出阵再战',
     available: true,
   },
   {
@@ -324,7 +324,7 @@ export const LEVELS: LevelDef[] = [
       buffs: { water: { cd: 0.15, speed: 0.08, chance: 0.05, trail: 1 }, wood: { hp: 0.12 }, other: { dmg: 0.08 } },
       event: { kind: 'miasma', count: 2 },
     },
-    lesson: '三个初始角色都打不顺：补土或木；别站泥潭，把怪引进瘴雾',
+    lesson: '大泽水木两旺，宜兼修土、木破局；莫陷泥潭，可引群妖入瘴雾',
     available: true,
   },
   {
@@ -354,7 +354,7 @@ export const LEVELS: LevelDef[] = [
       buffs: { water: { cd: 0.15, speed: 0.08, chance: 0.05, trail: 1 }, other: { dmg: 0.08 } },
       event: { kind: 'storm', count: 6 },
     },
-    lesson: '冰上走位要留提前量；暴风雪里看不远，贴着冰崖和缺口走',
+    lesson: '玄冰滑步需留提前量；暴风雪迷眼，宜循冰崖与山口游走',
     available: true,
   },
   {
@@ -391,7 +391,7 @@ export const LEVELS: LevelDef[] = [
       buffs: { earth: { cd: 0.15, armor: 1, chance: 0.05 }, metal: { hp: 0.12 }, other: { dmg: 0.08 } },
       event: { kind: 'storm', count: 6 },
     },
-    lesson: '双修：土系用木打、金系用火打；旱魃半血化火，换水克它；别陷进流沙中心',
+    lesson: '五行双修：以木克土、以火克金；旱魃半血化火宜换水术，切莫陷足流沙中心',
     available: true,
   },
   {
@@ -413,7 +413,7 @@ export const LEVELS: LevelDef[] = [
     ridges: { tex: 'dc_coral', radius: 9, bands: [0.5], scale: 680, gap: 0.54 },
     // 浅滩涨潮才积水，海底火山口退潮才喷
     mud: { cell: 300, chance: 0.5, radius: 50, player: 0.7, enemy: 0.65, tex: 'dc_tidepool', phase: 'water' },
-    lava: { cell: 360, chance: 0.5, radius: 30, start: 0, every: [8, 4.5], count: [1, 3], warn: 1.3, dmg: 14, burn: 3, phase: 'fire', hint: '海底火山口要喷发了！发亮的地方快离开' },
+    lava: { cell: 360, chance: 0.5, radius: 30, start: 0, every: [8, 4.5], count: [1, 3], warn: 1.3, dmg: 14, burn: 3, phase: 'fire', hint: '海底火山口即将喷发！地脉发亮处速退' },
     cycle: {
       order: ['water', 'fire'], every: [50, 35], warn: 4, surge: 1.15, weight: 2, rage: true,
       terrain: { water: T({ water: 0.7, fire: 0.1, earth: 0.2 }), fire: T({ water: 0.2, fire: 0.6, earth: 0.2 }) },
@@ -432,7 +432,7 @@ export const LEVELS: LevelDef[] = [
       buffs: { water: { cd: 0.15, speed: 0.08, chance: 0.05, trail: 1 }, other: { dmg: 0.08 } },
       event: { kind: 'phase', count: 0 },
     },
-    lesson: '双克制：答案是土（打水 ×1.5、打火 ×1.2）；涨潮躲浅滩，退潮躲火山口',
+    lesson: '一气双克：唯土可兼制水火（克水 ×1.5、泄火 ×1.2）；涨潮避浅滩，退潮远火口',
     available: true,
   },
   {
@@ -495,7 +495,7 @@ export const LEVELS: LevelDef[] = [
       detail: '土系妖物出招更勤、护甲更厚，金系更耐打，其余更凶',
       buffs: { earth: { cd: 0.15, armor: 1 }, metal: { hp: 0.12 }, other: { dmg: 0.08 } },
     },
-    lesson: '期末考：看清当令的元素再选术；轮转流跟着五气换本命，专精流靠克制硬打',
+    lesson: '万象终试：明辨当令五气择术而战；轮转流随气易命，专精流以克破万法',
     available: true,
   },
 ];

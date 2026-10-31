@@ -3,9 +3,11 @@ import { coverView, configureView, viewPoint } from '../config/view';
 import { EL_INFO, GEN_ORDER, counters, counteredBy, type El, type Terrain } from '../config/elements';
 import { SKILLS, PASSIVES, MAX_SKILL_SLOTS } from '../config/skills';
 import { LEVELS, phaseTerrain } from '../config/levels';
+import { LEVEL_STORY, STORY_SCROLLS } from '../config/story';
 import { ENEMIES } from '../config/enemies';
 import { optionKey, type Option } from '../game/Build';
 import { label, hex } from '../ui/text';
+import { buildStoryScrollModal } from '../ui/storyScroll';
 import { MAP_TEXEL } from '../game/World';
 import { wrap } from '../ui/wrap';
 import type { GameScene, RunResult } from './GameScene';
@@ -568,7 +570,7 @@ export class HudScene extends Phaser.Scene {
     } else {
       name = '灵石';
       tag = '消耗品';
-      desc = `局外货币 +${this.g.lingshiCard()}，结算时发放，可在洞府购买修炼`;
+      desc = `灵石 +${this.g.lingshiCard()}，历练结算时入库，可于洞府修行`;
     }
     const col = el ? EL_INFO[el].color : 0xb8aec8;
     const bg = this.add.rectangle(0, 0, W, H, PANEL, 0.96).setOrigin(0.5, 0).setStrokeStyle(1, col, 0.6);
@@ -643,7 +645,7 @@ export class HudScene extends Phaser.Scene {
 
   // ---------- 菜单类弹窗 ----------
 
-  private showMenu(title: string, titleColor: string, lines: string[], items: MenuItem[], onEsc: (() => void) | null) {
+  private showMenu(title: string, titleColor: string, lines: string[], items: MenuItem[], onEsc: (() => void) | null, panelW = 240) {
     this.closeModal();
     this.releaseStick();
     this.mode = 'menu';
@@ -656,7 +658,7 @@ export class HudScene extends Phaser.Scene {
     c.add(coverView(this, this.add.rectangle(0, 0, 640, 360, 0x07050b, 0.75).setOrigin(0)));
     const h = 70 + lines.length * 16 + items.length * 26;
     const top = 180 - h / 2;
-    c.add(this.add.rectangle(320, top, 240, h, PANEL, 0.96).setOrigin(0.5, 0).setStrokeStyle(1, LINE, 1));
+    c.add(this.add.rectangle(320, top, panelW, h, PANEL, 0.96).setOrigin(0.5, 0).setStrokeStyle(1, LINE, 1));
     c.add(label(this, 320, top + 12, title, titleColor, 24).setOrigin(0.5, 0));
     lines.forEach((l, i) => c.add(label(this, 320, top + 46 + i * 16, l, '#d8d0e4').setOrigin(0.5, 0)));
     const iy = top + 52 + lines.length * 16;
@@ -729,7 +731,7 @@ export class HudScene extends Phaser.Scene {
     this.modal!.add(label(this, 110, 226, `本命 ${EL_INFO[el].name}`, hex(EL_INFO[el].color)).setOrigin(0.5, 0));
     this.modal!.add(label(this, 110, 242, `克 ${EL_INFO[counters(el)].name}　畏 ${EL_INFO[counteredBy(el)].name}`, '#b8aec8').setOrigin(0.5, 0));
     this.modal!.add(label(this, 110, 264, '受伤后 2 秒持续/击杀回复减半', '#b8aec8', 10).setOrigin(0.5, 0));
-    this.modal!.add(label(this, 110, 280, '护盾受击同样触发，药瓶照常', '#8a8494', 10).setOrigin(0.5, 0));
+    this.modal!.add(label(this, 110, 280, '护盾受击同样触发，回气丹照常', '#8a8494', 10).setOrigin(0.5, 0));
     // 右侧大地图，游戏已暂停，画一次就行
     const S = 156;
     const mx = 540 - S / 2;
@@ -751,23 +753,61 @@ export class HudScene extends Phaser.Scene {
     }
   }
 
-  showResult(r: RunResult) {
+  showResult(r: RunResult, skipScroll = false) {
+    const lvId = this.g.levelDef.id;
+    if (r.win && !skipScroll && STORY_SCROLLS[lvId] && (r.firstClear || lvId === 10)) {
+      this.showStoryScroll(r);
+      return;
+    }
     const m = Math.floor(r.time / 60);
     const s = Math.floor(r.time % 60);
-    const lines = [
+    const lines: string[] = [];
+    const outro = r.win ? LEVEL_STORY[lvId]?.outro : undefined;
+    if (outro) {
+      for (const l of wrap(outro, 264).split('\n')) lines.push(l);
+    }
+    lines.push(
       `用时 ${m}分${String(s).padStart(2, '0')}秒`,
       `击杀 ${r.kills}　等级 ${r.level}`,
       `获得灵石 ${r.lingshi}`,
-    ];
+    );
     // 灵石明细两项一行
     for (let i = 0; i < r.lingshiLines.length; i += 2) lines.push(r.lingshiLines.slice(i, i + 2).join('　'));
     if (r.growth) lines.push(r.growth);
     const items: MenuItem[] = [];
-    const next = LEVELS.find((l) => l.id === this.g.levelDef.id + 1);
+    const next = LEVELS.find((l) => l.id === lvId + 1);
     if (r.win && next?.available) items.push({ text: `下一关 · ${next.name}`, fn: () => this.restart(next.id) });
-    items.push({ text: '再来一次', fn: () => this.restart(this.g.levelDef.id) });
+    if (r.win && STORY_SCROLLS[lvId]) items.push({ text: '定脉绘卷', fn: () => this.showStoryScroll(r) });
+    items.push({ text: '再来一次', fn: () => this.restart(lvId) });
     items.push({ text: '返回选角', fn: () => this.toMenu() });
-    this.showMenu(r.win ? '通关！' : '陨落', r.win ? '#ffd23f' : '#ff6a5a', lines, items, null);
+    this.showMenu(r.win ? '破境功成' : '陨落', r.win ? '#ffd23f' : '#ff6a5a', lines, items, null, outro ? 296 : 240);
+  }
+
+  /** 关键章节（1、3、6、9）与终章（10）图文绘卷弹窗 */
+  private showStoryScroll(r: RunResult) {
+    this.closeModal();
+    this.releaseStick();
+    const done = () => {
+      audio.sfx('select');
+      this.showResult(r, true);
+    };
+    const modal = buildStoryScrollModal(
+      this,
+      this.g.levelDef.id,
+      this.g.char.id,
+      this.g.levelDef.id === 10 ? '定脉功成 · 展开结算' : '继续 · 展开结算',
+      done,
+    );
+    if (!modal) {
+      this.showResult(r, true);
+      return;
+    }
+    this.mode = 'menu';
+    this.sel = 0;
+    this.menuItems = [{ text: '继续', fn: done }];
+    this.escAction = done;
+    this.inputLockUntil = this.time.now + 300;
+    this.modal = modal;
   }
 
   private restart(level: number) {

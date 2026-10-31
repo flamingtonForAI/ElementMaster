@@ -39,7 +39,7 @@ export const STATUS_TIERS: Record<StatusId, { first: string; second: string }> =
   poison: { first: '中毒', second: '剧毒' },
   burn: { first: '点燃', second: '燃烧' },
   bleed: { first: '流血', second: '撕裂' },
-  stun: { first: '眩晕', second: '打昏' },
+  stun: { first: '眩晕', second: '昏厥' },
 };
 /** Boss 保留二阶机制但持续减半；水土共享硬控后的免疫，避免交替锁死。 */
 export const BOSS_STATUS = { duration: 0.5, controlImmune: 3 };

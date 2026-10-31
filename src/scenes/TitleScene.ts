@@ -4,6 +4,7 @@ import { CHARACTERS } from '../config/characters';
 import { EL_INFO, SAY_ORDER } from '../config/elements';
 import { ENEMIES, type Behavior, type EnemyDef, type Trick } from '../config/enemies';
 import { LEVELS } from '../config/levels';
+import { BOSS_LORE } from '../config/story';
 import { STATUS_INFO } from '../config/status';
 import { SLOTS, activeSlot, deleteSlot, exportSlot, importSlot, listSlots, newSlot, useSlot, type Save } from '../game/save';
 import { label, hex } from '../ui/text';
@@ -39,34 +40,34 @@ const firstLevel = (id: string) => LEVELS.find((l) => l.boss === id || l.enemies
 const BESTIARY_ORDER = Object.keys(ENEMIES).sort((a, b) => (firstLevel(a) ?? 99) - (firstLevel(b) ?? 99) || +!!ENEMIES[a].boss - +!!ENEMIES[b].boss);
 const BEHAVIOR: Record<Behavior, string> = {
   walk: '贴身围攻',
-  regen: '受伤后慢慢回血',
-  explode: '死后原地自爆',
+  regen: '受伤后缓慢回血',
+  explode: '毙命后原地自爆',
   charge: '停顿预警后直线冲锋',
-  spit: '隔着距离吐毒涎',
-  burrow: '钻进土里追到脚下，冒头预警后破土',
+  spit: '远距喷吐毒涎',
+  burrow: '遁地潜行至足下，冒头预警后破土而出',
   boss_wolf: '冲锋撕咬，环射风刃',
   boss_tree: '召唤藤怪，半血后放毒刺',
   boss_ape: '跳砸、碎石环、投巨石，半血召落石雨',
   boss_bird: '扇形火球，俯冲留下火线，半血降火柱',
   boss_xingtian: '举斧劈砍、盾冲、舞干戚飞刃环',
   boss_snake: '九首扇形齐吐水弹和毒涎，吐毒泽化成瘴雾，潜进泥水从脚下冒出',
-  sidestep: '横着错步逼近，贴近了直扑',
-  boss_xuanming: '扇形冰羽，冰锥落地结冰，吸寒把人往身边拉后冰爆，狂暴时刮起暴风雪',
-  sting: '贴近后停下预警，尾针直刺身前一条线',
+  sidestep: '横步迂回逼近，近身猛扑',
+  boss_xuanming: '扇射冰羽，冰锥落地结冰，吸寒聚敌后冰爆，狂暴时掀起暴风雪',
+  sting: '近身蓄势预警，尾针直刺前方一线',
   boss_hanba: '土相裂地、陷流沙、跺地；半血焚身化为火系，走过留火、火环、焚风火柱',
-  leap: '预警后跳到你脚下砸地',
+  leap: '预警后跃至足下猛砸',
   boss_jiuying: '随潮汐在水火两系间切换；九首旋喷水火弹，涨潮招水柱、退潮引火山，婴啼唤来同系小怪',
   boss_dijiang: '按相生轮转五系，每系一套招（毒刺、火环、落石、飞刃、冰锥），歌舞时边转边喷五色弹',
 };
-const SHOT: Record<string, string> = { ep_rock: '隔着距离投石', ep_fire: '隔着距离吐火球', ep_blade: '隔着距离甩飞刃', ep_water: '隔着距离吐水弹', ep_sandball: '隔着距离滚金丸' };
+const SHOT: Record<string, string> = { ep_rock: '远距投掷山石', ep_fire: '远距喷吐火弹', ep_blade: '远距甩出飞刃', ep_water: '远距喷吐水弹', ep_sandball: '远距滚出金丸' };
 /** 后期关卡开的手段；抛射按元素说落地留下什么 */
 const TRICK_TEXT: Record<Trick, (d: EnemyDef) => string> = {
-  lob: (d) => `弹改为抛射，落地${d.el === 'fire' ? '留余火' : d.el === 'water' ? '留水洼' : '冒毒气'}`,
-  quake: () => '贴近时停下震地，攒震慑',
-  formation: () => '列阵：周围的妖物护甲 +2',
-  roots: () => '在你脚下催生缠根，踩上去迟缓',
-  boomerang: () => '甩出的飞刃会折回来',
-  sinkhole: () => '破土处陷出一片流沙',
+  lob: (d) => `弹道改为高抛，落地${d.el === 'fire' ? '留余火' : d.el === 'water' ? '留水洼' : '漫毒气'}`,
+  quake: () => '近身停步震地，叠加震慑',
+  formation: () => '列阵：周围妖物护甲 +2',
+  roots: () => '在足下催生缠根，踏入迟缓',
+  boomerang: () => '甩出的飞刃将折返横扫',
+  sinkhole: () => '破土处塌陷为一片流沙',
 };
 /** 这种敌人的每种手段从第几关开始有 */
 function trickLevels(id: string) {
@@ -75,15 +76,17 @@ function trickLevels(id: string) {
   return out;
 }
 function traits(d: EnemyDef) {
-  const t = [d.behavior === 'spit' && d.shot ? SHOT[d.shot] ?? BEHAVIOR.spit : d.behavior === 'explode' && d.el === 'water' ? '死后原地冰爆，圈里迟缓' : BEHAVIOR[d.behavior]];
+  const t = [d.behavior === 'spit' && d.shot ? SHOT[d.shot] ?? BEHAVIOR.spit : d.behavior === 'explode' && d.el === 'water' ? '毙命后原地冰爆，冰圈内迟缓' : BEHAVIOR[d.behavior]];
   if (d.trail) t.push('冲刺时身后留火');
   if (d.puddle) t.push('冲刺时身后留下水洼');
   if (d.spread) t.push(`一次扇形吐 ${d.spread} 道`);
-  if (d.revive) t.push(`死后 ${d.revive} 秒原地复活一次，火系击杀则不会`);
-  if (d.rise) t.push('第一次被打倒会复起，火系击杀则不会');
+  if (d.revive) t.push(`毙命后 ${d.revive} 秒原地复生一次，火系击杀则焚灭`);
+  if (d.rise) t.push('初次倒下将复起再战，火系击杀则焚灭');
   for (const [k, lv] of trickLevels(d.id)) t.push(`第 ${lv} 关起${TRICK_TEXT[k](d)}`);
   if (d.inflict) t.push(`攻击 ${Math.round(d.inflict.chance * 100)}% 附带${STATUS_INFO[d.inflict.kind].name}`);
-  return t.join('；');
+  const mech = t.join('；');
+  const lore = BOSS_LORE[d.id];
+  return lore ? `${lore}\n${mech}` : mech;
 }
 
 /** 首页背景按清晨→白天→傍晚→夜里循环：每个时辰停 HOLD 毫秒，再用 FADE 毫秒淡入下一个 */
@@ -490,7 +493,7 @@ export class TitleScene extends Phaser.Scene {
     const ids = this.known();
     L.add(label(this, 600, 54, `已收录 ${ids.length} / ${BESTIARY_ORDER.length}`, '#8a8494').setOrigin(1, 0));
     if (!ids.length) {
-      L.add(label(this, 48, 96, '还没有打倒过妖物，出去历练一番再来看', '#8a8494'));
+      L.add(label(this, 48, 96, '尚未斩获妖物，出山历练一番再来查阅', '#8a8494'));
       if (!isTouch()) this.hint('Esc 返回');
       return;
     }
@@ -524,7 +527,7 @@ export class TitleScene extends Phaser.Scene {
     const col = EL_INFO[d.el].color;
     L.add(label(this, px + 12, 180, d.name, d.boss ? '#ff8a7a' : '#f4eee0', 24));
     const lv = firstLevel(d.id);
-    L.add(label(this, px + 12, 208, `${EL_INFO[d.el].name}系${d.boss ? ' · Boss' : ''}${lv ? ` · 第${lv}关` : ''}`, hex(col)));
+    L.add(label(this, px + 12, 208, `${EL_INFO[d.el].name}系${d.boss ? ' · 首领' : ''}${lv ? ` · 第${lv}关` : ''}`, hex(col)));
     L.add(label(this, px + pw - 12, 208, `击杀 ${this.current()!.bestiary[d.id]}`, GOLD).setOrigin(1, 0));
     L.add(label(this, px + 12, 226, `生命 ${d.hp}　移速 ${d.speed}　护甲 ${d.armor}`, '#6a6474'));
     L.add(label(this, px + 12, 246, wrap(traits(d), pw - 24), '#d8d0e4', 12, false).setLineSpacing(3));

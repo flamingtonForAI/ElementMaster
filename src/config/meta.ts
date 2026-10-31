@@ -20,14 +20,14 @@ export const UPGRADES: (UpgradeDef & { stat: UpgradeStat })[] = [
   { id: 'huti', stat: 'armor', name: '护体', glyph: '甲', v: 1, maxLv: 3, base: 150, desc: '护甲 +1' },
   { id: 'huichun', stat: 'regen', name: '回春', glyph: '春', v: 0.2, maxLv: 3, base: 150, desc: '每秒回复 0.2 生命' },
   { id: 'shenfa', stat: 'speed', name: '身法', glyph: '身', v: 0.05, maxLv: 3, base: 100, desc: '移动速度 +5%' },
-  { id: 'shouling', stat: 'pickup', name: '聚灵', glyph: '聚', v: 0.2, maxLv: 2, base: 80, desc: '拾取范围 +20%' },
-  { id: 'wuxing', stat: 'xp', name: '悟性', glyph: '悟', v: 0.04, maxLv: 5, base: 150, desc: '经验 +4%' },
+  { id: 'shouling', stat: 'pickup', name: '聚灵', glyph: '聚', v: 0.2, maxLv: 2, base: 80, desc: '吸灵范围 +20%' },
+  { id: 'wuxing', stat: 'xp', name: '悟性', glyph: '悟', v: 0.04, maxLv: 5, base: 150, desc: '灵气获取 +4%' },
   { id: 'caiyun', stat: 'lingshi', name: '财运', glyph: '财', v: 0.1, maxLv: 5, base: 100, desc: '灵石获取 +10%' },
   { id: 'xuming', stat: 'revive', name: '续命', glyph: '命', v: 1, maxLv: 2, base: 800, desc: '每局可原地复活 1 次，复活时回复一半生命' },
   { id: 'huanqian', stat: 'reroll', name: '换签', glyph: '签', v: 1, maxLv: 3, base: 300, desc: '每局可重抽升级选项 1 次' },
   { id: 'zhanyuan', stat: 'banish', name: '斩缘', glyph: '斩', v: 1, maxLv: 3, base: 300, desc: '每局可封禁 1 个升级选项，本局不再出现' },
-  { id: 'shuhai', stat: 'skillSlots', name: '技能数量', glyph: '术', v: 1, maxLv: 5, base: 300, desc: '自带术独立；初始 6 个普通格，每级 +1，末级开放大招格' },
-  { id: 'xingyun', stat: 'luck', name: '幸运', glyph: '幸', v: 0.2, maxLv: 5, base: 180, desc: '符箓出现率、威力、持续时间与加速效果 +20%' },
+  { id: 'shuhai', stat: 'skillSlots', name: '术海', glyph: '术', v: 1, maxLv: 5, base: 300, desc: '自带术独立；初始 6 个普通格，每级 +1，末级开放神通格' },
+  { id: 'xingyun', stat: 'luck', name: '福缘', glyph: '福', v: 0.2, maxLv: 5, base: 180, desc: '符箓出现率、威力、持续时间与加速效果 +20%' },
 ];
 
 /** 修炼已购等级，key 是修炼 id */

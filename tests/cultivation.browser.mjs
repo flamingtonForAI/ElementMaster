@@ -24,7 +24,7 @@ test('修炼界面桌面与手机横屏均可购买两个新项目，说明不�
         window.game.scene.start('dongfu', { char: 'xiao' });
       });
       await page.waitForFunction(() => window.game.scene.isActive('dongfu'));
-      for (const [id, title] of [['shuhai', '技能数量'], ['xingyun', '幸运']]) {
+      for (const [id, title] of [['shuhai', '术海'], ['xingyun', '福缘']]) {
         await page.evaluate(async id => {
           const { UPGRADES } = await import('/src/config/meta.ts');
           const d = window.game.scene.getScene('dongfu');
@@ -176,7 +176,7 @@ test('大招冷却实战15秒/满减冷却加退射10秒，暂停不推进，木
           g.enemies.grid.clear(); g.enemies.grid.insert(target);
         };
         const casts = [], toast = hud.toast.bind(hud);
-        hud.toast = (text, color) => { if (text.startsWith('大招 ·')) casts.push(g.now); toast(text, color); };
+        hud.toast = (text, color) => { if (text.startsWith('神通 ·')) casts.push(g.now); toast(text, color); };
         for (let i = 0; i < 5; i++) bridge.advance(boosted ? 'RIGHT' : 'STAY', 60);
         const beforePause = g.now;
         g.scene.pause();

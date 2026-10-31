@@ -378,7 +378,7 @@ export class SkillSystem {
     if (!g.enemies.inRadius(g.player.x, g.player.y, r, []).length) return false;
     const col = EL_INFO[def.el].color;
     g.player.attack();
-    g.hud.toast(`大招 · ${def.name}`, EL_INFO[def.el].css);
+    g.hud.toast(`神通 · ${def.name}`, EL_INFO[def.el].css);
     audio.sfx('benming');
     for (let wave = 0; wave < st.count; wave++) {
       g.later(0.15 + wave * st.interval, () => {

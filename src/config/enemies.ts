@@ -152,14 +152,14 @@ export const ENEMIES: Record<string, EnemyDef> = {
   yuyao: { id: 'yuyao', name: '鱼妖', el: 'water', tex: 'en_yuyao', hp: 22, speed: 36, dmg: 5, armor: 0, radius: 6, xp: 2, behavior: 'spit', shot: 'ep_water', inflict: { kind: 'slow', chance: 0.2 } },
   jiao: { id: 'jiao', name: '蛟', el: 'water', tex: 'en_jiao', hp: 26, speed: 40, dmg: 6, armor: 1, radius: 8, xp: 2, behavior: 'charge', puddle: true, inflict: { kind: 'slow', chance: 0.2 } },
   // 第 7 关寒江：冰蚕死时冰爆（自爆按元素走，水系是迟缓），铁螯蟹横着挪过来夹人
-  bingcan: { id: 'bingcan', intro: '死后冰爆，躲开冰圈再捡经验', lateRole: 'frontline', name: '冰蚕', el: 'water', tex: 'en_bingcan', hp: 40, speed: 24, dmg: 5, armor: 1, radius: 8, xp: 2, behavior: 'explode', inflict: { kind: 'slow', chance: 0.2 } },
-  aoxie: { id: 'aoxie', intro: '横移逼近的重甲蟹，用火系破阵', lateRole: 'frontline', name: '铁螯蟹', el: 'metal', tex: 'en_aoxie', hp: 38, speed: 34, dmg: 7, armor: 4, radius: 8, xp: 2, behavior: 'sidestep', inflict: { kind: 'bleed', chance: 0.25, dps: 1.5 } },
+  bingcan: { id: 'bingcan', intro: '毙命后寒气爆裂，避开冰圈再拾灵气', lateRole: 'frontline', name: '冰蚕', el: 'water', tex: 'en_bingcan', hp: 40, speed: 24, dmg: 5, armor: 1, radius: 8, xp: 2, behavior: 'explode', inflict: { kind: 'slow', chance: 0.2 } },
+  aoxie: { id: 'aoxie', intro: '横行逼近的重甲巨蟹，宜以火法破甲', lateRole: 'frontline', name: '铁螯蟹', el: 'metal', tex: 'en_aoxie', hp: 38, speed: 34, dmg: 7, armor: 4, radius: 8, xp: 2, behavior: 'sidestep', inflict: { kind: 'bleed', chance: 0.25, dps: 1.5 } },
   // 第 8 关大漠：沙蝎贴近了尾针直刺一条线，金蜣隔着距离滚金丸
-  shaxie: { id: 'shaxie', intro: '尾针直刺，看到预警向侧面躲', name: '沙蝎', el: 'earth', tex: 'en_shaxie', hp: 28, speed: 40, dmg: 6, armor: 2, radius: 7, xp: 2, behavior: 'sting', inflict: { kind: 'poison', chance: 0.25, dps: 2, dur: 4 } },
-  jinqiang: { id: 'jinqiang', intro: '远处滚出金丸，侧移绕开弹道', name: '金蜣', el: 'metal', tex: 'en_jinqiang', hp: 30, speed: 32, dmg: 6, armor: 3, radius: 7, xp: 2, behavior: 'spit', shot: 'ep_sandball', inflict: { kind: 'stun', chance: 0.2 } },
+  shaxie: { id: 'shaxie', intro: '尾针直刺一线，见预警即向两侧闪避', name: '沙蝎', el: 'earth', tex: 'en_shaxie', hp: 28, speed: 40, dmg: 6, armor: 2, radius: 7, xp: 2, behavior: 'sting', inflict: { kind: 'poison', chance: 0.25, dps: 2, dur: 4 } },
+  jinqiang: { id: 'jinqiang', intro: '远距滚出金丸，侧移绕开弹道', name: '金蜣', el: 'metal', tex: 'en_jinqiang', hp: 30, speed: 32, dmg: 6, armor: 3, radius: 7, xp: 2, behavior: 'spit', shot: 'ep_sandball', inflict: { kind: 'stun', chance: 0.2 } },
   // 第 9 关东海归墟：夜叉跳到玩家脚下砸地，焰蛸一次扇形喷三道火
-  yecha: { id: 'yecha', intro: '跳到脚下砸地，离开预警圈', name: '夜叉', el: 'water', tex: 'en_yecha', hp: 24, speed: 42, dmg: 7, armor: 1, radius: 7, xp: 2, behavior: 'leap', inflict: { kind: 'slow', chance: 0.2 } },
-  yanshao: { id: 'yanshao', intro: '扇形喷出三道火，留意弹道间隙', name: '焰蛸', el: 'fire', tex: 'en_yanshao', hp: 24, speed: 30, dmg: 5, armor: 0, radius: 7, xp: 2, behavior: 'spit', shot: 'ep_fire', spread: 3, inflict: { kind: 'burn', chance: 0.15, dps: 1.5 } },
+  yecha: { id: 'yecha', intro: '跃至足下猛砸，速离脚下预警圈', name: '夜叉', el: 'water', tex: 'en_yecha', hp: 24, speed: 42, dmg: 7, armor: 1, radius: 7, xp: 2, behavior: 'leap', inflict: { kind: 'slow', chance: 0.2 } },
+  yanshao: { id: 'yanshao', intro: '扇形喷吐三道烈火，寻弹道间隙穿行', name: '焰蛸', el: 'fire', tex: 'en_yanshao', hp: 24, speed: 30, dmg: 5, armor: 0, radius: 7, xp: 2, behavior: 'spit', shot: 'ep_fire', spread: 3, inflict: { kind: 'burn', chance: 0.15, dps: 1.5 } },
   langyao: { id: 'langyao', name: '狼妖', el: 'metal', tex: 'boss_langyao', hp: 2600, speed: 55, dmg: 20, armor: 2, radius: 18, xp: 100, behavior: 'boss_wolf', boss: true, inflict: { kind: 'bleed', chance: 0.5, dps: 3 } },
   shuyao: { id: 'shuyao', name: '千年树妖', el: 'wood', tex: 'boss_shuyao', hp: 5400, speed: 36, dmg: 23, armor: 2, radius: 24, xp: 150, behavior: 'boss_tree', boss: true, regen: 4, inflict: { kind: 'poison', chance: 0.65, dps: 4, dur: 5 } },
   shanxiaowang: { id: 'shanxiaowang', name: '山魈王', el: 'earth', tex: 'boss_shanxiao', hp: 5000, speed: 48, dmg: 23, armor: 3, radius: 20, xp: 150, behavior: 'boss_ape', boss: true, inflict: { kind: 'stun', chance: 0.5 } },

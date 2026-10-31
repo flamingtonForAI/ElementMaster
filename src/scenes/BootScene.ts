@@ -6,6 +6,7 @@ import { preloadEnemySheets } from '../art/enemySheets';
 import { buildPortraits, PORTRAITS } from '../art/portraits';
 import { buildFx } from '../art/fxArt';
 import { buildSkillIcons } from '../art/skillIcons';
+import { buildStoryArt } from '../art/storyArt';
 import { TOD_LIST, buildVista, getVistaTextureKey } from '../art/vistaArt';
 import { audio } from '../audio/Audio';
 
@@ -30,6 +31,7 @@ export class BootScene extends Phaser.Scene {
     audio.init(this.game);
     buildFx(this);
     buildSkillIcons(this);
+    buildStoryArt(this);
     buildVista(this);
     buildHeroes(this);
     buildPuppetArt(this);

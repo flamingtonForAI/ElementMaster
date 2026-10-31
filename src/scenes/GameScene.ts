@@ -3,6 +3,7 @@ import { configureView } from '../config/view';
 import { armoredDamage } from '../game/damage';
 import { CHARACTERS, type CharacterDef } from '../config/characters';
 import { phaseTerrain, LEVELS, DIFF, enemyPool, rollTier, type LevelDef } from '../config/levels';
+import { LEVEL_STORY } from '../config/story';
 import { ENEMIES, AFFIXES, type Affix } from '../config/enemies';
 import { advances, BOSS_STATUS, STATUS_TIERS, ENEMY_CRIT, ENEMY_CRIT_DMG, FROZEN, ON_ENEMY, STATUS_INFO, STATUS_OF, statusChance, statusPower, type Inflict, type StatusId } from '../config/status';
 import { EL_INFO, GEN_ORDER, REL_MULT, relation, terrainMod, type El } from '../config/elements';
@@ -64,14 +65,16 @@ export interface RunResult {
   unlockedNext: boolean;
   /** 这个角色首通拿到的道点、传承点，没有就为空 */
   growth: string;
+  /** 本角色是否首次通关此关 */
+  firstClear?: boolean;
 }
 
 /** 精英词缀的说明 */
 const AFFIX_TEXT: Record<Affix, string> = {
-  miasma: '身边一圈瘴气，靠近会中毒',
-  guard: '金圈里的妖物护甲 +3，先杀它',
-  summon: '现身 4 秒后召援，之后每 8 秒唤来 3 只同类',
-  frost: '身边一圈寒气，靠近会迟缓',
+  miasma: '周身萦绕瘴气，近身将受毒侵',
+  guard: '金阵内妖物护甲 +3，宜先斩此獠',
+  summon: '现身 4 秒后召援，此后每 8 秒唤来 3 只同族',
+  frost: '周身散溢寒气，近身将被迟缓',
 };
 
 /** 精英提示里的词缀前缀，如“瘴·护 ” */
@@ -244,6 +247,8 @@ export class GameScene extends Phaser.Scene {
 
     if (this.scene.isActive('hud')) this.scene.stop('hud');
     this.scene.launch('hud');
+    const story = LEVEL_STORY[L.id];
+    if (story) this.later(0.8, () => this.hud.toast(`${story.chapter} · ${L.name}`, '#ffd23f'));
 
     this.input.keyboard!.on('keydown-ESC', () => this.pauseGame());
     this.input.keyboard!.on('keydown-P', () => this.pauseGame());
@@ -487,7 +492,7 @@ export class GameScene extends Phaser.Scene {
       this.enemies.spawn(id, x, y, { hpMult: this.hpScale(), tier: rollTier(this.levelDef, this.elapsed) });
     }
     audio.sfx('warn');
-    this.hud.toast(`${ENEMIES[id].name}成群来袭！集中火力突围`, EL_INFO[ENEMIES[id].el].css);
+    this.hud.toast(`${ENEMIES[id].name}成群来袭！凝神破阵突围`, EL_INFO[ENEMIES[id].el].css);
   }
 
   /** 新敌人进池时先来一小群，让玩家看清它长什么样、怎么动 */
@@ -577,6 +582,8 @@ export class GameScene extends Phaser.Scene {
     // 随相换元素的 Boss（九婴）一出来就跟上当前的相
     if (this.hazards.phaseEl) this.enemies.rephase(this.hazards.phaseEl);
     this.hud.toast(`${this.levelDef.bossName} 现身！`, '#ff6a5a');
+    const bossLine = LEVEL_STORY[this.levelDef.id]?.bossLine;
+    if (bossLine) this.hud.toast(bossLine, '#ffd8a8');
     audio.sfx('boss');
     audio.music('boss', 0.6);
     this.cameras.main.shake(300, 0.006);
@@ -1116,7 +1123,7 @@ export class GameScene extends Phaser.Scene {
         if (e.boss) continue;
         this.hitEnemy(e, effects.damage * (e.elite ? effects.eliteDamage : 1), this.build.benming, { kb: 80, fromX: p.x, fromY: p.y, noCrit: true });
       }
-      this.hud.toast(`爆符 · 威力 ${effects.damage}，精英承受 50%，Boss 免疫`, TALISMANS[id].css);
+      this.hud.toast(`爆符 · 威力 ${effects.damage}，精英承受 50%，首领免疫`, TALISMANS[id].css);
       audio.sfx('killBig');
     } else if (id === 'ding') {
       for (const e of onScreen) {
@@ -1131,7 +1138,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
       this.dingUntil = Math.max(this.dingUntil, this.now + effects.duration);
-      this.hud.toast(`定身符 · 屏内定身 ${effects.duration.toFixed(1)} 秒，Boss 迟缓`, TALISMANS[id].css);
+      this.hud.toast(`定身符 · 屏内定身 ${effects.duration.toFixed(1)} 秒，首领迟缓`, TALISMANS[id].css);
       audio.sfx('benming');
     } else {
       this.dunSpeed = this.now < this.dunUntil ? Math.max(this.dunSpeed, effects.speed) : effects.speed;
@@ -1218,9 +1225,13 @@ export class GameScene extends Phaser.Scene {
     save.lingshi += lingshi;
     const dao0 = daoPoints(save, this.char);
     const lg0 = legacyPoints(save, this.char);
+    let firstClear = false;
     if (win) {
       const clears = save.clears[this.char.id] ??= [];
-      if (!clears.includes(n)) clears.push(n);
+      if (!clears.includes(n)) {
+        clears.push(n);
+        firstClear = true;
+      }
     }
     const gain = [daoPoints(save, this.char) - dao0, legacyPoints(save, this.char) - lg0];
     const growth = gain[0] || gain[1] ? `${this.char.name}首通：${[gain[0] ? `道点 +${gain[0]}` : '', gain[1] ? `传承点 +${gain[1]}` : ''].filter(Boolean).join('　')}` : '';
@@ -1234,7 +1245,7 @@ export class GameScene extends Phaser.Scene {
       unlockedNext = LEVELS.some((l) => l.id === save.unlocked && l.available);
     }
     writeSave(save);
-    const result: RunResult = { win, time: this.elapsed, kills: this.kills, level: this.build.level, lingshi, lingshiLines, unlockedNext, growth };
+    const result: RunResult = { win, time: this.elapsed, kills: this.kills, level: this.build.level, lingshi, lingshiLines, unlockedNext, growth, firstClear };
     this.later(win ? 1.5 : 1.2, () => {
       this.scene.pause();
       this.hud.showResult(result);

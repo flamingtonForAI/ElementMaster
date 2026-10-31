@@ -52,8 +52,8 @@ const PATCH_TICK = 0.6;
 const SAND_SQUASH = 0.62;
 /** 风暴的提示 */
 const STORM_TEXT: Record<StormLook, { css: string; warn: string; start: (dir: string) => string }> = {
-  snow: { css: '#c8ecff', warn: '北风紧了，暴风雪要来了！看不远时贴着冰崖走', start: (d) => `暴风雪！北风往${d}吹，看不远了` },
-  sand: { css: '#fff0d0', warn: '天边黄了，沙暴要来了！沙暴里金气更盛', start: (d) => `沙暴！风往${d}刮，看不远了；金系术更强` },
+  snow: { css: '#c8ecff', warn: '朔风渐紧，暴风雪将至！迷眼时宜循冰崖而行', start: (d) => `暴风雪至！朔风向${d}吹拂，视野受阻` },
+  sand: { css: '#fff0d0', warn: '黄沙蔽日，沙暴将至！沙暴之中金气大盛', start: (d) => `沙暴席卷！狂风向${d}猛刮，视野受阻；金系术法威力增强` },
 };
 /** 临时冰面同时存在的上限 */
 const ICE_MAX = 24;
@@ -163,7 +163,7 @@ export class Hazards {
     this.nextAt = g.elapsed + every * (0.85 + Math.random() * 0.3);
     if (!this.warned) {
       this.warned = true;
-      g.hud.toast('山上落石！看准地上的影子', '#e0ad48');
+      g.hud.toast('山上落石！留神地面黑影', '#e0ad48');
     }
     const p = g.player;
     // 第一块砸在玩家前进方向上，逼着变向；其余散在附近
@@ -231,7 +231,7 @@ export class Hazards {
     if (!vents.length) return;
     if (!this.lavaWarned) {
       this.lavaWarned = true;
-      g.hud.toast(lv.hint ?? '熔岩口要喷发了！发亮的地方快离开', '#ff8a4a');
+      g.hud.toast(lv.hint ?? '熔岩即将喷发！地脉发亮处速退', '#ff8a4a');
     }
     for (const v of vents) this.blast(v.x, v.y, lv.radius, lv.warn, lv.dmg, lv.burn);
   }
@@ -363,7 +363,7 @@ export class Hazards {
     // 走近阵边就提示，不用真的踩进去
     if (g.world.zoneArmor(p.x, p.y) || g.world.zoneArmor(p.x + p.facing.x * 60, p.y + p.facing.y * 60)) {
       this.zoneHinted = true;
-      g.hud.toast(`煞气剑阵：阵中的敌人护甲 +${g.levelDef.swordZones.armor}，把它们引出来打`, '#e06a5a');
+      g.hud.toast(`煞气剑阵：阵中妖物护甲 +${g.levelDef.swordZones.armor}，宜引出阵外再战`, '#e06a5a');
     }
   }
 
@@ -375,7 +375,7 @@ export class Hazards {
     const p = g.player;
     if (!g.world.inMud(p.x, p.y)) return;
     this.mudHinted = true;
-    g.hud.toast(g.levelDef.mud.tex ? '踩进涨潮的浅滩了：走得慢，非水系的妖物也一样' : '陷进泥潭了：走得慢，非水系的妖物也一样', '#b8a878');
+    g.hud.toast(g.levelDef.mud.tex ? '踏入涨潮浅滩：步履受阻，非水系妖物亦同' : '陷入泥潭：步履维艰，非水系妖物亦同', '#b8a878');
   }
 
   // ---------- 瘴雾 ----------
@@ -390,7 +390,7 @@ export class Hazards {
     const n = this.rise(Math.round(m.count[0] + (m.count[1] - m.count[0]) * k));
     if (n && !this.fogWarned) {
       this.fogWarned = true;
-      g.hud.toast('泥潭里冒出了瘴雾！雾里会中毒，把怪引进去', '#8fe06a');
+      g.hud.toast('泥潭升起毒瘴！入雾易中毒，可引群妖入内', '#8fe06a');
     }
   }
 
@@ -559,7 +559,7 @@ export class Hazards {
     const p = g.player;
     if (!this.onIce(p.x, p.y)) return;
     this.iceHinted = true;
-    g.hud.toast('踩上冰面了：起步慢、转向会滑出去，非水系的妖物在冰上也站不稳', '#c8ecff');
+    g.hud.toast('踏上玄冰：起步略缓、折向易滑，非水系妖物亦难立足', '#c8ecff');
   }
 
   // ---------- 流沙 ----------
@@ -599,7 +599,7 @@ export class Hazards {
     if (!s) return;
     if (!this.sandHinted) {
       this.sandHinted = true;
-      g.hud.toast('陷进流沙了：走得慢、往中间吸，陷到中间会被埋，赶紧往外走', '#e8c878');
+      g.hud.toast('陷入流沙：步履迟滞且向中心牵引，陷至中心将受创震慑，速脱身', '#e8c878');
     }
     if (g.over || s.d > s.r * s.def.core || g.now < this.sandTickAt) return;
     this.sandTickAt = g.now + s.def.tick;

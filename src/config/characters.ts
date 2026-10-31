@@ -56,7 +56,7 @@ export interface CharacterDef {
  */
 export const CHARACTERS: CharacterDef[] = [
   {
-    id: 'xiao', name: '萧寒锋', title: '剑客', el: 'metal', role: '近战，高伤中甲', hp: 100, speed: 72, armor: 1,
+    id: 'xiao', name: '萧寒锋', title: '剑客', el: 'metal', role: '剑道伐戮 · 近身暴击', hp: 100, speed: 72, armor: 1,
     startSkill: 'slash', lingen: 3, meleeBonus: 0.2, meleeRange: 80,
     growth: [{ every: 4, stat: 'sigDmg', v: 0.04 }, { every: 5, stat: 'crit', v: 0.01 }, { every: 10, stat: 'armor', v: 1 }],
     bio: '北地剑庐弃徒，一身白衣，剑意属金。',
@@ -64,23 +64,23 @@ export const CHARACTERS: CharacterDef[] = [
     available: true,
   },
   {
-    id: 'zhu', name: '朱砂', title: '符师', el: 'fire', role: '法师，范围爆发，低甲', hp: 70, speed: 70, armor: 0,
+    id: 'zhu', name: '朱砂', title: '符师', el: 'fire', role: '烈火焚阵 · 范围爆发', hp: 70, speed: 70, armor: 0,
     startSkill: 'talisman', lingen: 3, area: 0.15, cdr: 0.1, meleeBonus: 0, meleeRange: 0,
     growth: [{ every: 4, stat: 'sigDmg', v: 0.04 }, { every: 5, stat: 'area', v: 0.02 }],
     bio: '龙虎山出走的女冠，以朱砂画符，符火不灭。',
-    trait: '范围 +15%，冷却 −10%，画符：火符可画成别系。成长：每 4 级火符伤害 +4%，每 5 级范围 +2%。',
+    trait: '术法范围 +15%，冷却 −10%，画符：火符可化入他系。成长：每 4 级火符伤害 +4%，每 5 级范围 +2%。',
     available: true,
   },
   {
-    id: 'ruan', name: '阮沧', title: '海贼', el: 'water', role: '射手，远程风筝', hp: 80, speed: 76, armor: 0,
+    id: 'ruan', name: '阮沧', title: '海贼', el: 'water', role: '连弩控场 · 远射牵制', hp: 80, speed: 76, armor: 0,
     startSkill: 'crossbow', lingen: 3, cdr: 0.15, crit: 0.05, pickup: 0.3, critSplash: 0.4, meleeBonus: 0, meleeRange: 0,
     growth: [{ every: 4, stat: 'sigDmg', v: 0.04 }, { every: 10, stat: 'speed', v: 0.02 }, { every: 5, stat: 'cd', v: 0.01 }],
     bio: '东海私船的头领，水性通神，人称“浪里蛟”。',
-    trait: '攻速 +15%，暴击 +5%，拾取 +30%。远射：弩箭越远越痛。浪花：暴击溅起水花。成长：每 4 级连弩伤害 +4%，每 5 级冷却 −1%，每 10 级移速 +2%。',
+    trait: '攻速 +15%，暴击 +5%，吸灵范围 +30%。远射：弩箭越远越痛。惊涛：暴击溅起水花。成长：每 4 级连弩伤害 +4%，每 5 级冷却 −1%，每 10 级移速 +2%。',
     available: true,
   },
   {
-    id: 'qingdai', name: '青黛', title: '药师', el: 'wood', role: '续航，持续伤害与回复', hp: 85, speed: 72, armor: 0,
+    id: 'qingdai', name: '青黛', title: '药师', el: 'wood', role: '生机毒瘴 · 持续消磨', hp: 85, speed: 72, armor: 0,
     startSkill: 'duwu', lingen: 3, regen: 0.5, dotBonus: 0.3, meleeBonus: 0, meleeRange: 0,
     growth: [{ every: 4, stat: 'sigDmg', v: 0.04 }, { every: 5, stat: 'regen', v: 0.1 }],
     bio: '悬壶济世的游医，药囊里的草木也能杀人。',
@@ -88,19 +88,19 @@ export const CHARACTERS: CharacterDef[] = [
     available: true,
   },
   {
-    id: 'moheng', name: '墨衡', title: '傀儡师', el: 'earth', role: '召唤，傀儡在前本体在后', hp: 65, speed: 66, armor: 1,
+    id: 'moheng', name: '墨衡', title: '傀儡师', el: 'earth', role: '重甲御守 · 傀儡镇阵', hp: 65, speed: 66, armor: 1,
     startSkill: 'puppet', lingen: 3, ownDmg: 0.5, meleeBonus: 0, meleeRange: 0,
     growth: [{ every: 5, stat: 'puppetHp', v: 0.05 }, { every: 5, stat: 'puppetDmg', v: 0.06 }],
-    bio: '名取《列子》偃师，石傀儡替他挡在阵前。',
-    trait: '傀儡继承护甲和本命加成；本体脆、慢，自己的术伤害 −50%。灌注：别系的术给傀儡换外壳。成长：每 5 级傀儡生命 +5%、伤害 +6%。',
+    bio: '机关偃师传人，携玄岩傀儡镇守阵前。',
+    trait: '傀儡继承护甲与本命加成；本体身弱步缓，自身术法伤害 −50%。灌注：兼修他系术法可为傀儡覆上元素外甲。成长：每 5 级傀儡生命 +5%、伤害 +6%。',
     available: true,
   },
   {
-    id: 'xuanyi', name: '玄一', title: '五行散人', el: 'earth', role: '轮转，五系兼修', hp: 85, speed: 72, armor: 1, balanced: true,
+    id: 'xuanyi', name: '玄一', title: '五行散人', el: 'earth', role: '五气朝元 · 万法皆通', hp: 85, speed: 72, armor: 1, balanced: true,
     startSkill: 'fuchen', lingen: 0, meleeBonus: 0, meleeRange: 0,
     growth: [{ every: 4, stat: 'dmg', v: 0.02 }, { every: 10, stat: 'lowLingen', v: 1 }],
-    bio: '云游散人，以无属性清风拂尘扫敌，五行在他身上轮流做主。',
-    trait: '周天：每 30 秒按相生轮转一系，该系伤害 +25%。升级选项五系均等，星图从中宫出发。成长：每 4 级全部伤害 +2%，每 10 级最低灵根 +1。',
+    bio: '云游散人，以无属性清风拂尘涤荡群妖，五行真气于周身轮转不息。',
+    trait: '周天：每 30 秒按相生轮转一系，当令之系伤害 +25%。升级选项五系均等，星图自中宫启行。成长：每 4 级全部伤害 +2%，每 10 级最低灵根 +1。',
     available: true,
   },
 ];

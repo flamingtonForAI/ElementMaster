@@ -171,7 +171,7 @@ const KEXUE: Record<El, Notable> = {
   fire: { name: '熔金', glyph: '熔', note: '攻击金系敌人时 25% 几率灼烧；灼烧中的金系敌人护甲归零', mods: { 'kx.fire': 1 } },
   earth: { name: '筑堤', glyph: '堤', note: '攻击水系敌人时 20% 几率定身 0.6 秒', mods: { 'kx.earth': 1 } },
   water: { name: '灭焰', glyph: '灭', note: '火系敌人死后不再自爆；击杀火系敌人回复 0.3 生命', mods: { 'kx.water': 1 } },
-  metal: { name: '伐木', glyph: '伐', note: '生命低于 15% 的木系敌人直接斩杀（Boss 除外）', mods: { 'kx.metal': 1 } },
+  metal: { name: '伐木', glyph: '伐', note: '生命低于 15% 的木系敌人直接斩杀（首领除外）', mods: { 'kx.metal': 1 } },
 };
 
 function build(): Record<string, StarNode> {
@@ -341,8 +341,8 @@ const STAT_LABEL: Record<string, [string, 'pct' | 'flat' | 'neg' | 'sec']> = {
   area: ['范围', 'pct'],
   cd: ['冷却', 'neg'],
   speed: ['移动速度', 'pct'],
-  pickup: ['拾取范围', 'pct'],
-  xp: ['经验', 'pct'],
+  pickup: ['吸灵范围', 'pct'],
+  xp: ['灵气获取', 'pct'],
   slowDur: ['减速时长', 'pct'],
   stunDur: ['眩晕时长', 'pct'],
   burst: ['本命爆发伤害', 'pct'],
