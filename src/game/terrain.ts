@@ -98,7 +98,7 @@ export function spotAt(ix: number, iy: number, seed: number, salt: number, def: 
   if (hash(ix, iy, s) >= def.chance) return null;
   const x = (ix + 0.2 + hash(ix, iy, s + 1) * 0.6) * def.cell;
   const y = (iy + 0.2 + hash(ix, iy, s + 2) * 0.6) * def.cell;
-  if (Math.hypot(x, y) < 200 + def.radius) return null;
+  if (Math.hypot(x, y) < 110 + def.radius) return null;
   const m = def.radius + 40;
   if (Math.abs(x) > half - m || Math.abs(y) > half - m) return null;
   // 缺口处也不放，免得点位边缘贴着缺口两侧的石头

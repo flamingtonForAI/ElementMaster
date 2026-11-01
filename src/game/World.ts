@@ -82,7 +82,7 @@ export class World {
   /** 当前是哪一相（东海归墟的潮、昆仑的五气），带 phase 的点位只在这一相起作用；没有相位的关卡为 null */
   phase: El | null = null;
   /** 带相位的点位贴图：当相时实、不当相时淡（区块卸载后会失效，换相时顺手清掉） */
-  private phased: { img: Phaser.GameObjects.Image; phase: El }[] = [];
+  private phased: { img: Phaser.GameObjects.Image; phase: El; ground: boolean }[] = [];
   /** 点位按格子缓存，键由 kind、ix、iy 拼成一个数（泥潭每帧给每只怪查一次，不拼字符串） */
   private spotCache = new Map<number, [number, number] | null>();
 
@@ -172,14 +172,20 @@ export class World {
   setPhase(phase: El) {
     this.phase = phase;
     this.phased = this.phased.filter((p) => p.img.active);
-    for (const p of this.phased) p.img.setAlpha(p.phase === phase ? 1 : 0.35);
+    for (const p of this.phased) {
+      const active = p.phase === phase;
+      p.img.setAlpha(active ? 1 : 0.2);
+      if (p.ground) p.img.setDepth(-1e5 + (active ? 1 : 0));
+    }
   }
 
   /** 记下一张带相位的点位贴图，按当前相定透明度 */
-  private markPhase(img: Phaser.GameObjects.Image, def: { phase?: El }) {
+  private markPhase(img: Phaser.GameObjects.Image, def: { phase?: El }, ground = false) {
     if (!def.phase) return;
-    img.setAlpha(def.phase === this.phase ? 1 : 0.35);
-    this.phased.push({ img, phase: def.phase });
+    const active = def.phase === this.phase;
+    img.setAlpha(active ? 1 : 0.2);
+    if (ground) img.setDepth(-1e5 + (active ? 1 : 0));
+    this.phased.push({ img, phase: def.phase, ground });
   }
 
   /** 这里在不在冰面上：在就返回冰面的配置，否则 null（Boss 冰锥留下的临时冰面另由 Hazards.onIce 判定） */
@@ -478,14 +484,14 @@ export class World {
       const r = this.level.lava!.radius;
       const vent = this.scene.add.image(Math.round(px), Math.round(py), 'dc_lava', Math.floor(R() * 2)).setScale(r / 20).setDepth(-1e5).setFlipX(R() < 0.5);
       add(vent);
-      this.markPhase(vent, this.level.lava!);
+      this.markPhase(vent, this.level.lava!, true);
     }
     const mud = this.level.mud;
     for (const [px, py] of this.spotsIn('mud', x0, y0, x0 + CHUNK, y0 + CHUNK)) {
       const r = mud!.radius;
       const pool = this.scene.add.image(Math.round(px), Math.round(py), mud!.tex ?? 'dc_mud', Math.floor(R() * 2)).setScale(r / 50).setDepth(-1e5).setFlipX(R() < 0.5);
       add(pool);
-      this.markPhase(pool, mud!);
+      this.markPhase(pool, mud!, true);
       // 换了贴图的（浅滩）不配香蒲
       if (mud!.tex) continue;
       const n = 2 + Math.floor(R() * 2);
@@ -493,7 +499,9 @@ export class World {
         const a = R() * Math.PI * 2;
         const sx = px + Math.cos(a) * (r + 6);
         const sy = py + Math.sin(a) * (r + 6) * MUD_SQUASH;
-        add(this.scene.add.image(Math.round(sx), Math.round(sy), 'dc_cattail', 0).setOrigin(0.5, 0.92).setDepth(sy).setFlipX(R() < 0.5));
+        const plant = this.scene.add.image(Math.round(sx), Math.round(sy), 'dc_cattail', 0).setOrigin(0.5, 0.92).setDepth(sy).setFlipX(R() < 0.5);
+        add(plant);
+        this.markPhase(plant, mud!);
       }
     }
     const ice = this.level.ice;
@@ -501,13 +509,15 @@ export class World {
       const r = ice!.radius;
       const sheet = this.scene.add.image(Math.round(px), Math.round(py), 'dc_ice', Math.floor(R() * 2)).setScale(r / 50).setDepth(-1e5).setFlipX(R() < 0.5);
       add(sheet);
-      this.markPhase(sheet, ice!);
+      this.markPhase(sheet, ice!, true);
       const n = 1 + Math.floor(R() * 2);
       for (let i = 0; i < n; i++) {
         const a = R() * Math.PI * 2;
         const sx = px + Math.cos(a) * (r + 4);
         const sy = py + Math.sin(a) * (r + 4) * ICE_SQUASH;
-        add(this.scene.add.image(Math.round(sx), Math.round(sy), 'dc_snowtuft', Math.floor(R() * 2)).setOrigin(0.5, 0.92).setDepth(sy).setFlipX(R() < 0.5));
+        const snow = this.scene.add.image(Math.round(sx), Math.round(sy), 'dc_snowtuft', Math.floor(R() * 2)).setOrigin(0.5, 0.92).setDepth(sy).setFlipX(R() < 0.5);
+        add(snow);
+        this.markPhase(snow, ice!);
       }
     }
     const sand = this.level.quicksand;
@@ -518,14 +528,16 @@ export class World {
       const r = def!.radius;
       const zone = this.scene.add.image(Math.round(px), Math.round(py), 'fx_zone').setScale(r / 60, (r / 60) * ZONE_SQUASH).setDepth(-1e5);
       add(zone);
-      this.markPhase(zone, def!);
+      this.markPhase(zone, def!, true);
       const n = 9;
       const off = R() * Math.PI;
       for (let i = 0; i < n; i++) {
         const a = off + (i / n) * Math.PI * 2;
         const sx = px + Math.cos(a) * (r - 4);
         const sy = py + Math.sin(a) * (r - 4) * ZONE_SQUASH;
-        add(this.scene.add.image(Math.round(sx), Math.round(sy), 'dc_sword', Math.floor(R() * 3)).setOrigin(0.5, 0.92).setDepth(sy).setFlipX(R() < 0.5));
+        const sword = this.scene.add.image(Math.round(sx), Math.round(sy), 'dc_sword', Math.floor(R() * 3)).setOrigin(0.5, 0.92).setDepth(sy).setFlipX(R() < 0.5);
+        add(sword);
+        this.markPhase(sword, def!);
       }
     }
   }

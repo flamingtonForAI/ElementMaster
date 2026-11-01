@@ -123,33 +123,23 @@ function bolt(): PC {
 
 function explosion(f: number): PC {
   const p = new PC(48, 48);
-  const R = rng(91 + f);
-  const r = [9, 16, 20, 22][f];
-  const ring = (inner: number, outer: number, cols: number[], jitter: number) => {
-    for (let y = 0; y < 48; y++)
-      for (let x = 0; x < 48; x++) {
-        const d = Math.hypot(x + 0.5 - 24, y + 0.5 - 24) + (R() - 0.5) * jitter;
-        if (d < inner || d > outer) continue;
-        const k = (d - inner) / Math.max(1, outer - inner);
-        p.set(x, y, cols[Math.min(cols.length - 1, Math.floor(k * cols.length))]);
-      }
-  };
-  if (f === 0) {
-    ring(0, r, [0xffffff, 0xfff0a0, 0xffc34a], 1.5);
-  } else if (f === 1) {
-    ring(0, r, [0xfff0a0, 0xffc34a, 0xff8a3a, 0xe8503f], 3);
-  } else if (f === 2) {
-    ring(r * 0.45, r, [0xffc34a, 0xff8a3a, 0xe8503f, 0x8e2a20], 4);
-    for (let i = 0; i < 8; i++) {
-      const a = R() * Math.PI * 2;
-      p.circle(24 + Math.cos(a) * r * 0.9, 24 + Math.sin(a) * r * 0.9, 2, 0xffc34a);
-    }
-  } else {
-    for (let i = 0; i < 12; i++) {
-      const a = R() * Math.PI * 2;
-      const d = r * (0.5 + R() * 0.5);
-      p.circle(24 + Math.cos(a) * d, 24 + Math.sin(a) * d, 1.5 + R() * 1.5, R() < 0.3 ? 0xe8503f : 0x5a4a4a);
-    }
+  const r = [9, 17, 20, 22][f];
+  if (f < 3) for (let y = 1; y < 47; y++) for (let x = 1; x < 47; x++) {
+    const dx = x + 0.5 - 24, dy = y + 0.5 - 24;
+    const a = Math.atan2(dy, dx);
+    // 连续火舌替代逐像素随机噪点，相邻帧沿相同轮廓向外扩散。
+    const d = Math.hypot(dx, dy) / (r * (1 + 0.12 * Math.sin(a * 5 + 0.4) + 0.07 * Math.sin(a * 9)));
+    if (d > 1 || (f === 2 && d < 0.5)) continue;
+    const col = f === 0 ? (d < 0.4 ? 0xffffff : d < 0.7 ? 0xfff0a0 : 0xffa83a)
+      : f === 1 ? (d < 0.3 ? 0xfff2b0 : d < 0.57 ? 0xffc34a : d < 0.8 ? 0xf57930 : 0xb63826)
+      : (d < 0.68 ? 0xffb840 : d < 0.85 ? 0xe75a2e : 0x8e2a20);
+    p.set(x, y, col);
+  }
+  if (f >= 2) for (let i = 0; i < 9; i++) {
+    const a = i * Math.PI * 2 / 9 + 0.2;
+    const d = f === 2 ? 19 : 20 + (i % 3);
+    p.line(24 + Math.cos(a) * (d - 2), 24 + Math.sin(a) * (d - 2),
+      24 + Math.cos(a) * d, 24 + Math.sin(a) * d, f === 2 ? 0xffd06a : 0xa84a2b, 1, f === 2 ? 255 : 150);
   }
   return p;
 }
@@ -158,16 +148,19 @@ function explosion(f: number): PC {
 function iceBurst(f: number): PC {
   const p = new PC(64, 64);
   for (let i = 0; i < 6; i++) {
-    const a = i * Math.PI / 3;
+    const a = i * Math.PI / 3 + 0.12;
     const point = (r: number, side = 0): [number, number] => [32 + Math.cos(a) * r - Math.sin(a) * side, 32 + Math.sin(a) * r + Math.cos(a) * side];
+    const r = [28, 28, 29, 30][f] - i % 2 * 3;
     if (f < 2) {
-      p.line(...point(4), ...point(29), 0xc8edff, f === 0 ? 1 : 2);
-      for (const r of [13, 22]) for (const side of [-1, 1]) p.line(...point(r), ...point(r - 5, side * 5), 0x75bce8);
+      p.tri(point(5, -2), point(r, 0), point(7, 3), 0x4d91c4);
+      p.tri(point(6, -1), point(r - 2, 0), point(7, 1), f === 0 ? 0xf0fbff : 0xc8edff);
+      for (const side of [-1, 1]) p.line(...point(r * 0.55), ...point(r * 0.42, side * 5), 0x8bc9ed);
+    } else {
+      p.line(...point(r - 4), ...point(r), 0x9ed8f0, 1, 255 - f * 50);
+      p.line(...point(r - 2, -1), ...point(r - 2, 1), 0xdaf5ff, 1, 255 - f * 50);
     }
-    const r = [24, 26, 28, 30][f];
-    p.line(...point(r - 4), ...point(r), f < 2 ? 0xf0fbff : 0x86b6cf, 1, 255 - f * 45);
-    p.line(...point(r - 2, -2), ...point(r - 2, 2), 0xc8edff, 1, 255 - f * 50);
   }
+  if (f === 0) p.circle(32, 32, 3, 0xffffff);
   return p;
 }
 
@@ -182,9 +175,13 @@ function sealBurst(f: number): PC {
     p.line(24 + sx * (r - 3), 24 + sy * 3, 24 + sx * (r - 7), 24 + sy * 6, 0xffe7a0, 1, alpha);
   }
   if (f < 2) {
+    // 中央印文先亮，再由四角向外散开。
     p.line(18, 19, 30, 19, 0xffffff, 2);
     p.line(24, 15, 24, 33, 0xfff0c0, 2);
     p.strand([[18, 25], [29, 25], [20, 31], [29, 32]], 0xffffff, 1);
+  }
+  if (f === 1 || f === 2) for (const [x, y, dx, dy] of [[24, 4, 0, 4], [43, 24, -4, 0], [24, 43, 0, -4], [4, 24, 4, 0]]) {
+    p.line(x, y, x + dx, y + dy, 0xffedbd, 1, alpha);
   }
   return p;
 }
@@ -193,11 +190,12 @@ function sealBurst(f: number): PC {
 function dustBurst(f: number): PC {
   const p = new PC(64, 64);
   for (let i = 0; i < 9; i++) {
-    const a = i * Math.PI * 2 / 9;
-    const r = [10, 18, 24, 27][f];
-    const size = [4, 6, 5, 3][f];
+    const a = i * Math.PI * 2 / 9 + (i % 2) * 0.12;
+    const r = [10, 18, 24, 27][f] - i % 3;
+    const size = [4, 6, 5, 3][f] - i % 2;
     const x = 32 + Math.cos(a) * r, y = 32 + Math.sin(a) * r;
-    p.ellipse(x, y, size, size * 0.7, f < 2 ? 0x9a8262 : 0x746a5a);
+    p.ellipse(x, y + 1, size, size * 0.7, 0x62574a);
+    p.ellipse(x - 1, y - 1, size * 0.8, size * 0.55, f < 2 ? 0xa58c69 : 0x82715b);
     p.line(x - 2, y - 2, x + 1, y - 2, 0xc0a77f, 1, 180 - f * 35);
   }
   return p;
@@ -258,6 +256,7 @@ function waterDragon(f: number): PC {
     const y = 7 + Math.round(Math.sin((x + f * 3) * 0.6) * 2);
     const w = 1 + Math.floor(x / 6);
     for (let k = -w; k <= w; k++) p.set(x, y + k, k === -w ? H : B);
+    if (x > 5 && x % 4 === 1) p.set(x, y + w, D);
   }
   // 头
   p.ellipse(21, 7, 4.5, 3.5, B);
@@ -266,6 +265,7 @@ function waterDragon(f: number): PC {
   p.set(25, 7, B);
   p.set(26, 8, B);
   p.set(21, 6, 0xffffff);
+  p.line(14, 4 + f, 17, 5 + f, 0xe0f0ff);
   // 龙须和角
   p.strand([[23, 9], [26, 11], [27, 13]], H, 1);
   p.strand([[19, 4], [17, 1]], 0xe0f0ff, 1);
@@ -598,6 +598,20 @@ function ground(
     p.set(x, y - 1, c);
     if (i % 2 === 0) p.set(x - 1, y, c);
     else p.set(x + 1, y, c);
+  }
+
+  // 地表材料的大形状保持克制：冰雪、沙纹、水痕和碎裂岩层各有方向。
+  for (let i = 0; i < 16; i++) {
+    const x = 8 + Math.floor(R() * (N - 24));
+    const y = 8 + Math.floor(R() * (N - 16));
+    if (seed === 79 || seed === 97 || seed === 67) {
+      p.line(x, y, x + 5 + i % 5, y, pebbles[1], 1, 100);
+      p.line(x + 3, y + 2, x + 8 + i % 5, y + 2, pebbles[1], 1, 65);
+    } else if (seed === 83) {
+      p.strand([[x, y + 2], [x + 5, y], [x + 12, y + 1]], pebbles[0], 1);
+    } else {
+      p.strand([[x, y], [x + 4, y + 1], [x + 7, y], [x + 10, y + 2]], pebbles[0], 1);
+    }
   }
 
   return p;
@@ -1182,20 +1196,20 @@ function fog(): PC {
 /** dc_mud（2 种变体，第 6 关泥潭，贴地）：半径 50 的扁泥沼，湿边略亮，中间一汪浑水泛着天光，冒两个泡 */
 function mudPool(v: number): PC {
   const p = new PC(100, 62);
-  const R = rng(70 + v);
   for (let y = 0; y < 62; y++)
     for (let x = 0; x < 100; x++) {
       const a = Math.atan2(y + 0.5 - 31, x + 0.5 - 50);
       const wob = Math.sin(a * 3 + v * 2) * 0.05 + Math.sin(a * 7 + v) * 0.03;
       const d = Math.hypot((x + 0.5 - 50) / 50, (y + 0.5 - 31) / 31) + wob;
       if (d > 1) continue;
-      const n = R() < 0.06 ? 1 : 0;
-      p.set(x, y, d > 0.9 ? 0x4a4a32 : d > 0.7 ? (n ? 0x3a3a28 : 0x34342a) : d > 0.4 ? 0x2c3226 : (n ? 0x34403a : 0x2e3a34));
+      p.set(x, y, d > 0.93 ? (y < 31 ? 0x5b5d40 : 0x282d22)
+        : d > 0.78 ? 0x414532 : d > 0.5 ? 0x30392c : 0x293830);
     }
-  // 浑水上的天光
-  p.span(24, 38, 50, 0x46564e);
-  p.span(25, 42, 56, 0x3e4c46);
-  p.span(36, 54, 60, 0x3e4c46);
+  // 破碎的水平倒影让水面与普通地面区分开。
+  p.span(22, 29, 43, 0x526558);
+  p.span(23, 36, 55, 0x465a4e);
+  p.span(33, 54, 70, 0x42574a);
+  p.span(38, 29, 38, 0x42574a);
   // 两个泥泡
   for (const [x, y] of v ? [[34, 34], [62, 26]] : [[60, 36], [40, 22]]) {
     p.circle(x, y, 1.6, 0x4e5a4a);
@@ -1278,21 +1292,23 @@ const ICE_PAL = [0x262c38, 0x3e4656, 0x5a6474, 0x848c98, 0xc4ccd4, 0xc8d0d8, 0xe
 /** dc_ice（2 种变体，第 7 关冰面，贴地）：半径 50 的扁冰面，灰青冰色，边上一圈薄雪，几道裂纹和反光 */
 function iceSheet(v: number): PC {
   const p = new PC(100, 62);
-  const R = rng(90 + v);
   for (let y = 0; y < 62; y++)
     for (let x = 0; x < 100; x++) {
       const a = Math.atan2(y + 0.5 - 31, x + 0.5 - 50);
       const wob = Math.sin(a * 3 + v * 2) * 0.04 + Math.sin(a * 6 + v) * 0.03;
       const d = Math.hypot((x + 0.5 - 50) / 50, (y + 0.5 - 31) / 31) + wob;
       if (d > 1) continue;
-      const n = R() < 0.05 ? 1 : 0;
-      p.set(x, y, d > 0.9 ? 0x7a8490 : d > 0.75 ? 0x4e5a68 : d > 0.4 ? (n ? 0x56636e : 0x4a5664) : n ? 0x5a6874 : 0x52606c);
+      p.set(x, y, d > 0.94 ? (y < 31 ? 0xa4b6c1 : 0x394b5a)
+        : d > 0.82 ? 0x718592 : d > 0.58 ? 0x526976 : 0x495f6d);
     }
   // 裂纹
   const cracks: [number, number][][] = v
     ? [[[30, 22], [42, 30], [40, 40]], [[42, 30], [60, 27], [70, 35]]]
     : [[[24, 30], [38, 26], [52, 34]], [[52, 34], [64, 24]], [[52, 34], [58, 44]]];
-  for (const c of cracks) p.strand(c, 0x3a4450, 1);
+  for (const c of cracks) {
+    p.strand(c.map(([x, y]) => [x, y + 1]), 0x829ca9, 1);
+    p.strand(c, 0x354b5b, 1);
+  }
   // 冰面反光
   p.span(18, 36, 48, 0x8a96a2);
   p.span(19, 40, 52, 0x6a7682);
@@ -1457,8 +1473,10 @@ function quicksand(v: number): PC {
       if (d > 1) continue;
       // 螺旋纹：角度和半径一起转
       const band = Math.sin(d * 18 - a * 2 * (v ? -1 : 1));
-      const col = d < 0.22 ? 0x4a3c28 : d < 0.4 ? (band > 0 ? 0x6a5638 : 0x5e4c32) : band > 0.3 ? 0x8a7248 : band < -0.3 ? 0x6e5a3a : 0x7c6642;
-      p.set(x, y, col, d > 0.9 ? 200 : 255);
+      const col = d > 0.94 ? (dy < 0 ? 0x9b8050 : 0x574329)
+        : d < 0.22 ? 0x443522 : d < 0.4 ? (band > 0 ? 0x6a5638 : 0x5e4c32)
+        : band > 0.3 ? 0x8a7248 : band < -0.3 ? 0x6e5a3a : 0x7c6642;
+      p.set(x, y, col);
     }
   return p;
 }

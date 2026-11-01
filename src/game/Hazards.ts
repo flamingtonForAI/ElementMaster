@@ -225,9 +225,17 @@ export class Hazards {
     const p = g.player;
     // 只喷看得见的熔岩口（屏幕内外扩一点），离玩家近的优先
     const vents = g.world.spotsIn('lava', p.x - 360, p.y - 220, p.x + 360, p.y + 220)
-      .map(([x, y]) => ({ x, y, d: Math.hypot(x - p.x, y - p.y) + Math.random() * 120 }))
+      .map(([x, y]) => ({ x, y, d: Math.hypot(x - p.x, y - p.y) }))
       .sort((a, b) => a.d - b.d)
       .slice(0, count);
+    // 离固定火口太远时，地裂追到前路；仍使用同样的预警与伤害。
+    if (g.elapsed >= lv.start + 10 && (!vents.length || vents[0].d > 110)) {
+      const lead = p.moving ? g.pstats.speed * 0.6 : 0;
+      const [x, y] = g.world.clampPt(p.x + p.facing.x * lead, p.y + p.facing.y * lead, lv.radius);
+      g.fx.crack(x, y, lv.warn);
+      vents.unshift({ x, y, d: 0 });
+      vents.length = Math.min(vents.length, count);
+    }
     if (!vents.length) return;
     if (!this.lavaWarned) {
       this.lavaWarned = true;
@@ -387,10 +395,21 @@ export class Hazards {
     const k = Math.min(1, g.elapsed / g.levelDef.duration);
     const every = m.every[0] + (m.every[1] - m.every[0]) * k;
     this.fogAt = g.elapsed + every * (0.85 + Math.random() * 0.3);
-    const n = this.rise(Math.round(m.count[0] + (m.count[1] - m.count[0]) * k));
+    const count = Math.round(m.count[0] + (m.count[1] - m.count[0]) * k);
+    const p = g.player;
+    let n = 0;
+    // 空地上也会冒出缓慢扩散的毒瘴，先落在身前，留出离开的时间。
+    if (g.elapsed >= Math.max(30, m.start) && !this.fogs.some((f) => Math.hypot(f.x - p.x, (f.y - p.y) / FOG_SQUASH) < m.radius)) {
+      let [x, y] = g.world.clampPt(p.x + p.facing.x * 55, p.y + p.facing.y * 55 * FOG_SQUASH, 10);
+      if (Math.hypot(x - p.x, (y - p.y) / FOG_SQUASH) < 30)
+        [x, y] = g.world.clampPt(p.x - p.facing.x * 55, p.y - p.facing.y * 55 * FOG_SQUASH, 10);
+      this.miasmaAt(x, y, m.radius, m.grow, m.life);
+      n++;
+    }
+    n += this.rise(count - n);
     if (n && !this.fogWarned) {
       this.fogWarned = true;
-      g.hud.toast('泥潭升起毒瘴！入雾易中毒，可引群妖入内', '#8fe06a');
+      g.hud.toast('泽地升起毒瘴！入雾易中毒，可引群妖入内', '#8fe06a');
     }
   }
 

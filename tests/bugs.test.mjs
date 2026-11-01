@@ -792,7 +792,7 @@ test('熔岩口、剑阵、泥潭、冰面、流沙点位固定：离出生点�
         assert.deepEqual(p, spotAt(ix, iy, level.id, salt, def, half, level.ridges));
         if (!p) continue;
         count++;
-        assert.ok(Math.hypot(p[0], p[1]) >= 200 + def.radius);
+        assert.ok(Math.hypot(p[0], p[1]) >= 110 + def.radius);
         assert.ok(Math.abs(p[0]) <= half - def.radius && Math.abs(p[1]) <= half - def.radius);
         assert.ok(ridgeDist(p[0], p[1], level.id, level.ridges) >= RIDGE_HALF + def.radius);
       }

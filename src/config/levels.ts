@@ -250,7 +250,7 @@ export const LEVELS: LevelDef[] = [
     size: 4400, edge: 'dc_basalt', elites: { first: 60, every: [60, 30] },
     // 两道玄武岩壁夹出谷道，缺口比山林多一点：熔岩已经够逼走位
     ridges: { tex: 'dc_basalt', radius: 11, bands: [0.4, 0.6], scale: 600, gap: 0.6 },
-    lava: { cell: 340, chance: 0.55, radius: 30, start: 20, every: [8, 4], count: [1, 3], warn: 1.3, dmg: 14, burn: 3 },
+    lava: { cell: 240, chance: 0.8, radius: 30, start: 20, every: [8, 4], count: [1, 3], warn: 1.3, dmg: 14, burn: 3 },
     // 从这关起敌人开始有花样：火精的火球落地留余火，熔壳石俑贴身震地；精英带一个词缀
     tricks: { huojing: ['lob'], shiyong: ['quake'] },
     eliteAffixes: 1,
@@ -280,7 +280,7 @@ export const LEVELS: LevelDef[] = [
     size: 4600, edge: 'dc_barricade', elites: { first: 75, every: [60, 30] },
     // 一道拒马残垒
     ridges: { tex: 'dc_barricade', radius: 9, bands: [0.5], scale: 560, gap: 0.55 },
-    swordZones: { cell: 420, chance: 0.5, radius: 64, armor: 2 },
+    swordZones: { cell: 260, chance: 0.8, radius: 64, armor: 2 },
     // 铁甲兵列阵给周围加护甲，石俑照样震地
     tricks: { tiejia: ['formation'], shiyong: ['quake'] },
     trickStarts: { quake: 60, formation: 120 },
@@ -310,7 +310,7 @@ export const LEVELS: LevelDef[] = [
     size: 4800, edge: 'dc_reed', elites: { first: 60, every: [60, 30] },
     // 一道芦苇荡，缺口不少：泥潭和瘴雾已经够逼走位
     ridges: { tex: 'dc_reed', radius: 9, bands: [0.5], scale: 600, gap: 0.56 },
-    mud: { cell: 300, chance: 0.6, radius: 48, player: 0.65, enemy: 0.6 },
+    mud: { cell: 220, chance: 0.8, radius: 48, player: 0.65, enemy: 0.6 },
     miasma: { start: 30, every: [14, 8], count: [1, 2], radius: 80, grow: 6, life: 16, tick: 0.7, chance: 0.6, dps: 2, enemy: 0.025 },
     // 鱼妖的水弹落地留水洼，藤怪在玩家脚下催生缠根；精英带两个词缀
     tricks: { yuyao: ['lob'], tengguai: ['roots'] },
@@ -341,7 +341,7 @@ export const LEVELS: LevelDef[] = [
     size: 5000, edge: 'dc_icecliff', elites: { first: 60, every: [60, 30] },
     // 一道冰崖，缺口比芦苇荡少一点：冰上滑起来要找准山道
     ridges: { tex: 'dc_icecliff', radius: 9, bands: [0.5], scale: 640, gap: 0.5 },
-    ice: { cell: 320, chance: 0.6, radius: 66, grip: 2.2, boost: 1.2, enemy: 0.7 },
+    ice: { cell: 240, chance: 0.8, radius: 66, grip: 2.2, boost: 1.2, enemy: 0.7 },
     storm: { look: 'snow', start: 75, every: [55, 38], dur: [10, 15], warn: 2.5, vision: 120, wind: 22 },
     // 鱼妖照旧抛射留水洼，铁甲兵列阵，飞镰的刃会折回来；精英带两个词缀（第 7 关起有寒）
     tricks: { yuyao: ['lob'], tiejia: ['formation'], feilian: ['boomerang'] },
@@ -375,7 +375,7 @@ export const LEVELS: LevelDef[] = [
     size: 5200, edge: 'dc_yardang', elites: { first: 75, every: [60, 30] },
     // 一道雅丹土台，缺口不少：流沙和沙暴已经够逼走位
     ridges: { tex: 'dc_yardang', radius: 9, bands: [0.5], scale: 660, gap: 0.54 },
-    quicksand: { cell: 340, chance: 0.55, radius: 56, player: 0.75, enemy: 0.6, pull: 26, core: 0.35, tick: 0.8, dmg: 3 },
+    quicksand: { cell: 240, chance: 0.8, radius: 56, player: 0.75, enemy: 0.6, pull: 26, core: 0.35, tick: 0.8, dmg: 3 },
     storm: { look: 'sand', start: 120, every: [60, 40], dur: [10, 14], warn: 2.5, vision: 135, wind: 26, boost: { el: 'metal', amt: 0.15 } },
     // 石俑震地、铁甲兵列阵、飞镰回旋，穿山甲破土留流沙；精英带两个词缀
     tricks: { shiyong: ['quake'], tiejia: ['formation'], feilian: ['boomerang'], chuanshan: ['sinkhole'] },
@@ -412,8 +412,8 @@ export const LEVELS: LevelDef[] = [
     // 一道珊瑚礁
     ridges: { tex: 'dc_coral', radius: 9, bands: [0.5], scale: 680, gap: 0.54 },
     // 浅滩涨潮才积水，海底火山口退潮才喷
-    mud: { cell: 300, chance: 0.5, radius: 50, player: 0.7, enemy: 0.65, tex: 'dc_tidepool', phase: 'water' },
-    lava: { cell: 360, chance: 0.5, radius: 30, start: 0, every: [8, 4.5], count: [1, 3], warn: 1.3, dmg: 14, burn: 3, phase: 'fire', hint: '海底火山口即将喷发！地脉发亮处速退' },
+    mud: { cell: 240, chance: 0.75, radius: 50, player: 0.7, enemy: 0.65, tex: 'dc_tidepool', phase: 'water' },
+    lava: { cell: 250, chance: 0.75, radius: 30, start: 0, every: [8, 4.5], count: [1, 3], warn: 1.3, dmg: 14, burn: 3, phase: 'fire', hint: '海底火山口即将喷发！地脉发亮处速退' },
     cycle: {
       order: ['water', 'fire'], every: [50, 35], warn: 4, surge: 1.15, weight: 2, rage: true,
       terrain: { water: T({ water: 0.7, fire: 0.1, earth: 0.2 }), fire: T({ water: 0.2, fire: 0.6, earth: 0.2 }) },
@@ -459,12 +459,12 @@ export const LEVELS: LevelDef[] = [
     // 一道昆仑玉崖
     ridges: { tex: 'dc_kunlun', radius: 9, bands: [0.5], scale: 700, gap: 0.54 },
     // 五气各管一种地形：木气毒沼冒瘴雾、火气熔岩口喷发、土气落石、金气剑阵加甲、水气冰面
-    mud: { cell: 320, chance: 0.4, radius: 46, player: 0.7, enemy: 0.65, phase: 'wood' },
+    mud: { cell: 250, chance: 0.75, radius: 46, player: 0.7, enemy: 0.65, phase: 'wood' },
     miasma: { start: 0, every: [12, 8], count: [1, 2], radius: 70, grow: 5, life: 14, tick: 0.7, chance: 0.5, dps: 2, enemy: 0.025, phase: 'wood' },
-    lava: { cell: 380, chance: 0.45, radius: 30, start: 0, every: [8, 5], count: [1, 3], warn: 1.3, dmg: 14, burn: 3, phase: 'fire' },
+    lava: { cell: 260, chance: 0.75, radius: 30, start: 0, every: [8, 5], count: [1, 3], warn: 1.3, dmg: 14, burn: 3, phase: 'fire' },
     rockfall: { start: 0, every: [6, 3.5], count: [1, 3], radius: 20, warn: 1.1, dmg: 12, phase: 'earth' },
-    swordZones: { cell: 440, chance: 0.45, radius: 64, armor: 3, phase: 'metal' },
-    ice: { cell: 340, chance: 0.5, radius: 60, grip: 2.2, boost: 1.2, enemy: 0.7, phase: 'water' },
+    swordZones: { cell: 280, chance: 0.75, radius: 64, armor: 3, phase: 'metal' },
+    ice: { cell: 260, chance: 0.75, radius: 60, grip: 2.2, boost: 1.2, enemy: 0.7, phase: 'water' },
     cycle: {
       order: ['wood', 'fire', 'earth', 'metal', 'water'], every: [180, 180], warn: 8, surge: 1.1, weight: 3, banner: true,
       note: { wood: '木气当令', fire: '火气当令', earth: '土气当令', metal: '金气当令', water: '水气当令' },
